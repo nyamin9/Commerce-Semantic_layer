@@ -1,0 +1,19 @@
+dataformCoreVersion: 3.0.65
+
+defaultProject: analytics-engineering-practice
+defaultLocation: US
+
+# semantic layer 산출물이 쌓이는 기본 데이터셋
+defaultDataset: semantic
+defaultAssertionDataset: semantic_assertions
+
+vars:
+  # semantic layer의 소스가 되는 DW 레이어. dbt가 생성하고 Dataform은 읽기만 한다.
+  # release configuration에서 override 해서 dev/prod를 분리한다.
+  dwDataset: dbt_dev_marts_core
+
+  # 원본 데이터. semantic layer가 직접 읽지는 않고 lineage 확인용으로만 둔다.
+  rawDataset: raw_thelook
+
+  # SCD 이력. point-in-time 조회가 필요해지면 사용한다.
+  snapshotDataset: snapshots
