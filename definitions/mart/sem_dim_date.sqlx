@@ -1,0 +1,43 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "dimension"],
+  description: "날짜 차원. semantic layer가 소유한다 — 변환이 아니라 축이고, 상류에 없다",
+  assertions: {
+    uniqueKey: ["date_day"],
+    nonNull:   ["date_day"],
+  },
+  columns: {
+    date_day:        "날짜. PK",
+    week_start_date: "주 시작일(월요일). 주간 롤업의 period_start 와 같은 기준",
+    is_weekend:      "주말 여부",
+  },
+}
+
+-- fact 는 2019-01-13 부터 시작한다. 앞뒤로 여유를 둔다.
+-- 빈 날짜를 행으로 만들어 시계열 구멍을 메우는 것이 이 테이블의 목적이다.
+WITH spine AS (
+  SELECT date_day
+  FROM UNNEST(GENERATE_DATE_ARRAY('2018-01-01', '2031-12-31')) AS date_day
+)
+
+SELECT
+  date_day,
+  EXTRACT(YEAR    FROM date_day)     AS year,
+  EXTRACT(QUARTER FROM date_day)     AS quarter,
+  EXTRACT(MONTH   FROM date_day)     AS month,
+  EXTRACT(DAY     FROM date_day)     AS day_of_month,
+  EXTRACT(DAYOFWEEK FROM date_day)   AS day_of_week,
+  FORMAT_DATE('%A',    date_day)     AS day_name,
+  FORMAT_DATE('%Y-%m', date_day)     AS year_month,
+  -- 주 시작을 월요일로 맞춘다. periods.js 의 WEEK(MONDAY) 와 같은 기준이어야
+  -- 날짜 차원으로 자른 결과와 주간 롤업이 어긋나지 않는다
+  DATE_TRUNC(date_day, WEEK(MONDAY)) AS week_start_date,
+  LAST_DAY(date_day, WEEK(MONDAY))   AS week_end_date,
+  DATE_TRUNC(date_day, MONTH)        AS month_start_date,
+  LAST_DAY(date_day, MONTH)          AS month_end_date,
+  DATE_TRUNC(date_day, QUARTER)      AS quarter_start_date,
+  DATE_TRUNC(date_day, YEAR)         AS year_start_date,
+  LAST_DAY(date_day, YEAR)           AS year_end_date,
+  EXTRACT(DAYOFWEEK FROM date_day) IN (1, 7) AS is_weekend
+FROM spine

@@ -1,0 +1,34 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "dimension"],
+  description: "고객 차원. 고객 1건 = 1행. 네 fact가 공유하는 conformed dimension",
+  assertions: {
+    uniqueKey: ["user_id"],
+    nonNull:   ["user_id"],
+  },
+  bigquery: { clusterBy: ["country", "acquisition_channel"] },
+  columns: {
+    user_id:             "고객 식별자. PK",
+    country:             "국가. 네 entity를 가로지르는 conformed 축",
+    acquisition_channel: "유입 채널. 네 entity를 가로지르는 conformed 축",
+    age_group:           "연령대 버킷",
+    gender:              "성별",
+  },
+}
+
+SELECT
+  user_id,
+  email_domain,
+  age,
+  age_group,
+  gender,
+  city,
+  state,
+  country,
+  postal_code,
+  acquisition_channel,
+  signed_up_at,
+  signed_up_date,
+  signup_cohort_month
+FROM ${ref("dim_users")}

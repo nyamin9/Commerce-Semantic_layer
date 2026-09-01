@@ -1,0 +1,44 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "fact"],
+  description: "주문 fact. 주문 1건 = 1행. 주문 grain 지표의 원천",
+  assertions: {
+    uniqueKey: ["order_key"],
+    nonNull:   ["order_key", "user_id", "ordered_date"],
+  },
+  bigquery: {
+    partitionBy: "ordered_date",
+    clusterBy:   ["user_id"],
+  },
+  columns: {
+    order_key:  "주문 식별자. PK. surrogate key",
+    order_status: "주문 상태",
+  },
+}
+
+-- 자연키 order_id 제거 — 129,196행에 중복이 있다.
+-- net_revenue_per_item 제거 — 행 단위 비율.
+-- user_gender_at_order 제거 — sem_dim_users.gender 와 경로가 둘로 갈리면
+--   같은 이름의 축이 두 뜻을 갖게 된다. conformed dimension 을 지킨다.
+SELECT
+  order_key,
+  user_id,
+  order_status,
+
+  source_item_count,
+  line_item_count,
+  distinct_product_count,
+  returned_item_count,
+  cancelled_item_count,
+
+  gross_revenue,
+  net_revenue,
+  net_gross_profit,
+
+  ordered_at,
+  ordered_date,
+  shipped_at,
+  delivered_at,
+  returned_at
+FROM ${ref("fct_orders")}

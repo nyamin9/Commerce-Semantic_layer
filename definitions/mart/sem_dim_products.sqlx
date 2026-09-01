@@ -1,0 +1,35 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "dimension"],
+  description: "상품 차원. 상품 1건 = 1행. semantic layer가 참조하는 유일한 상품 원천",
+  assertions: {
+    uniqueKey: ["product_id"],
+    nonNull:   ["product_id"],
+  },
+  bigquery: { clusterBy: ["department", "category"] },
+  columns: {
+    product_id:  "상품 식별자. PK",
+    category:    "상품 카테고리. 지표 전반의 표준 분류 축",
+    brand:       "브랜드",
+    department:  "부문",
+    unit_cost:   "단위 원가",
+    retail_price:"정가",
+  },
+}
+
+-- DW 컬럼명을 semantic layer 규칙에 맞춘다. 이름 변경은 이 레이어의 일이고,
+-- 상류가 category_name 을 바꿔도 충격이 여기서 멈춘다.
+SELECT
+  product_id,
+  product_name,
+  brand_name       AS brand,
+  category_name    AS category,
+  department_name  AS department,
+  sku,
+  unit_cost,
+  retail_price,
+  list_margin_rate,
+  distribution_center_id,
+  distribution_center_name
+FROM ${ref("dim_products")}

@@ -1,0 +1,33 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "fact"],
+  description: "이벤트 fact. 이벤트 1건 = 1행. 가장 세밀한 grain",
+  assertions: {
+    uniqueKey: ["event_key"],
+    nonNull:   ["event_key", "user_id", "event_date"],
+  },
+  bigquery: {
+    partitionBy: "event_date",
+    clusterBy:   ["user_id", "event_type"],
+  },
+  columns: {
+    event_key:  "이벤트 식별자. PK. surrogate key",
+    session_id: "세션 식별자. sem_fct_sessions 로의 FK",
+  },
+}
+
+-- 자연키 event_id 제거. source_session_id 는 dbt 내부 산출물이라 제거한다.
+SELECT
+  event_key,
+  user_id,
+  session_id,
+  event_type,
+  traffic_source,
+  browser,
+  uri,
+  is_session_start,
+  minutes_since_prev_event,
+  event_at,
+  event_date
+FROM ${ref("fct_user_events")}

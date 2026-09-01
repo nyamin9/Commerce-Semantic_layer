@@ -1,0 +1,56 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "fact"],
+  description: "주문 라인 fact. 주문 라인 1건 = 1행. 매출 지표의 원천",
+  assertions: {
+    uniqueKey: ["order_item_key"],
+    nonNull:   ["order_item_key", "user_id", "product_id", "ordered_date"],
+  },
+  bigquery: {
+    partitionBy: "ordered_date",
+    clusterBy:   ["product_id", "user_id"],
+  },
+  columns: {
+    order_item_key:        "주문 라인 식별자. PK. surrogate key",
+    order_key:             "주문 식별자. sem_fct_orders 로의 FK",
+    is_revenue_recognized: "매출 인식 여부. DW 정의 — 취소·반품이 아닐 것",
+    net_revenue:           "매출 인식된 판매 금액. 미인식 시 0",
+  },
+}
+
+-- 자연키(order_item_id, order_id)를 제거한다. 소스가 ID를 재사용해 유일하지 않고,
+-- 남겨두면 언젠가 그것으로 조인해 조용히 fan-out 된다. 규율이 아니라 구조로 막는다.
+--
+-- net_revenue_per_item 도 제거한다. 행 단위 비율이라 합산도 평균도 할 수 없다.
+-- 비율은 소비 시점에 분자와 분모로 계산한다.
+SELECT
+  -- key
+  order_item_key,
+  order_key,
+  user_id,
+  product_id,
+  distribution_center_id,
+
+  -- degenerate dimension
+  order_item_status,
+  order_status,
+  is_revenue_recognized,
+
+  -- measure. DW 가 계산한 값을 그대로 쓴다. 의미를 다시 정의하지 않는다
+  sale_price,
+  unit_cost,
+  gross_profit,
+  net_revenue,
+  net_gross_profit,
+  discount_rate,
+
+  -- date
+  ordered_at,
+  ordered_date,
+  shipped_at,
+  delivered_at,
+  returned_at,
+  days_to_ship,
+  days_to_deliver
+FROM ${ref("fct_order_items")}

@@ -1,0 +1,39 @@
+config {
+  type: "table",
+  schema: "semantic_mart",
+  tags: ["mart", "fact"],
+  description: "세션 fact. 세션 1건 = 1행",
+  assertions: {
+    uniqueKey: ["session_id"],
+    nonNull:   ["session_id", "user_id", "session_date"],
+  },
+  bigquery: {
+    partitionBy: "session_date",
+    clusterBy:   ["user_id", "entry_traffic_source"],
+  },
+  columns: {
+    session_id: "세션 식별자. PK",
+    is_bounce:  "이탈 여부. bounce_count 의 근거",
+  },
+}
+
+-- 퍼널 플래그(viewed_product, added_to_cart, purchased)를 제거한다.
+-- 상류 결함 7 — purchased 인데 viewed_product 가 아닌 세션이 72,045건이고
+-- 세션 구매율이 77.1% 로 나온다. 이름대로 동작하지 않는 컬럼을 남겨두면
+-- 언젠가 그 위에 전환율 지표가 만들어진다. 원인이 밝혀지면 되돌린다.
+--
+-- source_session_id_count 는 dbt 내부 산출물이라 제거한다.
+SELECT
+  session_id,
+  user_id,
+  entry_traffic_source,
+  entry_uri,
+  browser,
+  session_duration_seconds,
+  event_count,
+  distinct_event_type_count,
+  is_bounce,
+  session_started_at,
+  session_ended_at,
+  session_date
+FROM ${ref("fct_sessions")}
