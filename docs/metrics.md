@@ -108,7 +108,7 @@ GROUP BY 1, 2, 3
 
 ### 단계 2 — `metric_net_revenue`
 
-`daily_`를 읽어 period_type별로 접고 비교를 붙인다. 접는 방법은 `additive`가 정한다.
+`daily_`를 읽어 period_type별로 롤업하고 비교 기준값을 붙인다. 롤업 방법은 `additive`가 정한다.
 
 ```sql
 -- period_type = 'monthly'  (rollup + additive:true → SUM)
@@ -125,11 +125,17 @@ GROUP BY 1, 2, 3, 4, 5
 비교는 같은 테이블을 날짜로 self-join 해서 **기준값만** 붙인다. 증감률은 저장하지 않는다 (P12·P14).
 
 ```sql
-LEFT JOIN monthly AS b
-  ON b.period_start = DATE_SUB(c.period_start, INTERVAL 1 YEAR)
+LEFT JOIN rolled AS b
+  ON b.period_type  = c.period_type                                -- 같은 기간 종류끼리
+ AND b.period_start = DATE_SUB(c.period_start, INTERVAL 1 YEAR)
  AND <차원 NULL-safe 비교>
 → b.net_revenue AS yoy_base
 ```
+
+> **시프트 간격은 기간마다 다르다.** `weekly`의 YoY를 `1 YEAR`로 하면
+> 2026-03-02(월)의 1년 전이 일요일이라 주 시작일에 떨어지지 않고 매칭이 전부 실패한다.
+> 주간 비교는 **52주(364일)** 시프트여야 같은 요일에 떨어진다.
+> 생성기가 `periods.js`의 선언을 읽어 `CASE period_type`으로 처리한다.
 
 결과 — 실제 데이터로 확인한 값이다. `yoy`는 컬럼이 아니라 소비 시점의 계산이다.
 
@@ -145,18 +151,32 @@ LEFT JOIN monthly AS b
 > `SAFE_DIVIDE(SUM(v) - SUM(yoy_base), SUM(yoy_base))` = **0.9140**이 정답이다.
 > `yoy_base`는 가산이라 차원을 걷어도 살아남는다.
 
-### 접는 방법 세 가지
+### 롤업 방법 — `additive`가 함수를 고른다
 
-`period_type`과 `additive`의 조합이 SQL 패턴을 결정한다. 사람은 고르지 않는다.
+**롤업**은 daily 여러 행을 기간 한 행으로 만드는 집계다.
+
+```
+daily_net_revenue                                monthly
+  2026-03-01  Jeans  China     49.00  ┐
+  2026-03-02  Jeans  China     97.99  ├─ 롤업 →  2026-03-01  Jeans  China  9,477.63
+  ...                                 │
+  2026-03-31  Jeans  China    210.50  ┘
+```
+
+어떤 함수로 롤업할지는 `period_type`과 `additive`의 조합이 결정한다. 사람은 고르지 않는다.
 
 | period_type | additive | 패턴 |
 |---|---|---|
-| `weekly` `monthly` `yearly` (rollup) | `true` | `SUM` + `GROUP BY DATE_TRUNC` |
-| `weekly` `monthly` `yearly` (rollup) | `"sketch"` | `HLL_COUNT.MERGE` + `GROUP BY DATE_TRUNC` |
-| `wtd` `mtd` `ytd` (cumulative) | `true` | `SUM(...) OVER (PARTITION BY 기간, 차원 ORDER BY dt)` |
-| `wtd` `mtd` `ytd` (cumulative) | `"sketch"` | 기간 self-join 후 `HLL_COUNT.MERGE` — HLL은 `OVER`를 못 쓴다 |
 | `daily` | 무관 | 통과. 저장 형식 그대로 |
+| `weekly` `monthly` `yearly` | `true` | `SUM` + `GROUP BY DATE_TRUNC` |
+| `weekly` `monthly` `yearly` | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + `GROUP BY DATE_TRUNC` |
+| `weekly` `monthly` `yearly` | `"last"` | `ANY_VALUE(... HAVING MAX dt)` |
 | 모든 기간 | `false` | **생성 거부** (P18) |
+
+스케치는 롤업에서도 스케치로 남는다. `MERGE`로 정수를 만들면 더 롤업할 수 없다 (P11).
+
+**기간 누계(WTD·MTD·YTD)는 여기 없다.** 저장하지 않고 소비 시점에 `daily_` 구간
+합으로 낸다 (P15). 비율과 같은 이유다 — 파생 가능하고 롤업에서 깨진다.
 
 ### `additive`는 어디서 읽히는가
 
@@ -362,7 +382,7 @@ distinct 계열은 HLL 스케치(BYTES)로 남는다. 소비용이 아니라 `me
 
 ### `metric_<metric>` — 서빙 표면
 
-`daily_`를 7개 기간(`daily` `weekly` `monthly` `yearly` `wtd` `mtd` `ytd`)으로 접고
+`daily_`를 4개 기간(`daily` `weekly` `monthly` `yearly`)으로 롤업하고
 비교 기준값 4종(`dod_base` `wow_base` `mom_base` `yoy_base`)을 붙인 것.
 `period_type` 판별 컬럼으로 한 테이블에 담는다.
 
@@ -371,8 +391,8 @@ distinct 계열은 HLL 스케치(BYTES)로 남는다. 소비용이 아니라 `me
 
 | 컬럼 | 내용 |
 |---|---|
-| `period_type` | `daily` `weekly` `monthly` `yearly` `wtd` `mtd` `ytd` |
-| `period_start` · `as_of_date` | rollup은 기간 시작·종료, cumulative는 기간 시작·기준일 (P13) |
+| `period_type` | `daily` `weekly` `monthly` `yearly` |
+| `period_start` · `as_of_date` | 기간의 시작일과 종료일 (P13) |
 | *(차원들)* | `daily_`와 동일 |
 | *(지표값)* | 가산 지표는 값, distinct 계열은 스케치(BYTES) |
 | `*_base` | 시프트한 기간의 지표값. 가산이므로 차원 롤업 가능 |
@@ -388,11 +408,38 @@ FROM semantic.metric_net_revenue
 WHERE period_type = 'monthly' AND period_start = '2026-03-01'
 GROUP BY country
 
--- 스케치 지표는 EXTRACT 를 한 번 더 부른다
+-- 스케치 지표는 MERGE 를 한 번 더 부른다
 SELECT country, HLL_COUNT.MERGE(active_user) AS active_user
 FROM semantic.metric_active_user
 WHERE period_type = 'monthly' GROUP BY country
 ```
+
+### 기간 누계 — 소비 시점 패턴
+
+WTD·MTD·YTD는 테이블에 없다 (P15). `daily_`에서 구간을 잘라 합한다.
+`dt` 파티션 프루닝이 걸려 전체 스캔의 1% 미만만 읽는다.
+
+```sql
+-- MTD, 그리고 작년 같은 날 MTD 를 한 번에
+WITH ptd AS (
+  SELECT
+    IF(dt >= DATE_TRUNC(@as_of, MONTH), 'current', 'prior') AS period,
+    country,
+    SUM(net_revenue) AS net_revenue
+  FROM semantic.daily_net_revenue
+  WHERE dt BETWEEN DATE_TRUNC(@as_of, MONTH) AND @as_of
+     OR dt BETWEEN DATE_TRUNC(DATE_SUB(@as_of, INTERVAL 1 YEAR), MONTH)
+                AND DATE_SUB(@as_of, INTERVAL 1 YEAR)
+  GROUP BY 1, 2
+)
+SELECT country,
+       MAX(IF(period='current', net_revenue, NULL)) AS mtd,
+       MAX(IF(period='prior',   net_revenue, NULL)) AS mtd_yoy_base
+FROM ptd GROUP BY country
+```
+
+주 누계는 `WEEK(MONDAY)`, 연 누계는 `YEAR`로 `DATE_TRUNC`만 바꾼다.
+스케치 지표는 `SUM` 대신 `HLL_COUNT.MERGE`를 쓴다.
 
 ### `metric_registry` — 지표 카탈로그
 
@@ -534,8 +581,8 @@ GROUP BY 1, 2, 3, 4, 5
 
 ### 6단계 — `metric_cancelled_units` (생성)
 
-`additive.time = true`이므로 rollup은 `SUM`, cumulative는 윈도우 함수가 선택된다.
-7개 기간이 모두 생성되고, 비교 기준값이 날짜 조인으로 붙는다 (P14).
+`additive.time = true`이므로 롤업은 `SUM`이 선택된다.
+4개 기간이 모두 생성되고, 비교 기준값이 날짜 조인으로 붙는다 (P14).
 
 | period_type | period_start | as_of_date | cancelled_units | mom_base |
 |---|---|---|---|---|
@@ -558,7 +605,7 @@ GROUP BY 1, 2, 3, 4, 5
 |---|---|---|
 | 파일 | `metrics.js` 6줄 | — |
 | 테이블 | — | `daily_` 1 + `metric_` 1 |
-| 기간 | — | 7종 자동 |
+| 기간 | — | 4종 자동 |
 | 비교 | — | 4종 자동 |
 | 카탈로그 | — | registry 1행 |
 
