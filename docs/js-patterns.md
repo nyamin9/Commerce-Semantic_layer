@@ -281,8 +281,8 @@ entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 �
 선언에 없던 `name`을 붙여서 나중 단계가 차원 이름을 알 수 있게 한다.
 
 ```
-def            { from: "sem_dim_products", key: "product_id", col: "category" }
-{name, ...def} { name: "category", from: "sem_dim_products", key: "product_id", col: "category" }
+def            { via: "product", col: "category" }
+{name, ...def} { name: "category", via: "product", col: "category" }
 ```
 
 원본 `def`는 바뀌지 않는다 — 새 객체가 만들어진다.

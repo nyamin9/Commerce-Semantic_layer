@@ -61,16 +61,20 @@ dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축
 // includes/entities.js — 차원에 닿는 경로
 order_item: {
   source: "sem_fct_order_items", pk: "order_item_key", date_col: "ordered_date",
+  joins: {
+    product: { to: "sem_dim_products", key: "product_id" },
+    user:    { to: "sem_dim_users",    key: "user_id"    },
+  },
   dims: {
-    category: { from: "sem_dim_products", key: "product_id", col: "category" },
-    country:  { from: "sem_dim_users",    key: "user_id",    col: "country"  },
+    category: { via: "product", col: "category" },
+    country:  { via: "user",    col: "country"  },
   },
 }
 
 // includes/metrics.js — 무엇을 어떻게 집계하는가
 net_revenue: {
   entity:   "order_item",
-  expr:     "SUM(net_revenue)",
+  expr:     "SUM({net_revenue})",
   dims:     ["category", "country"],
   additive: { time: true, category: true, country: true },
 }
@@ -78,18 +82,18 @@ net_revenue: {
 
 ### 단계 1 — `daily_net_revenue`
 
-생성기가 `entity.source`를 base로 놓고, `dims`에 선언된 경로만큼 `LEFT JOIN`을 붙이고,
+생성기가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
 `date_col` + 차원으로 `GROUP BY` 한다. **조인이 실행되는 곳은 여기 한 번뿐이다** (P5).
 
 ```sql
 SELECT
   base.ordered_date     AS dt,
-  p.category            AS category,
-  u.country             AS country,
+  product.category      AS category,
+  user.country          AS country,
   SUM(base.net_revenue) AS net_revenue        -- ← metrics.js 의 expr
 FROM semantic_mart.sem_fct_order_items AS base
-LEFT JOIN semantic_mart.sem_dim_products AS p ON base.product_id = p.product_id
-LEFT JOIN semantic_mart.sem_dim_users    AS u ON base.user_id    = u.user_id
+LEFT JOIN semantic_mart.sem_dim_products AS product ON base.product_id = product.product_id
+LEFT JOIN semantic_mart.sem_dim_users    AS user    ON base.user_id    = user.user_id
 GROUP BY 1, 2, 3
 ```
 
@@ -215,7 +219,7 @@ additive: { time: true, category: true, country: true }
 
 `active_user`를 `additive.time: true`로 선언했다고 가정하고 같은 데이터를 세 가지로 계산한 것.
 
-| as_of_date | 일별 값 | `true`로 잘못 → `SUM` | `"sketch"` → `MERGE` | 원자 fact 정답 |
+| as_of_date | 일별 값 | `true`로 잘못 → `SUM` | `"sketch"` → `MERGE` | atomic fact 정답 |
 |---|---:|---:|---:|---:|
 | 2026-03-01 | 158 | 158 | 158 | 158 |
 | 2026-03-02 | 152 | 310 | **290** | **290** |
@@ -223,7 +227,7 @@ additive: { time: true, category: true, country: true }
 | 2026-03-04 | 155 | 609 | **528** | **528** |
 | 2026-03-05 | 188 | 797 | **679** | **679** |
 
-스케치 경로는 원자 fact를 직접 센 값과 일치하고, `SUM`은 5일 만에 **17.4% 부푼다.**
+스케치 경로는 atomic fact를 직접 센 값과 일치하고, `SUM`은 5일 만에 **17.4% 부푼다.**
 여러 날 활동한 사용자를 중복으로 세기 때문이다.
 
 **에러가 나지 않는다는 점이 중요하다.** 쿼리는 성공하고 숫자만 틀린다.
@@ -478,7 +482,7 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 1. **지표 카탈로그** — BI에 그대로 붙이면 지표 목록 화면이 된다
 2. **소비 측 판단 근거** — `additive_by_axis`를 읽고 그 축으로 걷어내도 되는지 결정한다
 3. **서빙 레이어의 경로 선택** — 나중에 서빙을 만들면 `additive`를 보고
-   daily 롤업을 쓸지 원자 fact로 내려갈지 고른다 (aggregate awareness)
+   daily 롤업을 쓸지 atomic fact로 내려갈지 고른다 (aggregate awareness)
 
 ---
 
@@ -547,7 +551,7 @@ entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 �
 // includes/metrics.js
 cancelled_units: {
   entity:      "order_item",
-  expr:        "COUNTIF(order_item_status = 'cancelled')",
+  expr:        "COUNTIF({order_item_status} = 'cancelled')",
   dims:        ["category", "brand", "department", "country"],
   additive:    { time: true, category: true, brand: true, department: true, country: true },
   description: "취소된 주문 수량",
@@ -560,16 +564,16 @@ cancelled_units: {
 
 ### 5단계 — `daily_cancelled_units` (생성)
 
-`entity.source`를 base로, `dims` 경로만큼 `LEFT JOIN`, `date_col` + 차원으로 `GROUP BY`.
+`entity.source`를 base로, `joins` 선언만큼 `LEFT JOIN`, `date_col` + 차원으로 `GROUP BY`.
 
 ```sql
 SELECT
   base.ordered_date AS dt,
-  p.category, p.brand, p.department, u.country,
-c  COUNTIF(base.order_item_status = 'cancelled') AS cancelled_units
+  product.category, product.brand, product.department, user.country,
+  COUNTIF(base.order_item_status = 'cancelled') AS cancelled_units
 FROM semantic_mart.sem_fct_order_items AS base
-LEFT JOIN semantic_mart.sem_dim_products AS p ON base.product_id = p.product_id
-LEFT JOIN semantic_mart.sem_dim_users    AS u ON base.user_id    = u.user_id
+LEFT JOIN semantic_mart.sem_dim_products AS product ON base.product_id = product.product_id
+LEFT JOIN semantic_mart.sem_dim_users    AS user    ON base.user_id    = user.user_id
 GROUP BY 1, 2, 3, 4, 5
 ```
 
