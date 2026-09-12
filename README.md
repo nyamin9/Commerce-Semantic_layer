@@ -374,6 +374,7 @@ sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
 그래서 `daily_`에는 **거래가 있었던 날만** 들어간다. 시계열 구멍은 조회할 때
 `sem_dim_date`를 왼쪽에 놓고 메운다. 이 테이블의 소비자는 파이프라인이 아니라
 대시보드와 ad-hoc 쿼리다.
+
 ---
 
 ## 개발
@@ -399,5 +400,5 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
 | `semantic` | 비어 있음 — 4단계에서 `daily_*` 14 + `metric_*` 14 |
 | `semantic_metadata` | 비어 있음 — 5단계에서 `metric_registry` |
-| `semantic_assertions` | assertion 결과 |
+| `semantic_assertions` | assertion 결과. 게이트 14 + 상류 감시 5 |
 

@@ -45,7 +45,7 @@ HAVING null_rows > 0`
 // 결함 3 — line item 이 하나도 없는 주문. 두 fact 의 정합이 어긋난다.
 monitor(
   "upstream_orders_without_items",
-  "결함 3. sem_fct_orders 에 있으나 line item 이 없는 주문",
+  "결함 3. fct_orders 에 있으나 line item 이 없는 주문",
   (ctx) => `
 SELECT o.order_status, COUNT(*) AS orders, MIN(o.ordered_date) AS first_date, MAX(o.ordered_date) AS last_date
 FROM ${ctx.ref("fct_orders")} AS o

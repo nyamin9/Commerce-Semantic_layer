@@ -17,7 +17,8 @@ config {
   },
 }
 
--- 자연키 order_id 제거 — 129,196행에 중복이 있다.
+-- 자연키 order_id 제거 — 소스가 ID를 재사용해 유일하지 않다.
+--   규모는 docs/principles.md 5장 결함 1에 적고 assertion 으로 추적한다.
 -- net_revenue_per_item 제거 — 행 단위 비율.
 -- user_gender_at_order 제거 — sem_dim_users.gender 와 경로가 둘로 갈리면
 --   같은 이름의 축이 두 뜻을 갖게 된다. conformed dimension 을 지킨다.

@@ -420,7 +420,7 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | # | 현상 | 규모 | 영향 |
 |---|---|---|---|
 | 1 | 자연키 재사용 | `order_id` 4,038행 / `order_item_id` 5,161행 중복 | P2로 대응 |
-| 2 | `fct_order_items.order_key` NULL | 1,673행 (2026-08-19~26) | `COUNT(DISTINCT order_key)`가 최근 구간 과소집계 |
+| 2 | `fct_order_items.order_key` NULL | 1,673행 (2026-08-19~26). **backfill로 해소** | 재발하면 `COUNT(DISTINCT order_key)`가 최근 구간 과소집계 |
 | 3 | line item 없는 주문 | 477건 (2026-08-17~24) | 두 fact 정합 불일치 |
 | 4 | `fct_orders` 적재 지연 | order_items는 08-26, orders는 08-24까지 | 주문 grain 지표가 최근 이틀 결측 |
 | 5 | SCD 이력 부족 | `valid_from` 최솟값 2026-08-15, fact는 2019-01-13부터 | point-in-time 매칭률 4.46% |
