@@ -221,6 +221,27 @@ joins: {
 **P6. join graph에 선언하지 않은 차원은 쓸 수 없다.**
 가능한 조합을 이어주는 것보다 **불가능한 조합을 막는 쪽**이 중요하다. chasm trap 예방.
 
+**P6-1. 차원의 `NULL`은 값이 빠진 것이 아니라 하나의 버킷이다.**
+
+`daily_`는 `LEFT JOIN`이므로 fact 키가 dim에 없어도(orphan) 행이 남고 차원만
+`NULL`이 된다. `GROUP BY`가 `NULL`을 한 그룹으로 묶으므로 **measure는 정상적으로
+집계되고 총합도 맞는다.** 숫자가 틀리는 문제가 아니다.
+
+| 조회 | 결과 |
+|---|---|
+| 총합 · 국가별 전부 나열 · `WHERE country = 'China'` | 정확 |
+| `WHERE country IS NOT NULL` · 대시보드가 `NULL` 행을 숨김 | 그만큼 빠진다 |
+
+비교 기준값도 `IS NOT DISTINCT FROM`으로 맞추므로 `NULL` 버킷의 `_base`가 비지 않는다 (P14).
+
+다만 `NULL`의 출처가 둘인데 구별되지 않는다 — **키가 dim에 없는 것**과
+**dim에 있는데 값이 `NULL`인 것**이다. 구별이 필요해지면 Kimball의 unknown member
+(dim에 `'Unknown'` 행을 두어 항상 조인되게 하는 것)를 쓴다.
+
+**규모를 먼저 잰다.** `daily_`가 생기면 `NULL` 버킷이 그대로 보인다.
+0이면 아무것도 하지 않고, 있으면 그때 5장에 등재하고 처리를 정한다.
+측정하지 않은 것에 assertion을 걸면 영구히 빨간 알림이 되어 신호가 죽는다.
+
 **P7. conformed dimension은 이름과 의미가 같아야 한다.**
 `country`는 어느 fact에서 오든 같은 뜻이어야 한다. 그래야 fact를 나란히 놓을 수 있다.
 
