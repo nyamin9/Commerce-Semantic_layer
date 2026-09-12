@@ -12,7 +12,7 @@
 // expr·filter 의 컬럼은 중괄호로 표시한다 (P5).
 //   {sale_price}         fact 컬럼
 //   {product.unit_cost}  entities.js 의 joins 에 선언된 이름으로 참조
-// 중괄호 밖은 생성기가 건드리지 않으므로 어떤 SQL이든 그대로 쓸 수 있다.
+// 중괄호 밖은 builder 가 건드리지 않으므로 어떤 SQL이든 그대로 쓸 수 있다.
 
 const { allDims } = require("includes/entities");
 

@@ -1,4 +1,4 @@
-// SQL 조립기. 정책이 실제로 집행되는 곳이다.
+// SQL builder. 정책이 실제로 집행되는 곳이다.
 //   P11  daily_ 와 metric_ 둘 다 재집계 가능한 형태로 저장한다
 //   P12  비율도 증감률도 컬럼으로 저장하지 않는다
 //   P14  비교는 기준값만. 날짜 조인으로 만들고 LAG를 쓰지 않는다
@@ -54,7 +54,7 @@ function resolveDims(name, m) {
 }
 
 // ── 지표 수식 (P5) ───────────────────────────────────────────
-// 컬럼은 중괄호로 표시한다. 생성기는 그 안쪽만 건드린다.
+// 컬럼은 중괄호로 표시한다. renderExpr 는 그 안쪽만 건드린다.
 //
 //   {sale_price}          →  base.sale_price        fact 컬럼
 //   {product.unit_cost}   →  product.unit_cost      조인해서 오는 컬럼
@@ -66,8 +66,8 @@ function resolveDims(name, m) {
 // fact 와 sem_dim_products 양쪽에, user_id 는 fact 와 sem_dim_users 양쪽에 있다.
 // dataform compile 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터진다.
 //
-// product 는 entities.js 에 적힌 조인 이름이지 생성기가 만든 이름이 아니다.
-// 선언이 생성기 내부를 모르게 둔다.
+// product 는 entities.js 에 적힌 조인 이름이지 builder 가 만든 이름이 아니다.
+// 선언이 builder 내부를 모르게 둔다.
 const COLUMN_REF = /\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}/g;
 
 // 수식이 참조한 조인 이름. 차원이 안 쓰는 조인이라도 여기 나오면 붙여야 한다

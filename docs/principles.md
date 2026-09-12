@@ -146,7 +146,7 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 
 `semantic_mart`는 star schema를 유지한다 — dim과 fact를 분리한다.
 조인 관계는 `entities.js`의 `joins`에, 그 조인에서 뽑아 쓸 컬럼은 `dims`에
-선언하고, 생성기가 그 선언을 읽어 `daily_<metric>`을 만들 때 조인을 실행한다.
+선언하고, generator가 그 선언을 읽어 `daily_<metric>`을 만들 때 조인을 실행한다.
 
 ```
 sem_fct_order_items  ─┐
@@ -178,8 +178,8 @@ dims:  { category: { via: "product", col: "category" } },
 expr: "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 ```
 
-`product`는 여기 적힌 이름이지 생성기가 만든 alias 가 아니다.
-**선언은 생성기 내부를 모른다** — alias 규칙을 바꿔도 `metrics.js`는 그대로다.
+`product`는 여기 적힌 이름이지 builder가 만든 alias 가 아니다.
+**선언은 builder 내부를 모른다** — alias 규칙을 바꿔도 `metrics.js`는 그대로다.
 
 세 가지를 컴파일 타임에 검사한다.
 
@@ -375,10 +375,10 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 ### 생성
 
 **P17. 기계적인 것은 생성한다.**
-사람이 쓰는 SQL은 생성기가 표현할 수 없는 것에 한한다.
+사람이 쓰는 SQL은 generator가 표현할 수 없는 것에 한한다.
 그런 지표도 registry에는 등록한다 — "생성되지 않았다"와 "존재하지 않는다"는 다르다.
 
-**P18. 생성기는 틀린 결과를 내느니 거부한다.**
+**P18. builder는 틀린 결과를 내느니 거부한다.**
 `additive: false` 조합은 빈 테이블을 만들지 않고 건너뛴다.
 빈 테이블이 남으면 소비자가 "값이 0"으로 오해한다.
 

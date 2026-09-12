@@ -82,7 +82,7 @@ net_revenue: {
 
 ### 단계 1 — `daily_net_revenue`
 
-생성기가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
+builder가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
 `date_col` + 차원으로 `GROUP BY` 한다. **조인이 실행되는 곳은 여기 한 번뿐이다** (P5).
 
 ```sql
@@ -139,7 +139,7 @@ LEFT JOIN rolled AS b
 > **시프트 간격은 기간마다 다르다.** `weekly`의 YoY를 `1 YEAR`로 하면
 > 2026-03-02(월)의 1년 전이 일요일이라 주 시작일에 떨어지지 않고 매칭이 전부 실패한다.
 > 주간 비교는 **52주(364일)** 시프트여야 같은 요일에 떨어진다.
-> 생성기가 `periods.js`의 선언을 읽어 `CASE period_type`으로 처리한다.
+> builder가 `periods.js`의 선언을 읽어 `CASE period_type`으로 처리한다.
 
 결과 — 실제 데이터로 확인한 값이다. `yoy`는 컬럼이 아니라 소비 시점의 계산이다.
 
@@ -184,17 +184,17 @@ daily_net_revenue                                monthly
 
 ### `additive`는 어디서 읽히는가
 
-축마다 소비처가 다르다. **시간 축만 생성기가 자동으로 쓴다.**
+축마다 소비처가 다르다. **시간 축만 builder가 자동으로 쓴다.**
 
 ```
 선언 (metrics.js)
   additive: { time: true, category: true, country: true }
         │
-        ├── time ──────→ 【생성기가 읽는다 · 컴파일 타임】
+        ├── time ──────→ 【builder가 읽는다 · 컴파일 타임】
         │                 period.type × additive.time  →  위 표에서 SQL 템플릿 선택
         │                 false면 그 기간 테이블을 아예 만들지 않는다 (P18)
         │
-        └── 차원 축 ────→ 【생성기는 쓰지 않는다】
+        └── 차원 축 ────→ 【builder는 쓰지 않는다】
                           차원 축 롤업은 소비 시점에 Dataform 밖에서 일어난다
                           ① metric_registry 컬럼으로 나가 소비 측이 읽는다
                           ② 설계 시점의 신호 — false면 entity가 틀린 것이다 (P10)
@@ -365,7 +365,7 @@ order_count   order      entity                                country  age_grou
 | 주문 시점 상품 속성 | 상류 결함 5. SCD 이력 커버리지 4.46% |
 
 앞의 넷은 **daily의 상위 집계가 아니라 atomic fact에 대한 다른 질문**이다.
-생성기 밖에서 별도 모델로 만들되 registry에는 `custom: true`로 등록한다.
+generator 밖에서 별도 모델로 만들되 registry에는 `custom: true`로 등록한다.
 
 ---
 
@@ -518,7 +518,7 @@ entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 �
 | `country` · `age_group` · `gender` · `acquisition_channel` | `semantic_mart.sem_dim_users` | `user_id` |
 | `order_status` | `sem_fct_order_items` 자체 컬럼 | 조인 없음 |
 
-이 중 필요한 것만 `dims`에 적으면, 생성기가 그 차원에 닿는 조인만 골라서 붙인다.
+이 중 필요한 것만 `dims`에 적으면, builder가 그 차원에 닿는 조인만 골라서 붙인다.
 
 ### 3단계 — 축별 가산성을 판단한다 (P9)
 

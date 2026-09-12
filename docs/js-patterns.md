@@ -10,7 +10,7 @@
 | 종류 | 예 | 성격 |
 |---|---|---|
 | **선언 데이터** | `PERIODS` `ENTITIES` `METRICS` `SOURCES` | 사람이 읽고 쓰는 설정. 로직 없음 |
-| **파생 인덱스** | `COMPARE_LABELS` | 선언을 생성기가 쓰기 좋은 방향으로 가공 |
+| **파생 인덱스** | `COMPARE_LABELS` | 선언을 builder가 쓰기 좋은 방향으로 가공 |
 | **헬퍼 함수** | `allDims()` `uniform()` `self()` `dailySQL()` | 선언에서 필요한 조각을 꺼내거나 조립 |
 
 선언은 손으로 쓰고, 파생과 헬퍼는 선언을 읽는다. **역방향은 없다** —
@@ -99,7 +99,7 @@ const COMPARE_LABELS = (() => { ... return acc; })();
 
 ```
 PERIODS          기간 → 비교 목록    "weekly는 wow와 yoy를 쓴다"      ← 사람이 쓰기 편한 방향
-COMPARE_LABELS   비교 → 기간 목록    "yoy는 4개 기간에서 쓰인다"       ← 생성기가 쓰기 편한 방향
+COMPARE_LABELS   비교 → 기간 목록    "yoy는 4개 기간에서 쓰인다"       ← builder가 쓰기 편한 방향
 ```
 
 ```js
@@ -545,7 +545,7 @@ EXTRACT(YEAR FROM dt)            → YEAR · FROM 은 키워드
 `{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡는다.
 
 **`product`는 어디서 온 이름인가** — `entities.js`의 `joins`에 적힌 이름이다.
-생성기가 만든 이름이 아니므로 선언이 생성기 내부를 모른다 (P5).
+builder가 만든 이름이 아니므로 선언이 builder 내부를 모른다 (P5).
 선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막는다.
 
 ```
@@ -746,7 +746,7 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
 지표 하나당 비교 self-join이 최대 4개라 누적된다.
 
 한 줄로 줄어들었는데도 함수로 남긴 이유는 **이름이 뜻을 대신하기 때문이다.**
-`metricSQL`의 조인 조립부는 "NULL 안전 비교"라는 뜻만 읽고 지나가면 된다.
+`metricSQL`에서 조인을 조립하는 쪽은 "NULL 안전 비교"라는 뜻만 읽고 지나가면 된다.
 
 ---
 

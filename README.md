@@ -150,7 +150,7 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 
 | 단계 | 산출물 | 상태 |
 |---|---|---|
-| 1 | `includes/` 선언 계층 + 조립기 | ✅ |
+| 1 | `includes/` 선언 계층 + builder | ✅ |
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
 | 4 | `gen_daily.js` · `gen_metric.js` | ⬜ |
@@ -169,7 +169,7 @@ includes/                           선언 계층 — 사람이 쓰는 곳
   periods.js                        기간 4종 + 비교 간격
   entities.js                       join graph
   metrics.js                        지표 선언
-  build.js                          SQL 조립기 (정책 집행부)
+  build.js                          SQL builder (정책 집행부)
 
 definitions/                        Dataform action
   sources/declarations.js           DW 읽기 전용 참조
@@ -181,6 +181,13 @@ docs/
   metrics.md                        지표 정의서 · 집계 경로 · 추가 절차
   js-patterns.md                    코드에 쓰인 JS 패턴 18가지 + build.js 읽는 순서
 ```
+
+문서에 나오는 두 말은 이렇게 나뉜다.
+
+| | 파일 | 하는 일 |
+|---|---|---|
+| **builder** | `includes/build.js` | 선언을 읽어 **SQL 문자열**을 만든다 |
+| **generator** | `definitions/gen_*.js` ※ 미구현 | builder를 불러 **Dataform action**(테이블)을 만든다 |
 
 ---
 
@@ -235,7 +242,7 @@ PERIODS = {
 `via: null`이면 fact 자체 컬럼이라 조인이 없다(`self()`).
 
 조인에 이름이 있어야 지표 수식이 dim 컬럼을 가리킬 수 있다 — `{product.unit_cost}`.
-생성기가 만든 이름이 아니라 여기 적힌 이름이라 선언이 생성기 내부를 모른다 (P5).
+builder가 만든 이름이 아니라 여기 적힌 이름이라 선언이 builder 내부를 모른다 (P5).
 이 이름이 그대로 SQL alias 가 되므로, 예약어면 컴파일 타임에 거부된다.
 
 **`order`에 상품 차원이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을 포함하므로
