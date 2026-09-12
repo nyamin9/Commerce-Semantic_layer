@@ -8,6 +8,11 @@
 //
 // 축에 false가 나오면 기록할 사실이 아니라 고칠 신호다 — entity가 틀렸다 (P10).
 // dims를 생략하면 그 entity의 차원 전체를 쓴다.
+//
+// expr·filter 의 컬럼은 중괄호로 표시한다 (P5).
+//   {sale_price}         fact 컬럼
+//   {product.unit_cost}  entities.js 의 joins 에 선언된 이름으로 참조
+// 중괄호 밖은 생성기가 건드리지 않으므로 어떤 SQL이든 그대로 쓸 수 있다.
 
 const { allDims } = require("includes/entities");
 
@@ -20,46 +25,46 @@ const uniform = (entity, value) => {
 };
 
 const HLL_PRECISION = 15;   // 고정. 바꾸면 과거 스케치와 병합할 수 없다
-const hll = (col) => `HLL_COUNT.INIT(${col}, ${HLL_PRECISION})`;
+const hll = (col) => `HLL_COUNT.INIT({${col}}, ${HLL_PRECISION})`;
 
 const METRICS = {
   // ── order_item ──────────────────────────────────────────────
   gross_revenue: {
-    entity: "order_item", expr: "SUM(sale_price)",
+    entity: "order_item", expr: "SUM({sale_price})",
     additive: uniform("order_item", true),
     description: "반품·취소를 포함한 총 판매 금액",
   },
   net_revenue: {
     // DW가 is_revenue_recognized 로 이미 계산한 컬럼을 합산만 한다.
     // 매출 인식 규칙을 semantic layer가 다시 정의하지 않는다.
-    entity: "order_item", expr: "SUM(net_revenue)",
+    entity: "order_item", expr: "SUM({net_revenue})",
     additive: uniform("order_item", true),
     description: "매출 인식된 순 판매 금액",
   },
   cogs: {
-    entity: "order_item", expr: "SUM(IF(is_revenue_recognized, unit_cost, 0))",
+    entity: "order_item", expr: "SUM(IF({is_revenue_recognized}, {unit_cost}, 0))",
     additive: uniform("order_item", true),
     description: "매출 인식된 매출원가",
   },
   gross_profit: {
-    entity: "order_item", expr: "SUM(net_gross_profit)",
+    entity: "order_item", expr: "SUM({net_gross_profit})",
     additive: uniform("order_item", true),
     description: "매출 인식된 매출총이익",
   },
   units_sold: {
-    entity: "order_item", expr: "COUNTIF(is_revenue_recognized)",
+    entity: "order_item", expr: "COUNTIF({is_revenue_recognized})",
     additive: uniform("order_item", true),
     description: "매출 인식된 판매 수량",
   },
   units_returned: {
-    entity: "order_item", expr: "COUNTIF(order_item_status = 'returned')",
+    entity: "order_item", expr: "COUNTIF({order_item_status} = 'returned')",
     additive: uniform("order_item", true),
     description: "반품된 수량",
   },
   buyer_count: {
     // 고객 하나가 여러 날에 걸치므로 날짜축 비가산이다. 고객 grain fact가
     // 없어 entity를 옮길 수 없으므로 스케치로 저장한다 (P10-2).
-    entity: "order_item", expr: hll("user_id"), filter: "is_revenue_recognized",
+    entity: "order_item", expr: hll("user_id"), filter: "{is_revenue_recognized}",
     additive: uniform("order_item", "sketch"),
     description: "구매 고객 수 (HLL 근사)",
   },
@@ -73,7 +78,7 @@ const METRICS = {
     description: "주문 건수",
   },
   returned_order_count: {
-    entity: "order", expr: "COUNTIF(order_status = 'returned')",
+    entity: "order", expr: "COUNTIF({order_status} = 'returned')",
     additive: uniform("order", true),
     description: "반품된 주문 건수",
   },
@@ -85,7 +90,7 @@ const METRICS = {
     description: "세션 수",
   },
   bounce_count: {
-    entity: "session", expr: "COUNTIF(is_bounce)",
+    entity: "session", expr: "COUNTIF({is_bounce})",
     additive: uniform("session", true),
     description: "이탈 세션 수",
   },

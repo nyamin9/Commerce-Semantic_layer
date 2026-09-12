@@ -216,15 +216,25 @@ PERIODS = {
 
 지표를 산출하는 fact 테이블이 entity가 된다. `dims`가 **join graph**이고, 여기 없는 차원은 쓸 수 없다.
 
-| entity | source | pk | date_col | 차원 |
-|---|---|---|---|---|
-| `order_item` | `sem_fct_order_items` | `order_item_key` | `ordered_date` | 8 |
-| `order` | `sem_fct_orders` | `order_key` | `ordered_date` | 5 |
-| `session` | `sem_fct_sessions` | `session_id` | `session_date` | 4 |
-| `user_event` | `sem_fct_user_events` | `event_key` | `event_date` | 3 |
+| entity | source | pk | date_col | 조인 | 차원 |
+|---|---|---|---|---|---|
+| `order_item` | `sem_fct_order_items` | `order_item_key` | `ordered_date` | `product` `user` | 8 |
+| `order` | `sem_fct_orders` | `order_key` | `ordered_date` | `user` | 5 |
+| `session` | `sem_fct_sessions` | `session_id` | `session_date` | `user` | 4 |
+| `user_event` | `sem_fct_user_events` | `event_key` | `event_date` | `user` | 3 |
 
-각 차원은 `{ from, key, col }` — 어느 dim에 어느 키로 붙어 어느 컬럼을 얻는지.
-`from: null`이면 fact 자체 컬럼이라 조인이 없다.
+**`joins`와 `dims`를 나눠 선언한다.**
+
+| | 형태 | 뜻 |
+|---|---|---|
+| `joins` | `{ to, key, ref_key? }` | 어느 테이블에 어느 키로 붙는가. **이름을 준다** |
+| `dims` | `{ via, col }` | 그 조인에서 어느 컬럼을 차원으로 쓰는가 |
+
+`via: null`이면 fact 자체 컬럼이라 조인이 없다(`self()`).
+
+조인에 이름이 있어야 지표 수식이 dim 컬럼을 가리킬 수 있다 — `{product.unit_cost}`.
+생성기가 만든 내부 별칭이 아니라 여기 적힌 이름이므로 선언이 조립을 알게 되지 않는다 (P5).
+같은 이유로 이름이 그대로 SQL 별칭이 되고, 예약어면 컴파일 타임에 거부된다.
 
 **`order`에 상품 차원이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을 포함하므로
 주문 grain에서 카테고리가 정의되지 않는다. `order_count`가 여기 있는 근거다.
@@ -257,12 +267,14 @@ false     복원 불가                 → 생성 거부
 | 함수 | 역할 |
 |---|---|
 | `resolveDims(name, m)` | **선언 검증.** 미선언 차원, `additive` 키 누락, 차원 축 `false`면 예외 |
-| `resolveJoins(dims)` | 같은 `(테이블, 키)`면 조인 한 번. 역할 차원은 별도 슬롯 |
+| `renderExpr(name, m, sql, where)` | `{col}` → `base.col`, `{join.col}` → `join.col`. 중괄호 밖은 손대지 않는다 |
+| `exprJoins(name, m, sql, where)` | 수식이 참조한 조인 이름. 선언 안 된 이름이면 예외 |
+| `resolveJoins(name, m, dims)` | 차원과 수식이 쓰는 조인의 합집합을 선언 순서로.<br>예약어·`base` 이름이면 예외 |
 | `dailySQL(ctx, name, m)` | 조인 + `날짜 × 차원 GROUP BY`. **조인이 실행되는 유일한 곳** |
 | `rollupExpr(col, additive)` | `additive` → 롤업 함수. `null`이면 생성 거부 |
 | `canRollup(m, pName)` | 그 기간을 만들 수 있는가 |
 | `metricSQL(ctx, name, m)` | 기간별 `UNION ALL` + 비교 기준값 self-join |
-| `eqNullSafe(l, r)` | 차원 NULL 비교. BigQuery에 `IS NOT DISTINCT FROM`이 없다 |
+| `eqNullSafe(l, r)` | 차원 NULL 비교. `IS NOT DISTINCT FROM`으로 NULL = NULL을 맞춘다 |
 
 ---
 
@@ -350,7 +362,6 @@ sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
 
 마트 테이블끼리는 서로 참조하지 않는다. 전부 DW declaration만 읽는다 —
 **fact 간 조인이 금지**되어 있기 때문이다.
-
 ---
 
 ## 개발
@@ -377,3 +388,4 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | `semantic` | 비어 있음 — 4단계에서 `daily_*` 14 + `metric_*` 14 |
 | `semantic_metadata` | 비어 있음 — 5단계에서 `metric_registry` |
 | `semantic_assertions` | assertion 결과 |
+

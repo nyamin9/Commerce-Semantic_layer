@@ -25,20 +25,20 @@
 entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**를 선언한 것이 join graph다.
 표에 `●`가 없으면 그 entity에서 그 차원을 쓸 수 없다 (P6).
 
-| 차원 | 출처 | 조인 키 | `order_item` | `order` | `session` | `user_event` |
-|---|---|---|:---:|:---:|:---:|:---:|
-| `category` | `sem_dim_products` | `product_id` | ● | | | |
-| `brand` | `sem_dim_products` | `product_id` | ● | | | |
-| `department` | `sem_dim_products` | `product_id` | ● | | | |
-| `country` | `sem_dim_users` | `user_id` | ● | ● | ● | ● |
-| `age_group` | `sem_dim_users` | `user_id` | ● | ● | | |
-| `gender` | `sem_dim_users` | `user_id` | ● | ● | | |
-| `acquisition_channel` | `sem_dim_users` | `user_id` | ● | ● | ● | |
-| `order_status` | fact 자체 | 조인 없음 | ● | ● | | |
-| `entry_traffic_source` | fact 자체 | 조인 없음 | | | ● | |
-| `browser` | fact 자체 | 조인 없음 | | | ● | |
-| `event_type` | fact 자체 | 조인 없음 | | | | ● |
-| `traffic_source` | fact 자체 | 조인 없음 | | | | ● |
+| 차원 | 조인 이름 | 출처 | 조인 키 | `order_item` | `order` | `session` | `user_event` |
+|---|---|---|---|:---:|:---:|:---:|:---:|
+| `category` | `product` | `sem_dim_products` | `product_id` | ● | | | |
+| `brand` | `product` | `sem_dim_products` | `product_id` | ● | | | |
+| `department` | `product` | `sem_dim_products` | `product_id` | ● | | | |
+| `country` | `user` | `sem_dim_users` | `user_id` | ● | ● | ● | ● |
+| `age_group` | `user` | `sem_dim_users` | `user_id` | ● | ● | | |
+| `gender` | `user` | `sem_dim_users` | `user_id` | ● | ● | | |
+| `acquisition_channel` | `user` | `sem_dim_users` | `user_id` | ● | ● | ● | |
+| `order_status` | — | fact 자체 | 조인 없음 | ● | ● | | |
+| `entry_traffic_source` | — | fact 자체 | 조인 없음 | | | ● | |
+| `browser` | — | fact 자체 | 조인 없음 | | | ● | |
+| `event_type` | — | fact 자체 | 조인 없음 | | | | ● |
+| `traffic_source` | — | fact 자체 | 조인 없음 | | | | ● |
 
 **`country`와 `acquisition_channel`만 네 entity를 가로지른다.** 이 둘이 conformed
 dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축은 이것뿐이다 (P7).
@@ -264,20 +264,20 @@ periods.js   ────→  기간 롤업 + 비교 기준값 조인  ──→
 
 | 지표 | entity | 집계식 | 필터 | 가산성 |
 |---|---|---|---|:---:|
-| `gross_revenue` | `order_item` | `SUM(sale_price)` | — | ● |
-| `net_revenue` | `order_item` | `SUM(net_revenue)` | — | ● |
-| `cogs` | `order_item` | `SUM(IF(is_revenue_recognized, unit_cost, 0))` | — | ● |
-| `gross_profit` | `order_item` | `SUM(net_gross_profit)` | — | ● |
-| `units_sold` | `order_item` | `COUNTIF(is_revenue_recognized)` | — | ● |
-| `units_returned` | `order_item` | `COUNTIF(order_item_status = 'returned')` | — | ● |
-| `buyer_count` | `order_item` | `HLL_COUNT.INIT(user_id)` | `is_revenue_recognized` | ○ |
+| `gross_revenue` | `order_item` | `SUM({sale_price})` | — | ● |
+| `net_revenue` | `order_item` | `SUM({net_revenue})` | — | ● |
+| `cogs` | `order_item` | `SUM(IF({is_revenue_recognized}, {unit_cost}, 0))` | — | ● |
+| `gross_profit` | `order_item` | `SUM({net_gross_profit})` | — | ● |
+| `units_sold` | `order_item` | `COUNTIF({is_revenue_recognized})` | — | ● |
+| `units_returned` | `order_item` | `COUNTIF({order_item_status} = 'returned')` | — | ● |
+| `buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | `{is_revenue_recognized}` | ○ |
 | `order_count` | `order` | `COUNT(*)` | — | ● |
-| `returned_order_count` | `order` | `COUNTIF(order_status = 'returned')` | — | ● |
+| `returned_order_count` | `order` | `COUNTIF({order_status} = 'returned')` | — | ● |
 | `session_count` | `session` | `COUNT(*)` | — | ● |
-| `bounce_count` | `session` | `COUNTIF(is_bounce)` | — | ● |
-| `visitor_count` | `session` | `HLL_COUNT.INIT(user_id)` | — | ○ |
+| `bounce_count` | `session` | `COUNTIF({is_bounce})` | — | ● |
+| `visitor_count` | `session` | `HLL_COUNT.INIT({user_id})` | — | ○ |
 | `event_count` | `user_event` | `COUNT(*)` | — | ● |
-| `active_user` | `user_event` | `HLL_COUNT.INIT(user_id)` | — | ○ |
+| `active_user` | `user_event` | `HLL_COUNT.INIT({user_id})` | — | ○ |
 
 ### DW 정의를 그대로 쓰는 지표
 
@@ -464,8 +464,8 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 
 | metric_name | metric_type | entity | expression | additive_by_axis | is_generated |
 |---|---|---|---|---|---|
-| `net_revenue` | base | order_item | `SUM(net_revenue)` | `{"time":true,...}` | true |
-| `active_user` | base | user_event | `HLL_COUNT.INIT(user_id)` | `{"time":"sketch",...}` | true |
+| `net_revenue` | base | order_item | `SUM({net_revenue})` | `{"time":true,...}` | true |
+| `active_user` | base | user_event | `HLL_COUNT.INIT({user_id})` | `{"time":"sketch",...}` | true |
 | `aov` | ratio | — | — | — | false |
 | `cohort_retention` | base | order_item | — | — | false |
 
@@ -539,7 +539,7 @@ entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 �
 > 주문도 세션도 고객을 한 행으로 담지 않는다. **옮길 곳이 없을 때가 P10-2다.**
 >
 > 값 대신 병합 가능한 스케치를 저장하면 날짜축으로도 합칠 수 있다.
-> `HLL_COUNT.INIT(user_id)`가 그래서 선택되었고, 가산성은 전 축 `"sketch"`가 되었다.
+> `HLL_COUNT.INIT({user_id})`가 그래서 선택되었고, 가산성은 전 축 `"sketch"`가 되었다.
 
 ### 4단계 — 선언을 쓴다
 

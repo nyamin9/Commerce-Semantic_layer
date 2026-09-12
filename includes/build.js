@@ -8,7 +8,7 @@
 //
 // 이 파일은 초기에 한 번 쓰고 거의 건드리지 않는다.
 
-const { ENTITIES, allDims }      = require("includes/entities");
+const { ENTITIES, allDims, allJoins } = require("includes/entities");
 const { PERIODS, COMPARE_LABELS } = require("includes/periods");
 const { dailyName, baseColumn }   = require("includes/naming");
 
@@ -19,9 +19,6 @@ const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 // GoogleSQL의 IS NOT DISTINCT FROM 은 NULL = NULL 을 TRUE 로 본다.
 // COALESCE(CAST(...)) 로 감싸면 조인 키가 sargable 하지 않아 손해만 본다.
 const eqNullSafe = (l, r) => `${l} IS NOT DISTINCT FROM ${r}`;
-
-// 조인 슬롯 식별자. 테이블 이름만 쓰면 역할 차원이 충돌한다
-const joinAlias = (d) => `${d.from}__${d.key}`;
 
 // ── 선언 검증 — 런타임이 아니라 컴파일 타임에 잡는다 (P19) ────
 function resolveDims(name, m) {
@@ -46,38 +43,122 @@ function resolveDims(name, m) {
         `[${name}] 차원 '${d}'가 비가산이다. entity를 옮기거나 스케치로 바꾼다 (P10)`
       );
     }
+    if (def.via && !(def.via in (e.joins || {}))) {
+      throw new Error(
+        `[${name}] 차원 '${d}'의 via '${def.via}'가 joins에 없다. ` +
+        `사용 가능: ${allJoins(m.entity).join(", ")}`
+      );
+    }
     return { name: d, ...def };
   });
 }
 
-// 같은 (테이블, 키) 면 조인 한 번. 키가 다르면 별도 조인으로 남는다
-const resolveJoins = (dims) => {
-  const slots = new Map();
-  for (const d of dims) if (d.from && !slots.has(joinAlias(d))) slots.set(joinAlias(d), d);
-  return [...slots.values()];
-};
+// ── 지표 수식 (P5) ───────────────────────────────────────────
+// 컬럼은 중괄호로 표시한다. 생성기는 그 안쪽만 건드린다.
+//
+//   {sale_price}          →  base.sale_price        fact 컬럼
+//   {product.unit_cost}   →  product.unit_cost      조인해서 오는 컬럼
+//
+// 중괄호 밖은 그대로 둔다. 문자열 리터럴·타입명·백틱 식별자를 해석할 필요가
+// 없어서, 수식에 어떤 SQL이 와도 안전하다.
+//
+// 한정자가 없으면 조인한 dim 과 이름이 겹치는 순간 모호해진다 — unit_cost 는
+// fact 와 sem_dim_products 양쪽에, user_id 는 fact 와 sem_dim_users 양쪽에 있다.
+// dataform compile 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터진다.
+//
+// product 는 entities.js 에 적힌 조인 이름이지 생성기의 내부 별칭이 아니다.
+// 선언이 조립 방식을 알게 되지 않는다.
+const COLUMN_REF = /\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}/g;
+
+// 수식이 참조한 조인 이름. 차원이 안 쓰는 조인이라도 여기 나오면 붙여야 한다
+function exprJoins(name, m, sql, where) {
+  const used = new Set();
+  for (const [, head, tail] of sql.matchAll(COLUMN_REF)) {
+    if (!tail) continue;                                   // {col} 은 fact 컬럼
+    if (!(head in (ENTITIES[m.entity].joins || {}))) {
+      throw new Error(
+        `[${name}] ${where} 의 '${head}.${tail}' — 조인 '${head}'가 선언되지 않았다. ` +
+        `사용 가능: ${allJoins(m.entity).join(", ") || "없음"} (P6)`
+      );
+    }
+    used.add(head);
+  }
+  return used;
+}
+
+function renderExpr(name, m, sql, where) {
+  const out = sql.replace(COLUMN_REF, (_, head, tail) =>
+    tail ? `${head}.${tail}` : `base.${head}`);
+
+  // 짝이 안 맞는 중괄호는 치환되지 않고 그대로 남는다. 조용히 넘기면
+  // SQL 문법 오류가 실행 시점에야 나온다 (P19)
+  if (/[{}]/.test(out)) {
+    throw new Error(`[${name}] ${where} 에 닫히지 않은 중괄호가 있다: ${sql}`);
+  }
+  return out;
+}
+
+// 조인 이름이 그대로 SQL 별칭이 되므로 예약어면 생성된 쿼리가 깨진다.
+// GoogleSQL 예약어 78개 — zetasql/docs/lexical.md 의 Reserved keywords.
+// order 가 여기 들어 있다. entity 이름으로는 괜찮지만 조인 이름으로는 못 쓴다
+const RESERVED = new Set([
+  "ALL", "AND", "ANY", "ARRAY", "AS", "ASC", "ASSERT_ROWS_MODIFIED", "AT",
+  "BETWEEN", "BY", "CASE", "CAST", "COLLATE", "CONTAINS", "CREATE", "CROSS",
+  "CUBE", "CURRENT", "DEFAULT", "DEFINE", "DESC", "DISTINCT", "ELSE", "END",
+  "ENUM", "ESCAPE", "EXCEPT", "EXCLUDE", "EXISTS", "EXTRACT", "FALSE",
+  "FETCH", "FOLLOWING", "FOR", "FROM", "FULL", "GRAPH_TABLE", "GROUP",
+  "GROUPING", "GROUPS", "HASH", "HAVING", "IF", "IGNORE", "IN", "INNER",
+  "INTERSECT", "INTERVAL", "INTO", "IS", "JOIN", "LATERAL", "LEFT", "LIKE",
+  "LIMIT", "LOOKUP", "MERGE", "NATURAL", "NEW", "NO", "NOT", "NULL",
+  "NULLS", "OF", "ON", "OR", "ORDER", "OUTER", "OVER", "PARTITION",
+  "PRECEDING", "PROTO", "QUALIFY", "RANGE", "RECURSIVE", "RESPECT", "RIGHT",
+  "ROLLUP",
+]);
+
+// 선언 순서대로, 실제로 쓰이는 조인만. 이름이 곧 SQL 별칭이다
+function resolveJoins(name, m, dims) {
+  const e    = ENTITIES[m.entity];
+  const used = new Set(dims.filter((d) => d.via).map((d) => d.via));
+
+  for (const j of Object.keys(e.joins || {})) {
+    if (j === "base") {
+      throw new Error(`[${name}] 조인 이름 'base'는 fact 별칭과 겹친다`);
+    }
+    if (RESERVED.has(j.toUpperCase())) {
+      throw new Error(`[${name}] 조인 이름 '${j}'는 GoogleSQL 예약어라 별칭으로 쓸 수 없다`);
+    }
+  }
+
+  for (const j of exprJoins(name, m, m.expr, "expr")) used.add(j);
+  if (m.filter) for (const j of exprJoins(name, m, m.filter, "filter")) used.add(j);
+
+  return Object.keys(e.joins || {})
+    .filter((j) => used.has(j))
+    .map((j) => ({ name: j, ...e.joins[j] }));
+}
 
 const dimSelect = (d) =>
-  d.from ? `${joinAlias(d)}.${d.col} AS ${d.name}` : `base.${d.col} AS ${d.name}`;
+  d.via ? `${d.via}.${d.col} AS ${d.name}` : `base.${d.col} AS ${d.name}`;
 
-const joinClause = (ctx, d) =>
-  `LEFT JOIN ${ctx.ref(d.from)} AS ${joinAlias(d)}\n` +
-  `  ON base.${d.key} = ${joinAlias(d)}.${d.ref_key || d.key}`;
+const joinClause = (ctx, j) =>
+  `LEFT JOIN ${ctx.ref(j.to)} AS ${j.name}\n` +
+  `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 
 // ── 1단계: daily — 조인이 실행되는 유일한 곳 (P5) ─────────────
 function dailySQL(ctx, name, m) {
   const e     = ENTITIES[m.entity];
   const dims  = resolveDims(name, m);
-  const joins = resolveJoins(dims);
+  const joins = resolveJoins(name, m, dims);
+
 
   return `
 SELECT
   base.${e.date_col} AS dt,
   ${dims.map(dimSelect).join(",\n  ")},
-  ${m.expr} AS ${name}
+  ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
-${joins.map((d) => joinClause(ctx, d)).join("\n")}
-${m.filter ? `WHERE ${m.filter}` : ""}
+${joins.map((j) => joinClause(ctx, j)).join("\n")}
+${m.filter ? `WHERE ${renderExpr(name, m, m.filter, "filter")}` : ""}
 GROUP BY ${seq(dims.length + 1)}`.trim();
 }
 
@@ -172,7 +253,7 @@ ${joins.join("\n")}`.trim();
 }
 
 module.exports = {
-  seq, eqNullSafe, joinAlias,
+  seq, eqNullSafe, renderExpr, exprJoins,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };

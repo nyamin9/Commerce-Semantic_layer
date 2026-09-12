@@ -45,7 +45,7 @@ Object.entries({ daily: {...}, weekly: {...} })
 **변형 셋을 상황에 따라 골라 쓴다.**
 
 ```js
-// 값은 안 쓰므로 keys — includes/build.js:120
+// 값은 안 쓰므로 keys — includes/build.js:201
 const usable = Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
 
 // 키·값 둘 다 쓰고 순회만 하면 forEach — definitions/sources/declarations.js:26-28
@@ -213,27 +213,32 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 `includes/entities.js:13-14` — 정의.
 
 ```js
-// from: null 이면 fact 자체 컬럼이라 조인이 필요 없다
-const self = (col) => ({ from: null, key: null, col });
+// via 가 null 이면 fact 자체 컬럼이라 조인이 필요 없다
+const self = (col) => ({ via: null, col });
 ```
 
 `includes/entities.js:22-30` — 쓰이는 곳. 마지막 줄만 `self()`다.
 
 ```js
+    joins: {
+      product: { to: PRODUCT, key: "product_id" },
+      user:    { to: USER,    key: "user_id"    },
+    },
+
     dims: {
-      category:            { from: PRODUCT, key: "product_id", col: "category"   },
-      brand:               { from: PRODUCT, key: "product_id", col: "brand"      },
-      department:          { from: PRODUCT, key: "product_id", col: "department" },
-      country:             { from: USER,    key: "user_id",    col: "country"             },
-      age_group:           { from: USER,    key: "user_id",    col: "age_group"           },
-      gender:              { from: USER,    key: "user_id",    col: "gender"              },
-      acquisition_channel: { from: USER,    key: "user_id",    col: "acquisition_channel" },
+      category:            { via: "product", col: "category"   },
+      brand:               { via: "product", col: "brand"      },
+      department:          { via: "product", col: "department" },
+      country:             { via: "user",    col: "country"             },
+      age_group:           { via: "user",    col: "age_group"           },
+      gender:              { via: "user",    col: "gender"              },
+      acquisition_channel: { via: "user",    col: "acquisition_channel" },
       order_status:        self("order_status"),
     },
 ```
 
-`self("order_status")`가 만드는 값은 `{ from: null, key: null, col: "order_status" }`다.
-매번 `{ from: null, key: null, col: "..." }`를 쓰지 않으려고 만든 헬퍼다.
+`self("order_status")`가 만드는 값은 `{ via: null, col: "order_status" }`다.
+매번 `{ via: null, col: "..." }`를 쓰지 않으려고 만든 헬퍼다.
 
 **괄호를 빼면 동작이 달라진다.** `{`가 객체 리터럴이 아니라 함수 본문 블록으로 읽혀서
 `undefined`를 반환한다.
@@ -263,7 +268,7 @@ entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 �
 
 ## 7. 스프레드 `...` — 객체 병합과 배열 펼치기
 
-`includes/build.js:33-50` — `resolveDims`가 돌려주는 값을 만드는 부분.
+`includes/build.js:30-67` — `resolveDims`가 돌려주는 값을 만드는 부분.
 
 ```js
   return dims.map((d) => {
@@ -284,7 +289,7 @@ def            { from: "sem_dim_products", key: "product_id", col: "category" }
 **뒤에 오는 것이 이긴다.** `{ ...def, name: d }`였다면 `def`에 `name`이 있을 때 그쪽이 덮인다.
 여기서는 `name`을 먼저 뒀으므로 `def.name`이 이긴다.
 
-배열에도 쓴다. `includes/build.js:57`:
+배열에도 쓴다. `includes/build.js:137`:
 
 ```js
   return [...slots.values()];   // Map 의 값들을 배열로 펼침
@@ -294,51 +299,59 @@ def            { from: "sem_dim_products", key: "product_id", col: "category" }
 
 ---
 
-## 8. `Map` — 순서를 지키며 중복 제거
+## 8. `Set` — 중복 없이 모으고 선언 순서로 되돌리기
 
-`includes/build.js:53-58` — 실제 코드 전문. **세 번째 줄이 밀도가 높다.**
-
-```js
-// 같은 (테이블, 키) 면 조인 한 번. 키가 다르면 별도 조인으로 남는다
-const resolveJoins = (dims) => {
-  const slots = new Map();
-  for (const d of dims) if (d.from && !slots.has(joinAlias(d))) slots.set(joinAlias(d), d);
-  return [...slots.values()];
-};
-```
-
-그 한 줄을 풀어 쓰면 이렇다. **동작은 같고, 파일에는 위 형태로 들어 있다.**
+`includes/build.js:119-138`
 
 ```js
-for (const d of dims) {
-  if (!d.from) continue;                       // fact 자체 컬럼은 조인이 없다
-  const slot = joinAlias(d);                   // "sem_dim_users__user_id"
-  if (!slots.has(slot)) slots.set(slot, d);    // 처음 본 슬롯만 담는다
+function resolveJoins(name, m, dims) {
+  const e    = ENTITIES[m.entity];
+  const used = new Set(dims.filter((d) => d.via).map((d) => d.via));
+
+  for (const j of exprJoins(name, m, m.expr, "expr")) used.add(j);
+  if (m.filter) for (const j of exprJoins(name, m, m.filter, "filter")) used.add(j);
+
+  return Object.keys(e.joins || {})
+    .filter((j) => used.has(j))
+    .map((j) => ({ name: j, ...e.joins[j] }));
 }
 ```
 
-`for` 다음에 중괄호 없이 문장 하나만 오면 그 문장이 본문 전체다.
-`&&`가 왼쪽이 거짓이면 오른쪽을 실행하지 않는 성질(단축 평가)을 조건으로 썼다.
+**두 곳에서 모아 한 곳에서 순서를 준다.**
+
+조인이 필요한 이유는 둘이다 — 차원이 그 조인을 거치거나(`via`), 지표 수식이
+그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 부어 중복을 없앤다.
+
+`Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않는다.** 그래서 마지막에
+`Object.keys(e.joins)`로 다시 훑는다. `LEFT JOIN` 순서가 선언 순서와 같아지고,
+지표가 달라져도 같은 조인은 같은 자리에 온다. diff를 읽을 수 있다.
 
 `order_item`의 차원 8개 중 7개가 조인이 필요한데, 실제 조인은 **2번**이다.
 
 ```
-category · brand · department              → sem_dim_products__product_id
-country · age_group · gender · channel     → sem_dim_users__user_id
+category · brand · department              → product
+country · age_group · gender · channel     → user
+order_status                               → 조인 없음 (via: null)
 ```
 
-**키를 `(테이블, 키)` 조합으로 만드는 이유** — `joinAlias`가 `${d.from}__${d.key}`를
-만든다(`build.js:24`). 테이블 이름만 쓰면 같은 dim을 서로 다른 키로 두 번 참조하는
-경우(역할 차원)가 하나로 합쳐져 조용히 틀린 값이 나온다.
+**예전에는 `Map`으로 슬롯을 역산했다.** `dims`를 훑어 `(테이블, 키)` 조합을 키로
+삼고 중복을 지우는 방식이었는데, 조인에 이름이 생기면서 그 계산이 없어졌다.
+`entities.js`의 `joins`를 읽기만 하면 된다.
 
-객체 대신 `Map`을 쓴 이유는 삽입 순서가 보장되기 때문이다. 생성되는 SQL의
-`LEFT JOIN` 순서가 매번 같아야 diff를 읽을 수 있다.
+역할 차원(같은 dim을 두 키로 참조)도 역산할 필요가 없다. 이름이 다르면 다른 조인이다.
+
+```js
+joins: {
+  ordered_date: { to: "sem_dim_date", key: "ordered_date", ref_key: "date_day" },
+  shipped_date: { to: "sem_dim_date", key: "shipped_at",   ref_key: "date_day" },
+}
+```
 
 ---
 
 ## 9. 고차 함수 — `map` · `filter` · `join`
 
-SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:76-79`:
+SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:157-160`:
 
 ```js
   ${dims.map(dimSelect).join(",\n  ")},
@@ -359,13 +372,13 @@ ${joins.map((d) => joinClause(ctx, d)).join("\n")}
 `map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀린다.
 인자가 더 필요하면 `(d) => joinClause(ctx, d)`처럼 감싼다.
 
-`filter`로 후보를 거른다. `includes/build.js:120`:
+`filter`로 후보를 거른다. `includes/build.js:201`:
 
 ```js
   const usable = Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
 ```
 
-**콜백에서 구조 분해**도 자주 쓴다. `includes/build.js:133-137`:
+**콜백에서 구조 분해**도 자주 쓴다. `includes/build.js:214-218`:
 
 ```js
     const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
@@ -382,13 +395,13 @@ ${joins.map((d) => joinClause(ctx, d)).join("\n")}
 
 ## 10. 템플릿 리터럴 — SQL 조립
 
-`includes/build.js:68-82` — `dailySQL` 전문.
+`includes/build.js:148-164` — `dailySQL` 전문.
 
 ```js
 function dailySQL(ctx, name, m) {
   const e     = ENTITIES[m.entity];
   const dims  = resolveDims(name, m);
-  const joins = resolveJoins(dims);
+  const joins = resolveJoins(name, m, dims);
 
   return `
 SELECT
@@ -415,21 +428,25 @@ GROUP BY ${seq(dims.length + 1)}`.trim();
 
 ```js
 const dimSelect = (d) =>
-  d.from ? `${joinAlias(d)}.${d.col} AS ${d.name}` : `base.${d.col} AS ${d.name}`;
+  d.via ? `${d.via}.${d.col} AS ${d.name}` : `base.${d.col} AS ${d.name}`;
 
-const joinClause = (ctx, d) =>
-  `LEFT JOIN ${ctx.ref(d.from)} AS ${joinAlias(d)}\n` +
-  `  ON base.${d.key} = ${joinAlias(d)}.${d.ref_key || d.key}`;
+const joinClause = (ctx, j) =>
+  `LEFT JOIN ${ctx.ref(j.to)} AS ${j.name}\n` +
+  `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 ```
 
 `dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 차원이면 별칭을 붙이고,
-fact 자체 컬럼(`from: null`)이면 `base.`를 쓴다.
+fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
+
+**조인 이름이 그대로 SQL 별칭이 된다.** `entities.js`에 `product`라고 적으면
+생성된 SQL에도 `AS product`가 나온다. 그래서 예약어를 쓸 수 없고,
+`resolveJoins`가 `RESERVED` 78개와 `base`를 컴파일 타임에 막는다 — `order`가 거기 있다.
 
 ---
 
 ## 11. `throw` — 컴파일 타임에 멈추기
 
-`includes/build.js:27-51` — `resolveDims` 전문. 예외 세 개가 여기 모여 있다.
+`includes/build.js:24-68` — `resolveDims` 전문. 예외 세 개가 여기 모여 있다.
 
 ```js
 function resolveDims(name, m) {
@@ -479,6 +496,82 @@ Dataform은 include를 컴파일할 때 이 코드를 실행하므로, 예외가
 
 메시지에 `사용 가능:` 목록을 붙이는 이유는 오타 하나에 파일을 뒤지지 않게 하려는 것이다.
 
+### 추측하지 않기 — `renderExpr`
+
+`includes/build.js:71-101`
+
+```js
+const COLUMN_REF = /\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}/g;
+
+function renderExpr(name, m, sql, where) {
+  const out = sql.replace(COLUMN_REF, (_, head, tail) =>
+    tail ? `${head}.${tail}` : `base.${head}`);
+
+  if (/[{}]/.test(out)) {
+    throw new Error(`[${name}] ${where} 에 닫히지 않은 중괄호가 있다: ${sql}`);
+  }
+  return out;
+}
+```
+
+**왜 한정자가 필요한가** — `metrics.js`의 수식은 선언 그대로 SQL에 꽂힌다.
+
+```
+SUM(IF(is_revenue_recognized, unit_cost, 0))
+```
+
+`unit_cost`는 `sem_fct_order_items`에도 `sem_dim_products`에도 있다.
+`daily_cogs`는 두 테이블을 조인하므로 BigQuery가 어느 쪽인지 고를 수 없다.
+`user_id`도 같다. `dataform compile`은 못 잡는다 — **문자열일 뿐이라 통과하고
+실행 단계에서 터진다.**
+
+**왜 중괄호인가** — 한정자를 붙이려면 어느 토큰이 컬럼인지 알아야 한다.
+정규식으로 추측하면 끝없이 샌다.
+
+```
+COUNTIF(status = "returned")     → "returned" 가 문자열인지 컬럼인지
+CAST(x AS INT64)                 → INT64 는 타입명
+EXTRACT(YEAR FROM dt)            → YEAR · FROM 은 키워드
+`sale price`                     → 백틱 식별자
+```
+
+키워드 목록을 늘려도 BigQuery의 예약어·타입명·날짜 단위가 수백 개라 따라잡을 수 없다.
+그리고 **큰따옴표 문자열은 조용히 틀린다** — `"base.returned"`도 유효한 문자열이라
+에러 없이 아무것도 매칭되지 않는다. P18이 막으려는 바로 그 유형이다.
+
+중괄호로 표시하면 추측할 것이 없다. **바깥은 건드리지 않는다.**
+
+| 수식 | 결과 |
+|---|---|
+| `SUM({sale_price})` | `SUM(base.sale_price)` |
+| `SUM({product.unit_cost})` | `SUM(product.unit_cost)` |
+| `COUNTIF({status} = "returned")` | `COUNTIF(base.status = "returned")` |
+| `SUM(CAST({sale_price} AS INT64))` | `SUM(CAST(base.sale_price AS INT64))` |
+
+**중괄호를 깜빡하면** 컬럼이 한정되지 않은 채 남는다. 그러면 원래의 ambiguous
+에러가 난다 — **시끄럽게 터지지 조용히 틀리지 않는다.** 이게 추측 방식과의 차이다.
+
+`{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡는다.
+
+**`product`는 누구 이름인가** — `entities.js`의 `joins`에 적힌 이름이다.
+생성기가 만든 내부 별칭이 아니므로 선언이 조립 방식을 알게 되지 않는다 (P5).
+선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막는다.
+
+```
+[t] expr 의 'warehouse.unit_cost' — 조인 'warehouse'가 선언되지 않았다.
+사용 가능: product, user (P6)
+```
+
+### dim 컬럼을 measure로 쓸 때의 주의
+
+`{product.unit_cost}`는 **현재 카탈로그 원가**고, `{unit_cost}`는 **주문 시점에
+기록된 원가**다. 둘 다 정당한 수요지만 앞의 것은 과거 숫자가 나중에 바뀐다 —
+`sem_dim_users` · `sem_dim_products`는 현재 상태만 담고 있고 SCD 이력 커버리지가
+4.46%다.
+
+Kimball이 measure를 fact에 두라고 한 이유이고, 이 DW가 `unit_cost`를 주문 시점에
+fact에 기록해 둔 이유이기도 하다. **기능은 열되 기본은 fact다.**
+
 ---
 
 ## 12. `module.exports` — Dataform에서의 동작
@@ -498,9 +591,9 @@ module.exports = { ENTITIES, allDims };
 // includes/metrics.js:133
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 
-// includes/build.js:174-178
+// includes/build.js:255-259
 module.exports = {
-  seq, eqNullSafe, joinAlias,
+  seq, eqNullSafe, renderExpr, exprJoins,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };
@@ -557,7 +650,7 @@ seq(4)   // → "1, 2, 3, 4"
 
 ## 14. `switch` + `return` — `break`가 없는 이유
 
-`includes/build.js:85-93`
+`includes/build.js:166-174`
 
 ```js
 function rollupExpr(col, additive) {
@@ -580,7 +673,7 @@ function rollupExpr(col, additive) {
 
 ## 15. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다르다
 
-`includes/build.js:41-48`
+`includes/build.js:38-55`
 
 **이 파일에서 가장 미묘한 부분이다.**
 
@@ -616,7 +709,7 @@ additive.category          // false  ← 값이 falsy
 
 ## 16. `continue` — 이번 회차만 건너뛰기
 
-`includes/build.js:132-137`:
+`includes/build.js:213-218`:
 
 ```js
   for (const [label, byPeriod] of Object.entries(COMPARE_LABELS)) {
@@ -668,7 +761,7 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
 
 ## 18. 병렬 누적 배열 — 조인과 컬럼을 같이 모으기
 
-`includes/build.js:130-155` — 루프 전문.
+`includes/build.js:211-236` — 루프 전문.
 
 ```js
   const joins = [];
@@ -727,8 +820,8 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 
 | 순서 | 대상 | 무엇을 보나 |
 |---|---|---|
-| 1 | `resolveDims` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (15번) |
-| 2 | `resolveJoins` · `joinAlias` | 차원 목록 → 조인 슬롯 (8번) |
+| 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (11번) |
+| 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
 | 4 | `rollupExpr` · `canRollup` | `additive` → 함수 선택, 생성 가부 (14번) |
 | 5 | `rollupBlock` | 기간 하나의 `SELECT` 블록 |
@@ -759,7 +852,7 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 | 계산된 키 `[x]:` | `declarations.js` — 데이터셋명이 vars에서 옴 |
 | `=> ({...})` | `entities.js` — `self()` |
 | 스프레드 병합 | `build.js` — `{ name: d, ...def }` |
-| `Map` 중복 제거 | `build.js` — `resolveJoins` |
+| `Set` 합집합 + 선언 순서 복원 | `build.js` — `resolveJoins` |
 | `map`·`filter`·`join` | `build.js` 전반 |
 | 템플릿 리터럴 | `build.js` — SQL 조립 |
 | `throw` | `build.js` — 선언 검증 5곳 |
@@ -767,5 +860,5 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 | `switch` + `return` | `build.js` — `rollupExpr` |
 | `in` 연산자 | `build.js` — 미선언과 `false` 구분 |
 | `continue` | `build.js` — `metricSQL` 비교 루프 |
-| 한 줄 함수 + 이름 | `build.js` — `eqNullSafe` |
+| 콜백 `replace` + 캡처 그룹 | `build.js` — `renderExpr` |
 | 병렬 누적 배열 | `build.js` — `joins` · `cols` |

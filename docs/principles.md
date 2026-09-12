@@ -145,8 +145,8 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 **P5. 차원은 fact에 붙이지 않는다. 조인은 `daily_` 생성 시 딱 한 번 실행한다.**
 
 `semantic_mart`는 star schema를 유지한다 — dim과 fact를 분리한다.
-조인 관계는 `entities.js`의 `dims`에 선언하고, 생성기가 그 선언을 읽어
-`daily_<metric>`을 만들 때 조인을 실행한다.
+조인 관계는 `entities.js`의 `joins`에, 그 조인에서 뽑아 쓸 컬럼은 `dims`에
+선언하고, 생성기가 그 선언을 읽어 `daily_<metric>`을 만들 때 조인을 실행한다.
 
 ```
 sem_fct_order_items  ─┐
@@ -164,6 +164,59 @@ fact에 차원을 미리 붙이지 않는 이유는 셋이다.
 1. **차원 추가가 fact 재생성을 부른다.** 선언 한 줄이어야 할 일이 대형 테이블 재빌드가 된다
 2. **역할 차원을 표현할 수 없다.** 같은 dim을 두 키로 참조하는 경우(주문일/배송일) 평탄화가 깨진다
 3. **차원 변경 시점이 fact에 고정된다.** point-in-time을 나중에 도입할 여지가 사라진다
+
+**P5-1. 조인에는 이름을 준다. 그 이름이 곧 SQL 별칭이다.**
+
+```js
+joins: { product: { to: PRODUCT, key: "product_id" } },
+dims:  { category: { via: "product", col: "category" } },
+```
+
+이름이 있어야 지표 수식이 dim 컬럼을 가리킬 수 있다.
+
+```js
+expr: "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
+```
+
+`product`는 여기 적힌 이름이지 생성기가 만든 별칭이 아니다. **선언은 조립 방식을
+알지 않는다** — 생성기가 별칭 규칙을 바꿔도 `metrics.js`는 그대로다.
+
+규칙 셋을 컴파일 타임에 검사한다.
+
+| 검사 | 이유 |
+|---|---|
+| GoogleSQL 예약어 금지 | 이름이 그대로 별칭이 된다. `order`가 예약어다 |
+| `base` 금지 | fact 별칭과 겹친다 |
+| `via`가 `joins`에 있을 것 | 오타가 런타임 오답이 되지 않게 |
+
+역할 차원(같은 dim을 두 키로 참조)은 이름을 다르게 주면 끝이다.
+
+```js
+joins: {
+  ordered_date: { to: DATE, key: "ordered_date", ref_key: "date_day" },
+  shipped_date: { to: DATE, key: "shipped_at",   ref_key: "date_day" },
+}
+```
+
+**P5-2. 지표 수식의 컬럼은 중괄호로 표시한다.**
+
+```
+{sale_price}          →  base.sale_price       fact 컬럼
+{product.unit_cost}   →  product.unit_cost     조인해서 오는 컬럼
+```
+
+한정자가 없으면 조인한 dim과 이름이 겹치는 순간 모호해진다 — `unit_cost`는 fact와
+`sem_dim_products` 양쪽에, `user_id`는 fact와 `sem_dim_users` 양쪽에 있다.
+`dataform compile`은 문자열이라 통과시키고 **BigQuery 실행 단계에서야 터진다.**
+
+어느 토큰이 컬럼인지 정규식으로 추측하지 않는 이유는 조용히 틀리기 때문이다.
+`COUNTIF(status = "returned")`에서 `"returned"`를 컬럼으로 보면 `"base.returned"`가
+되는데, **그것도 유효한 문자열이라 에러 없이 결과만 0이 된다**(P18).
+
+중괄호를 깜빡하면 한정되지 않은 채 남아 ambiguous 에러가 난다. 시끄럽게 터진다.
+
+> dim 컬럼을 measure로 쓰면 **과거 숫자가 나중에 바뀐다.** `sem_dim_*`는 현재 상태만
+> 담고 SCD 이력 커버리지가 4.46%다. 기능은 열되 기본은 fact다.
 
 **P6. join graph에 선언하지 않은 차원은 쓸 수 없다.**
 가능한 조합을 이어주는 것보다 **불가능한 조합을 막는 쪽**이 중요하다. chasm trap 예방.
