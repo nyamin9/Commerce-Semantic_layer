@@ -338,6 +338,15 @@ MTD 구간만                                 20,736 B   (0.46%)
 Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한다.
 누계는 grain이 아니라 쿼리 패턴이다 — 자연스러운 "한 행"이 없다.
 
+**P15-1. `sem_dim_date`는 `daily_` 파이프라인이 조인하지 않는다.**
+
+`daily_`에는 거래가 있었던 날만 들어간다. 빈 날짜를 채우려면 (날짜 × 차원 전 조합)
+격자가 필요하고, 차원이 8개인 `order_item`은 지표 하나가 수백만 행이 된다.
+누계를 저장하지 않기로 한 것과 같은 계산이다.
+
+시계열 구멍은 **조회 시점에** `sem_dim_date`를 왼쪽에 놓고 메운다.
+이 테이블은 파이프라인이 아니라 대시보드와 ad-hoc 쿼리를 위해 있다.
+
 **P16. 나눗셈은 전부 `SAFE_DIVIDE`.**
 
 ### 생성
@@ -368,7 +377,7 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | 항목 | 결정 |
 |---|---|
 | SSOT | semantic layer. `rpt_*`는 대조 후 폐기 |
-| `dim_date` | semantic layer가 소유. 변환이 아니라 축이다 |
+| `dim_date` | semantic layer가 소유. 변환이 아니라 축이다.<br>**`daily_`가 조인하지 않는다** — 격자를 채우면 지표당 수백만 행. 소비 시점에 쓴다 (P15) |
 | 파생 차원 | `semantic_mart`의 `dim_*`에서 생성 |
 | 비율 지표 | registry에 선언만. 테이블 생성 안 함 |
 | HLL precision | **15 고정.** 나중에 바꾸면 과거 스케치와 병합 불가 |

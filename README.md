@@ -298,7 +298,7 @@ DW와 구조가 같더라도 **반드시 물리 테이블로 만든다.** 이유
 |---|---|---|---|
 | `sem_dim_products.sqlx` | `dim_products` | 상품 1건 | `category_name` → `category` 등 이름 정규화 |
 | `sem_dim_users.sqlx` | `dim_users` | 고객 1건 | conformed 축(`country` · `acquisition_channel`) |
-| `sem_dim_date.sqlx` | **없음** | 날짜 1건 | 우리가 소유. 2018~2031 날짜 스파인 |
+| `sem_dim_date.sqlx` | **없음** | 날짜 1건 | 우리가 소유. 2018~2031 날짜 스파인. **소비 시점 전용** |
 | `sem_fct_order_items.sqlx` | `fct_order_items` | 주문 라인 1건 | 자연키 · 행 단위 비율 제거 |
 | `sem_fct_orders.sqlx` | `fct_orders` | 주문 1건 | 자연키 · `user_gender_at_order` 제거 |
 | `sem_fct_sessions.sqlx` | `fct_sessions` | 세션 1건 | 퍼널 플래그 제거 (상류 결함 7) |
@@ -357,13 +357,23 @@ fct_order_items  → sem_fct_order_items
 fct_orders       → sem_fct_orders
 fct_sessions     → sem_fct_sessions
 fct_user_events  → sem_fct_user_events
-(없음)           → sem_dim_date
+(없음)           → sem_dim_date   ※ 아무것도 참조하지 않는다 (아래)
 
 sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
 ```
 
 마트 테이블끼리는 서로 참조하지 않는다. 전부 DW declaration만 읽는다 —
 **fact 간 조인이 금지**되어 있기 때문이다.
+
+**`sem_dim_date`는 의도적으로 DAG의 고아다.** `daily_`가 이것을 조인하지 않는다.
+
+조인하면 활동이 없는 날까지 행으로 채워야 하는데, 그러려면 (날짜 × 차원 전 조합)
+격자를 만들어야 한다. `order_item`은 차원이 8개라 지표 하나가 수백만 행이 된다.
+`periods.js`가 누계(WTD·MTD·YTD)를 저장하지 않기로 한 것과 같은 이유다 (P15).
+
+그래서 `daily_`에는 **거래가 있었던 날만** 들어간다. 시계열 구멍은 조회할 때
+`sem_dim_date`를 왼쪽에 놓고 메운다. 이 테이블의 소비자는 파이프라인이 아니라
+대시보드와 ad-hoc 쿼리다.
 ---
 
 ## 개발
