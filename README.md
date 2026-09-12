@@ -5,7 +5,7 @@ BigQuery + Dataform 위에 커머스 semantic layer를 구축하는 프로젝트
 변환(transformation)은 **dbt-airflow**가 담당하고, 이 레포는 **semantic layer만** 담당한다.
 DW 테이블은 만들지 않고 `declaration`으로 읽기만 한다.
 
-- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P21
+- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P21 (세부 7개 포함 28항)
 - 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 14 · 비율 7 · 제외 5
 - 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 18가지 · `build.js` 읽는 순서
 
@@ -212,7 +212,7 @@ PERIODS = {
 - `COMPARE_LABELS`는 위 선언을 뒤집어 `라벨 → { period_type: 간격 }`을 만든다. 라벨마다 컬럼이 하나 생긴다
 - **WTD·MTD·YTD는 없다.** 저장하지 않고 소비 시점에 파생한다 (P15)
 
-### `entities.js` (79줄)
+### `entities.js` (116줄)
 
 지표를 산출하는 fact 테이블이 entity가 된다. `dims`가 **join graph**이고, 여기 없는 차원은 쓸 수 없다.
 
@@ -239,7 +239,7 @@ PERIODS = {
 **`order`에 상품 차원이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을 포함하므로
 주문 grain에서 카테고리가 정의되지 않는다. `order_count`가 여기 있는 근거다.
 
-### `metrics.js` (133줄)
+### `metrics.js` (138줄)
 
 | export | 내용 |
 |---|---|
@@ -260,7 +260,7 @@ false     복원 불가                 → 생성 거부
 차원 축에 `false`가 나오면 기록할 사실이 아니라 **고칠 신호**다 — entity가 틀렸다.
 현재 14개 지표에 `false`는 하나도 없다.
 
-### `build.js` (178줄)
+### `build.js` (259줄)
 
 정책이 실제로 집행되는 곳. 초기에 한 번 쓰고 거의 건드리지 않는다.
 

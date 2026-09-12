@@ -58,7 +58,7 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 
 ## 2. IIFE — `const`에 여러 줄 계산을 담기
 
-`includes/periods.js:31-43` — 실제 코드 전문.
+`includes/periods.js:31-40` — 실제 코드 전문.
 
 ```js
 const COMPARE_LABELS = (() => {
@@ -93,7 +93,7 @@ const COMPARE_LABELS = (() => { ... return acc; })();
 
 ## 3. 파생 인덱스 — 표를 뒤집기
 
-`includes/periods.js:31-43`
+`includes/periods.js:31-40`
 
 `periods.js`의 `COMPARE_LABELS`가 대표 사례다. 선언과 사용의 **방향이 반대**라서 뒤집는다.
 
@@ -140,7 +140,7 @@ COMPARE_LABELS = {
 
 ## 4. `acc[x] = acc[x] || {}` — 없으면 초기화
 
-`includes/periods.js:35 · includes/build.js:31`
+`includes/periods.js:35 · includes/build.js:28`
 
 ```js
 acc[label] = acc[label] || {};
@@ -210,14 +210,14 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 
 ## 6. 화살표가 객체를 반환할 때 `({ ... })`
 
-`includes/entities.js:13-14` — 정의.
+`includes/entities.js:25-26` — 정의.
 
 ```js
 // via 가 null 이면 fact 자체 컬럼이라 조인이 필요 없다
 const self = (col) => ({ via: null, col });
 ```
 
-`includes/entities.js:22-30` — 쓰이는 곳. 마지막 줄만 `self()`다.
+`includes/entities.js:36-50` — 쓰이는 곳. 마지막 줄만 `self()`다.
 
 ```js
     joins: {
@@ -250,7 +250,7 @@ const self = (col) => ({ via: null, col });
 
 **축약 프로퍼티** — `col: col` 대신 `col`만 썼다. 변수명과 키가 같으면 생략할 수 있다.
 
-같은 형태가 `includes/metrics.js:16-20`에도 있다. 이쪽은 블록이라 `return`이 있다.
+같은 형태가 `includes/metrics.js:21-25`에도 있다. 이쪽은 블록이라 `return`이 있다.
 
 ```js
 const uniform = (entity, value) => {
@@ -266,9 +266,9 @@ entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 �
 
 ---
 
-## 7. 스프레드 `...` — 객체 병합과 배열 펼치기
+## 7. 스프레드 `...` — 객체 병합
 
-`includes/build.js:30-67` — `resolveDims`가 돌려주는 값을 만드는 부분.
+`includes/build.js:30-53` — `resolveDims`가 돌려주는 값을 만드는 부분.
 
 ```js
   return dims.map((d) => {
@@ -288,14 +288,6 @@ def            { from: "sem_dim_products", key: "product_id", col: "category" }
 원본 `def`는 바뀌지 않는다 — 새 객체가 만들어진다.
 **뒤에 오는 것이 이긴다.** `{ ...def, name: d }`였다면 `def`에 `name`이 있을 때 그쪽이 덮인다.
 여기서는 `name`을 먼저 뒀으므로 `def.name`이 이긴다.
-
-배열에도 쓴다. `includes/build.js:137`:
-
-```js
-  return [...slots.values()];   // Map 의 값들을 배열로 펼침
-```
-
-`Map.values()`는 이터레이터라 그대로는 `map`·`join`을 쓸 수 없다. 배열로 펼쳐야 한다.
 
 ---
 
@@ -355,22 +347,22 @@ SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:157-160`:
 
 ```js
   ${dims.map(dimSelect).join(",\n  ")},
-  ${m.expr} AS ${name}
+  ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
-${joins.map((d) => joinClause(ctx, d)).join("\n")}
+${joins.map((j) => joinClause(ctx, j)).join("\n")}
 ```
 
 `map`이 배열을 배열로 바꾸고 `join`이 문자열 하나로 합친다.
 
 ```
 ["category", "country"]
-  → map(dimSelect)  ["p.category AS category", "u.country AS country"]
-  → join(",\n  ")   "p.category AS category,\n  u.country AS country"
+  → map(dimSelect)  ["product.category AS category", "user.country AS country"]
+  → join(",\n  ")   "product.category AS category,\n  user.country AS country"
 ```
 
 `dimSelect`를 괄호 없이 넘긴 것에 주의. `map(dimSelect)`는 함수 자체를 넘기는 것이고
 `map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀린다.
-인자가 더 필요하면 `(d) => joinClause(ctx, d)`처럼 감싼다.
+인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감싼다.
 
 `filter`로 후보를 거른다. `includes/build.js:201`:
 
@@ -395,7 +387,7 @@ ${joins.map((d) => joinClause(ctx, d)).join("\n")}
 
 ## 10. 템플릿 리터럴 — SQL 조립
 
-`includes/build.js:148-164` — `dailySQL` 전문.
+`includes/build.js:148-163` — `dailySQL` 전문.
 
 ```js
 function dailySQL(ctx, name, m) {
@@ -407,9 +399,9 @@ function dailySQL(ctx, name, m) {
 SELECT
   base.${e.date_col} AS dt,
   ${dims.map(dimSelect).join(",\n  ")},
-  ${m.expr} AS ${name}
+  ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
-${joins.map((d) => joinClause(ctx, d)).join("\n")}
+${joins.map((j) => joinClause(ctx, j)).join("\n")}
 ${m.filter ? `WHERE ${m.filter}` : ""}
 GROUP BY ${seq(dims.length + 1)}`.trim();
 }
@@ -424,7 +416,7 @@ GROUP BY ${seq(dims.length + 1)}`.trim();
 `ctx.ref(...)`는 Dataform이 주는 함수로, 이름을 정규화된 테이블 경로로 바꾸고
 **동시에 의존 관계를 등록한다.** 문자열을 직접 쓰면 그래프에 엣지가 생기지 않는다.
 
-`includes/build.js:60-65`의 두 헬퍼도 같은 방식이다.
+`includes/build.js:140-145`의 두 헬퍼도 같은 방식이다.
 
 ```js
 const dimSelect = (d) =>
@@ -446,7 +438,7 @@ fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
 
 ## 11. `throw` — 컴파일 타임에 멈추기
 
-`includes/build.js:24-68` — `resolveDims` 전문. 예외 세 개가 여기 모여 있다.
+`includes/build.js:24-54` — `resolveDims` 전문. 예외 세 개가 여기 모여 있다.
 
 ```js
 function resolveDims(name, m) {
@@ -498,7 +490,7 @@ Dataform은 include를 컴파일할 때 이 코드를 실행하므로, 예외가
 
 ### 추측하지 않기 — `renderExpr`
 
-`includes/build.js:71-101`
+`includes/build.js:71 · 89-101`
 
 ```js
 const COLUMN_REF = /\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}/g;
@@ -585,10 +577,10 @@ module.exports = { MART_PREFIX, martName, dailyName, metricName, baseColumn };
 // includes/periods.js:42
 module.exports = { PERIODS, COMPARE_LABELS };
 
-// includes/entities.js:79
+// includes/entities.js:116
 module.exports = { ENTITIES, allDims };
 
-// includes/metrics.js:133
+// includes/metrics.js:138
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 
 // includes/build.js:255-259
@@ -606,7 +598,7 @@ module.exports = {
 받는 쪽은 구조 분해로 필요한 것만 꺼낸다. `includes/build.js:11-13`:
 
 ```js
-const { ENTITIES, allDims }      = require("includes/entities");
+const { ENTITIES, allDims, allJoins } = require("includes/entities");
 const { PERIODS, COMPARE_LABELS } = require("includes/periods");
 const { dailyName, baseColumn }   = require("includes/naming");
 ```
@@ -673,7 +665,7 @@ function rollupExpr(col, additive) {
 
 ## 15. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다르다
 
-`includes/build.js:38-55`
+`includes/build.js:38-40`
 
 **이 파일에서 가장 미묘한 부분이다.**
 
