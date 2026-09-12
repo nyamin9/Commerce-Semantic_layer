@@ -77,7 +77,7 @@ Dataform이 컴파일 타임 도구라 런타임 조립이 구조적으로 불�
 
 | | 값 |
 |---|---|
-| `daily_` 행 수 ÷ atomic fact 행 수 | **99.9%** — 거의 줄지 않는다 |
+| `daily_` 행 수 ÷ atomic fact 행 수 | **99.96%** — 거의 줄지 않는다 (187,477 / 187,559 실측) |
 | atomic fact 전 기간 + dim 조인 + 임의 필터 | **8.5 MB** |
 
 이 규모에서 사전 집계는 성능 이득이 거의 없다. 이득은 이쪽이다.
@@ -153,7 +153,8 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 | 1 | `includes/` 선언 계층 + builder | ✅ |
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
-| 4 | `gen_daily.js` · `gen_metric.js` | ⬜ |
+| 4 | `gen_daily.js` | 🔶 선언 완료 · `daily_net_revenue` 만 BigQuery 검증 |
+| 4 | `gen_metric.js` | ⬜ |
 | 5 | `gen_registry.js` | ⬜ |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | ⬜ |
 
@@ -175,6 +176,7 @@ definitions/                        Dataform action
   sources/declarations.js           DW 읽기 전용 참조
   mart/*.sqlx                       semantic_mart 7개
   assertions/upstream_contract.js   상류 계약 감시
+  semantic/gen_daily.js             daily_<metric> 14개를 선언에서 생성
 
 docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
@@ -407,7 +409,7 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
-| `semantic` | 비어 있음 — 4단계에서 `daily_*` 14 + `metric_*` 14 |
+| `semantic` | `daily_net_revenue` 생성됨(16.28 MB · 187,477행). 나머지 13 + `metric_*` 14 대기 |
 | `semantic_metadata` | 비어 있음 — 5단계에서 `metric_registry` |
-| `semantic_assertions` | assertion 결과. 게이트 14 + 상류 감시 5 |
+| `semantic_assertions` | assertion 결과. 게이트 14 + 상류 감시 5 + `daily_` 게이트 2/지표 |
 
