@@ -233,8 +233,8 @@ PERIODS = {
 `via: null`이면 fact 자체 컬럼이라 조인이 없다(`self()`).
 
 조인에 이름이 있어야 지표 수식이 dim 컬럼을 가리킬 수 있다 — `{product.unit_cost}`.
-생성기가 만든 내부 별칭이 아니라 여기 적힌 이름이므로 선언이 조립을 알게 되지 않는다 (P5).
-같은 이유로 이름이 그대로 SQL 별칭이 되고, 예약어면 컴파일 타임에 거부된다.
+생성기가 만든 이름이 아니라 여기 적힌 이름이라 선언이 생성기 내부를 모른다 (P5).
+이 이름이 그대로 SQL alias 가 되므로, 예약어면 컴파일 타임에 거부된다.
 
 **`order`에 상품 차원이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을 포함하므로
 주문 grain에서 카테고리가 정의되지 않는다. `order_count`가 여기 있는 근거다.
@@ -357,7 +357,7 @@ fct_order_items  → sem_fct_order_items
 fct_orders       → sem_fct_orders
 fct_sessions     → sem_fct_sessions
 fct_user_events  → sem_fct_user_events
-(없음)           → sem_dim_date   ※ 아무것도 참조하지 않는다 (아래)
+(없음)           → sem_dim_date   ※ 하류가 없다 (아래)
 
 sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
 ```
@@ -365,7 +365,7 @@ sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
 마트 테이블끼리는 서로 참조하지 않는다. 전부 DW declaration만 읽는다 —
 **fact 간 조인이 금지**되어 있기 때문이다.
 
-**`sem_dim_date`는 의도적으로 DAG의 고아다.** `daily_`가 이것을 조인하지 않는다.
+**`sem_dim_date`는 의도적으로 아무것도 참조하지 않는다.** `daily_`가 이것을 조인하지 않는다.
 
 조인하면 활동이 없는 날까지 행으로 채워야 하는데, 그러려면 (날짜 × 차원 전 조합)
 격자를 만들어야 한다. `order_item`은 차원이 8개라 지표 하나가 수백만 행이 된다.

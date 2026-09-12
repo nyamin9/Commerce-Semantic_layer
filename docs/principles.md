@@ -165,7 +165,7 @@ fact에 차원을 미리 붙이지 않는 이유는 셋이다.
 2. **역할 차원을 표현할 수 없다.** 같은 dim을 두 키로 참조하는 경우(주문일/배송일) 평탄화가 깨진다
 3. **차원 변경 시점이 fact에 고정된다.** point-in-time을 나중에 도입할 여지가 사라진다
 
-**P5-1. 조인에는 이름을 준다. 그 이름이 곧 SQL 별칭이다.**
+**P5-1. 조인에는 이름을 준다. 그 이름이 곧 SQL alias 다.**
 
 ```js
 joins: { product: { to: PRODUCT, key: "product_id" } },
@@ -178,18 +178,18 @@ dims:  { category: { via: "product", col: "category" } },
 expr: "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 ```
 
-`product`는 여기 적힌 이름이지 생성기가 만든 별칭이 아니다. **선언은 조립 방식을
-알지 않는다** — 생성기가 별칭 규칙을 바꿔도 `metrics.js`는 그대로다.
+`product`는 여기 적힌 이름이지 생성기가 만든 alias 가 아니다.
+**선언은 생성기 내부를 모른다** — alias 규칙을 바꿔도 `metrics.js`는 그대로다.
 
-규칙 셋을 컴파일 타임에 검사한다.
+세 가지를 컴파일 타임에 검사한다.
 
 | 검사 | 이유 |
 |---|---|
-| GoogleSQL 예약어 금지 | 이름이 그대로 별칭이 된다. `order`가 예약어다 |
-| `base` 금지 | fact 별칭과 겹친다 |
+| GoogleSQL 예약어 금지 | 이름이 그대로 alias 가 된다. `order`가 예약어다 |
+| `base` 금지 | fact 의 alias 와 겹친다 |
 | `via`가 `joins`에 있을 것 | 오타가 런타임 오답이 되지 않게 |
 
-역할 차원(같은 dim을 두 키로 참조)은 이름을 다르게 주면 끝이다.
+역할 차원(같은 dim을 두 키로 참조)은 이름만 다르게 주면 된다.
 
 ```js
 joins: {
@@ -205,7 +205,7 @@ joins: {
 {product.unit_cost}   →  product.unit_cost     조인해서 오는 컬럼
 ```
 
-한정자가 없으면 조인한 dim과 이름이 겹치는 순간 모호해진다 — `unit_cost`는 fact와
+테이블 접두사가 없으면 조인한 dim과 이름이 겹치는 순간 모호해진다 — `unit_cost`는 fact와
 `sem_dim_products` 양쪽에, `user_id`는 fact와 `sem_dim_users` 양쪽에 있다.
 `dataform compile`은 문자열이라 통과시키고 **BigQuery 실행 단계에서야 터진다.**
 
@@ -213,7 +213,7 @@ joins: {
 `COUNTIF(status = "returned")`에서 `"returned"`를 컬럼으로 보면 `"base.returned"`가
 되는데, **그것도 유효한 문자열이라 에러 없이 결과만 0이 된다**(P18).
 
-중괄호를 깜빡하면 한정되지 않은 채 남아 ambiguous 에러가 난다. 시끄럽게 터진다.
+중괄호를 깜빡하면 접두사가 붙지 않은 채 남아 ambiguous 에러가 난다. 값이 틀리는 대신 바로 멈춘다.
 
 > dim 컬럼을 measure로 쓰면 **과거 숫자가 나중에 바뀐다.** `sem_dim_*`는 현재 상태만
 > 담고 SCD 이력 커버리지가 4.46%다. 기능은 열되 기본은 fact다.
@@ -239,8 +239,8 @@ joins: {
 (dim에 `'Unknown'` 행을 두어 항상 조인되게 하는 것)를 쓴다.
 
 **규모를 먼저 잰다.** `daily_`가 생기면 `NULL` 버킷이 그대로 보인다.
-0이면 아무것도 하지 않고, 있으면 그때 5장에 등재하고 처리를 정한다.
-측정하지 않은 것에 assertion을 걸면 영구히 빨간 알림이 되어 신호가 죽는다.
+0이면 아무것도 하지 않고, 있으면 그때 5장에 등재한다.
+재보지 않고 assertion을 걸면 항상 실패 상태로 남아 아무도 보지 않게 된다.
 
 **P7. conformed dimension은 이름과 의미가 같아야 한다.**
 `country`는 어느 fact에서 오든 같은 뜻이어야 한다. 그래야 fact를 나란히 놓을 수 있다.

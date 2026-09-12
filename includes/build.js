@@ -62,12 +62,12 @@ function resolveDims(name, m) {
 // 중괄호 밖은 그대로 둔다. 문자열 리터럴·타입명·백틱 식별자를 해석할 필요가
 // 없어서, 수식에 어떤 SQL이 와도 안전하다.
 //
-// 한정자가 없으면 조인한 dim 과 이름이 겹치는 순간 모호해진다 — unit_cost 는
+// 접두사가 없으면 조인한 dim 과 이름이 겹치는 순간 모호해진다 — unit_cost 는
 // fact 와 sem_dim_products 양쪽에, user_id 는 fact 와 sem_dim_users 양쪽에 있다.
 // dataform compile 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터진다.
 //
-// product 는 entities.js 에 적힌 조인 이름이지 생성기의 내부 별칭이 아니다.
-// 선언이 조립 방식을 알게 되지 않는다.
+// product 는 entities.js 에 적힌 조인 이름이지 생성기가 만든 이름이 아니다.
+// 선언이 생성기 내부를 모르게 둔다.
 const COLUMN_REF = /\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}/g;
 
 // 수식이 참조한 조인 이름. 차원이 안 쓰는 조인이라도 여기 나오면 붙여야 한다
@@ -98,7 +98,7 @@ function renderExpr(name, m, sql, where) {
   return out;
 }
 
-// 조인 이름이 그대로 SQL 별칭이 되므로 예약어면 생성된 쿼리가 깨진다.
+// 조인 이름이 그대로 SQL alias 가 되므로 예약어면 생성된 쿼리가 깨진다.
 // GoogleSQL 예약어 78개 — zetasql/docs/lexical.md 의 Reserved keywords.
 // order 가 여기 들어 있다. entity 이름으로는 괜찮지만 조인 이름으로는 못 쓴다
 const RESERVED = new Set([
@@ -115,17 +115,17 @@ const RESERVED = new Set([
   "ROLLUP",
 ]);
 
-// 선언 순서대로, 실제로 쓰이는 조인만. 이름이 곧 SQL 별칭이다
+// 선언 순서대로, 실제로 쓰이는 조인만. 이름이 곧 SQL alias 다
 function resolveJoins(name, m, dims) {
   const e    = ENTITIES[m.entity];
   const used = new Set(dims.filter((d) => d.via).map((d) => d.via));
 
   for (const j of Object.keys(e.joins || {})) {
     if (j === "base") {
-      throw new Error(`[${name}] 조인 이름 'base'는 fact 별칭과 겹친다`);
+      throw new Error(`[${name}] 조인 이름 'base'는 fact 의 alias 와 겹친다`);
     }
     if (RESERVED.has(j.toUpperCase())) {
-      throw new Error(`[${name}] 조인 이름 '${j}'는 GoogleSQL 예약어라 별칭으로 쓸 수 없다`);
+      throw new Error(`[${name}] 조인 이름 '${j}'는 GoogleSQL 예약어라 alias 로 쓸 수 없다`);
     }
   }
 

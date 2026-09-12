@@ -312,11 +312,11 @@ function resolveJoins(name, m, dims) {
 **두 곳에서 모아 한 곳에서 순서를 준다.**
 
 조인이 필요한 이유는 둘이다 — 차원이 그 조인을 거치거나(`via`), 지표 수식이
-그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 부어 중복을 없앤다.
+그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 모아 중복을 없앤다.
 
 `Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않는다.** 그래서 마지막에
 `Object.keys(e.joins)`로 다시 훑는다. `LEFT JOIN` 순서가 선언 순서와 같아지고,
-지표가 달라져도 같은 조인은 같은 자리에 온다. diff를 읽을 수 있다.
+지표가 달라져도 같은 조인은 같은 자리에 온다. diff 가 읽기 쉬워진다.
 
 `order_item`의 차원 8개 중 7개가 조인이 필요한데, 실제 조인은 **2번**이다.
 
@@ -326,11 +326,10 @@ country · age_group · gender · channel     → user
 order_status                               → 조인 없음 (via: null)
 ```
 
-**예전에는 `Map`으로 슬롯을 역산했다.** `dims`를 훑어 `(테이블, 키)` 조합을 키로
-삼고 중복을 지우는 방식이었는데, 조인에 이름이 생기면서 그 계산이 없어졌다.
-`entities.js`의 `joins`를 읽기만 하면 된다.
+**예전에는 `dims`를 훑어 `(테이블, 키)` 조합으로 조인 슬롯을 되짚어 찾았다.**
+조인에 이름이 생기면서 그 계산이 없어졌고, 이제 `entities.js`의 `joins`를 읽기만 하면 된다.
 
-역할 차원(같은 dim을 두 키로 참조)도 역산할 필요가 없다. 이름이 다르면 다른 조인이다.
+역할 차원(같은 dim을 두 키로 참조)도 되짚을 필요가 없다. 이름이 다르면 다른 조인이다.
 
 ```js
 joins: {
@@ -427,10 +426,10 @@ const joinClause = (ctx, j) =>
   `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 ```
 
-`dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 차원이면 별칭을 붙이고,
+`dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 차원이면 조인 이름을 붙이고,
 fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
 
-**조인 이름이 그대로 SQL 별칭이 된다.** `entities.js`에 `product`라고 적으면
+**조인 이름이 그대로 SQL alias 가 된다.** `entities.js`에 `product`라고 적으면
 생성된 SQL에도 `AS product`가 나온다. 그래서 예약어를 쓸 수 없고,
 `resolveJoins`가 `RESERVED` 78개와 `base`를 컴파일 타임에 막는다 — `order`가 거기 있다.
 
@@ -506,7 +505,7 @@ function renderExpr(name, m, sql, where) {
 }
 ```
 
-**왜 한정자가 필요한가** — `metrics.js`의 수식은 선언 그대로 SQL에 꽂힌다.
+**왜 테이블 접두사가 필요한가** — `metrics.js`의 수식은 선언 그대로 SQL에 들어간다.
 
 ```
 SUM(IF(is_revenue_recognized, unit_cost, 0))
@@ -517,8 +516,8 @@ SUM(IF(is_revenue_recognized, unit_cost, 0))
 `user_id`도 같다. `dataform compile`은 못 잡는다 — **문자열일 뿐이라 통과하고
 실행 단계에서 터진다.**
 
-**왜 중괄호인가** — 한정자를 붙이려면 어느 토큰이 컬럼인지 알아야 한다.
-정규식으로 추측하면 끝없이 샌다.
+**왜 중괄호인가** — 접두사를 붙이려면 어느 토큰이 컬럼인지 알아야 한다.
+정규식으로 추측하면 예외가 끝없이 나온다.
 
 ```
 COUNTIF(status = "returned")     → "returned" 가 문자열인지 컬럼인지
@@ -540,13 +539,13 @@ EXTRACT(YEAR FROM dt)            → YEAR · FROM 은 키워드
 | `COUNTIF({status} = "returned")` | `COUNTIF(base.status = "returned")` |
 | `SUM(CAST({sale_price} AS INT64))` | `SUM(CAST(base.sale_price AS INT64))` |
 
-**중괄호를 깜빡하면** 컬럼이 한정되지 않은 채 남는다. 그러면 원래의 ambiguous
-에러가 난다 — **시끄럽게 터지지 조용히 틀리지 않는다.** 이게 추측 방식과의 차이다.
+**중괄호를 깜빡하면** 접두사가 붙지 않은 채 남아 원래의 ambiguous 에러가 난다 —
+**값이 틀리는 대신 바로 멈춘다.** 이게 추측 방식과의 차이다.
 
 `{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡는다.
 
-**`product`는 누구 이름인가** — `entities.js`의 `joins`에 적힌 이름이다.
-생성기가 만든 내부 별칭이 아니므로 선언이 조립 방식을 알게 되지 않는다 (P5).
+**`product`는 어디서 온 이름인가** — `entities.js`의 `joins`에 적힌 이름이다.
+생성기가 만든 이름이 아니므로 선언이 생성기 내부를 모른다 (P5).
 선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막는다.
 
 ```
