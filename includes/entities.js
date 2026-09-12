@@ -14,6 +14,11 @@
 //
 // pk는 반드시 surrogate key다 (P2). 이 DW의 자연키는 소스가 ID를 재사용해
 // 유일하지 않고, 자연키로 조인하면 에러 없이 조용히 fan-out 된다.
+//
+// refresh 는 daily_ 를 어떻게 갱신할지다. 상류가 정한다 — 상류가 전체 재생성하는
+// fact 위에 증분을 올리면 과거 구간의 변경을 놓친다.
+//   "incremental"  상류 raw 가 [ds-3, ds] 만 덮어쓴다. 그 구간만 다시 읽는다
+//   "table"        상류가 전체 재생성한다. 우리도 매번 다시 만든다
 
 // 이름 규칙은 naming.js 한 곳에만 둔다 (P19). 여기서 문자열을 직접 쓰면
 // 접두사가 두 곳에 생기고, 어긋나도 ctx.ref() 가 실패하기 전까지 모른다
@@ -27,6 +32,9 @@ const self = (col) => ({ via: null, col });
 
 const ENTITIES = {
   order_item: {
+    // raw orders · order_items 가 [ds-3, ds] 덮어쓰기. order_items 는 부모
+    // (orders.created_at) 시각으로 잘리므로 ordered_date 축이 orders 와 같다
+    refresh:  "incremental",
     source:   martName("fct_order_items"),
     pk:       "order_item_key",
     date_col: "ordered_date",
@@ -53,6 +61,7 @@ const ENTITIES = {
   // 주문 grain에는 상품 차원이 없다. 한 주문이 여러 상품을 포함하므로
   // 카테고리가 정의되지 않는다. 이 공백이 order_count를 여기 둔 근거다 (P10).
   order: {
+    refresh:  "incremental",   // raw orders 가 [ds-3, ds] 덮어쓰기
     source:   martName("fct_orders"),
     pk:       "order_key",
     date_col: "ordered_date",
@@ -72,6 +81,9 @@ const ENTITIES = {
   },
 
   session: {
+    // 상류 fct_sessions 가 증분이 아니라 매번 전체 재생성이다.
+    // 과거 구간이 바뀌지 않는다고 확인되면 incremental 로 바꾼다
+    refresh:  "table",
     source:   martName("fct_sessions"),
     pk:       "session_id",
     date_col: "session_date",
@@ -90,6 +102,7 @@ const ENTITIES = {
   },
 
   user_event: {
+    refresh:  "incremental",   // dbt fct_user_events 가 [ds-3, ds] 증분
     source:   martName("fct_user_events"),
     pk:       "event_key",
     date_col: "event_date",
@@ -113,4 +126,7 @@ const allDims = (entity) => Object.keys(ENTITIES[entity].dims);
 // 지표 수식이 참조할 수 있는 조인 이름. 선언되지 않은 이름은 build.js가 거부한다
 const allJoins = (entity) => Object.keys(ENTITIES[entity].joins || {});
 
-module.exports = { ENTITIES, allDims, allJoins };
+// daily_ 갱신 방식. gen_daily.js 가 이 값으로 type 을 고른다
+const refreshOf = (entity) => ENTITIES[entity].refresh;
+
+module.exports = { ENTITIES, allDims, allJoins, refreshOf };

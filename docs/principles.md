@@ -393,6 +393,27 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 **P21. 알려진 상류 결함은 우회하지 말고 기록한다.**
 조용한 우회는 문제를 숨긴다. 5장에 적고 assertion으로 감시한다.
 
+**P22. 갱신 방식은 상류를 따른다. 상류보다 촘촘하게 잡지 않는다.**
+
+`daily_`의 증분 구간은 **상류 raw 의 불변 경계**에서 나온다.
+`orders` · `order_items` · `events` 가 매 런마다 `[ds-3, ds]` 4일치를 덮어쓰므로,
+그보다 오래된 raw 는 바뀌지 않는다. 같은 값을 쓴다 (`build.js`의 `LOOKBACK_DAYS`).
+
+| | |
+|---|---|
+| 좁게 잡으면 | 늦게 도착한 행을 **영원히** 놓친다. 5장의 결함 2·3·4가 전부 그 구간이다 |
+| 넓게 잡으면 | 이득 없이 다시 읽기만 한다 |
+
+기준일은 `CURRENT_DATE`가 아니라 **이미 적재된 `MAX(dt)`** 다.
+파이프라인이 며칠 멈췄다 재개해도 그 사이가 비지 않는다.
+
+**상류가 전체 재생성하는 fact 위에는 증분을 올리지 않는다.**
+`fct_sessions`가 그렇다 — 과거 구간의 값이 바뀔 수 있다는 뜻이므로 `session` entity는
+`refresh: "table"`이다. 판단 근거는 `entities.js`의 선언에 적는다.
+
+상류 **모델 로직**이 바뀌어 과거 값이 달라지는 것은 구간으로 못 잡는다.
+그때는 `--full-refresh`다.
+
 ---
 
 ## 4. 확정된 결정
@@ -408,6 +429,9 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | 기간 | `daily` `weekly` `monthly` `yearly` — 누계는 저장하지 않음 (P15) |
 | 비교 | `dod_base` `wow_base` `mom_base` `yoy_base` — 증감률은 저장하지 않음.<br>주간 YoY는 364일 시프트 |
 | SCD | 당분간 현재 상태만 사용. 이력 커버리지 4.46% |
+| `daily_` 갱신 | entity별. 상류를 따른다 (P22). 증분 구간 `[ds-3, ds]` |
+| `metric_` 갱신 | 전부 `table`. 하루가 늘면 그 주·월·연 행과 1년 뒤 `yoy_base`까지 바뀐다 |
+| clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 이 프로젝트는 8.5 MB다 |
 
 `metric_<metric>`은 `period_type` 판별 컬럼으로 모든 기간을 담고 `daily`도 포함한다.
 두 테이블 모두 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라

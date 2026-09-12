@@ -5,7 +5,7 @@ BigQuery + Dataform 위에 커머스 semantic layer를 구축하는 프로젝트
 변환(transformation)은 **dbt-airflow**가 담당하고, 이 레포는 **semantic layer만** 담당한다.
 DW 테이블은 만들지 않고 `declaration`으로 읽기만 한다.
 
-- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P21 (세부 7개 포함 28항)
+- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 7개 포함 29항)
 - 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 14 · 비율 7 · 제외 5
 - 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 18가지 · `build.js` 읽는 순서
 
@@ -177,7 +177,7 @@ definitions/                        Dataform action
   assertions/upstream_contract.js   상류 계약 감시
 
 docs/
-  principles.md                     P1~P21 · 확정된 결정 · 알려진 결함
+  principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
   metrics.md                        지표 정의서 · 집계 경로 · 추가 절차
   js-patterns.md                    코드에 쓰인 JS 패턴 18가지 + build.js 읽는 순서
 ```

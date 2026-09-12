@@ -144,12 +144,35 @@ const joinClause = (ctx, j) =>
   `LEFT JOIN ${ctx.ref(j.to)} AS ${j.name}\n` +
   `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 
+// ── 증분 구간 ────────────────────────────────────────────────
+// 상류 raw 는 매 런마다 [ds-3, ds] 4일치를 덮어쓴다 (airflow config.py).
+// 그보다 오래된 raw 는 바뀌지 않으므로 여기가 불변 경계다.
+//
+// 구간을 좁히면 늦게 도착한 행을 영원히 놓친다 — 결함 2·3·4 가 전부 그 구간에
+// 몰려 있다. 넓히면 이득 없이 다시 읽기만 한다. 상류와 같은 값을 쓴다.
+//
+// CURRENT_DATE 가 아니라 이미 적재된 MAX(dt) 를 기준으로 잡는다. 파이프라인이
+// 며칠 멈췄다 재개해도 그 사이가 비지 않는다.
+//
+// 상류 모델의 로직이 바뀌어 과거 구간의 값이 달라지면 이 구간으로는 못 잡는다.
+// 그때는 --full-refresh 로 다시 만든다.
+const LOOKBACK_DAYS = 3;
+
+const incrementalWhere = (ctx, e) =>
+  `base.${e.date_col} >= DATE_SUB(` +
+  `(SELECT MAX(dt) FROM ${ctx.self()}), INTERVAL ${LOOKBACK_DAYS} DAY)`;
+
 // ── 1단계: daily — 조인이 실행되는 유일한 곳 (P5) ─────────────
-function dailySQL(ctx, name, m) {
+// incremental 은 gen_daily.js 가 ctx.incremental() 을 그대로 넘긴다.
+// 첫 적재에서는 false 라 조건이 붙지 않고 전 기간을 만든다.
+function dailySQL(ctx, name, m, { incremental = false } = {}) {
   const e     = ENTITIES[m.entity];
   const dims  = resolveDims(name, m);
   const joins = resolveJoins(name, m, dims);
 
+  const conds = [];
+  if (m.filter)   conds.push(renderExpr(name, m, m.filter, "filter"));
+  if (incremental) conds.push(incrementalWhere(ctx, e));
 
   return `
 SELECT
@@ -158,7 +181,7 @@ SELECT
   ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
 ${joins.map((j) => joinClause(ctx, j)).join("\n")}
-${m.filter ? `WHERE ${renderExpr(name, m, m.filter, "filter")}` : ""}
+${conds.length ? `WHERE ${conds.join("\n  AND ")}` : ""}
 GROUP BY ${seq(dims.length + 1)}`.trim();
 }
 
@@ -253,7 +276,7 @@ ${joins.join("\n")}`.trim();
 }
 
 module.exports = {
-  seq, eqNullSafe, renderExpr, exprJoins,
+  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };
