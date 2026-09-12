@@ -15,15 +15,19 @@
 // pk는 반드시 surrogate key다 (P2). 이 DW의 자연키는 소스가 ID를 재사용해
 // 유일하지 않고, 자연키로 조인하면 에러 없이 조용히 fan-out 된다.
 
-const PRODUCT = "sem_dim_products";
-const USER    = "sem_dim_users";
+// 이름 규칙은 naming.js 한 곳에만 둔다 (P19). 여기서 문자열을 직접 쓰면
+// 접두사가 두 곳에 생기고, 어긋나도 ctx.ref() 가 실패하기 전까지 모른다
+const { martName } = require("includes/naming");
+
+const PRODUCT = martName("dim_products");
+const USER    = martName("dim_users");
 
 // via 가 null 이면 fact 자체 컬럼이라 조인이 필요 없다
 const self = (col) => ({ via: null, col });
 
 const ENTITIES = {
   order_item: {
-    source:   "sem_fct_order_items",
+    source:   martName("fct_order_items"),
     pk:       "order_item_key",
     date_col: "ordered_date",
     grain:    "주문 라인 1건",
@@ -49,7 +53,7 @@ const ENTITIES = {
   // 주문 grain에는 상품 차원이 없다. 한 주문이 여러 상품을 포함하므로
   // 카테고리가 정의되지 않는다. 이 공백이 order_count를 여기 둔 근거다 (P10).
   order: {
-    source:   "sem_fct_orders",
+    source:   martName("fct_orders"),
     pk:       "order_key",
     date_col: "ordered_date",
     grain:    "주문 1건",
@@ -68,7 +72,7 @@ const ENTITIES = {
   },
 
   session: {
-    source:   "sem_fct_sessions",
+    source:   martName("fct_sessions"),
     pk:       "session_id",
     date_col: "session_date",
     grain:    "세션 1건",
@@ -86,7 +90,7 @@ const ENTITIES = {
   },
 
   user_event: {
-    source:   "sem_fct_user_events",
+    source:   martName("fct_user_events"),
     pk:       "event_key",
     date_col: "event_date",
     grain:    "이벤트 1건",

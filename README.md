@@ -335,16 +335,18 @@ tags: ["monitoring"]  상류가 어긴 것.      별도 워크플로로 돌려 �
 ### 파일 간
 
 ```
-entities.js ──┬──→ metrics.js   allDims() 로 축별 가산성을 펼친다
-              │
-              └──┐
-periods.js ──────┼──→ build.js   ENTITIES · PERIODS · naming 을 모두 읽는다
-naming.js  ──────┘
+naming.js ──→ entities.js ──┬──→ metrics.js   allDims() 로 축별 가산성을 펼친다
+                            │
+     ┌──────────────────────┘
+     │
+periods.js ──┬──→ build.js   ENTITIES · PERIODS · naming 을 모두 읽는다
+naming.js  ──┘
 
 build.js ────────→ (미구현) gen_daily.js · gen_metric.js
 ```
 
-`build.js`만 다른 셋을 모두 읽는다. 선언 파일끼리는 `entities → metrics` 하나뿐이다.
+`naming.js`는 아무것도 읽지 않는다 — 이름 규칙이 다른 선언에 의존하면 순환한다.
+`build.js`가 나머지를 모두 읽고, 선언 파일끼리는 `naming → entities → metrics` 한 줄이다.
 
 ### 테이블 간 (`dataform compile`이 만드는 그래프)
 
