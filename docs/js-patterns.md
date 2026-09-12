@@ -639,31 +639,30 @@ NULL로 채운 컬럼을 두면 소비자가 "값이 없다"와 "만들지 않�
 
 ---
 
-## 17. 이중 이스케이프 — JS 문자열 안의 SQL 문자열
+## 17. 한 줄 함수로 남기기 — 이름이 주는 것
 
-`includes/build.js:20-21`
+`includes/build.js:18-21`
 
 ```js
-const eqNullSafe = (l, r) =>
-  `COALESCE(CAST(${l} AS STRING), '\\u0000') = COALESCE(CAST(${r} AS STRING), '\\u0000')`;
+const eqNullSafe = (l, r) => `${l} IS NOT DISTINCT FROM ${r}`;
 ```
 
-JS 소스의 `\\u0000`이 만드는 **문자열**은 `\u0000`(백슬래시 + u0000, 6글자)이다.
-JS는 여기서 아무 문자도 만들지 않는다 — 그냥 텍스트다.
+차원이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고,
+`ON` 절에서 그 행은 매칭되지 않는다. 비교 기준값이 통째로 비어버린다.
+GoogleSQL의 `IS NOT DISTINCT FROM`은 `NULL = NULL`을 `TRUE`로 본다.
 
-그 텍스트가 SQL로 넘어가면 **BigQuery의 파서**가 `'\u0000'`을 NUL 문자로 해석한다.
+**예전에는 이렇게 썼다.**
 
+```js
+`COALESCE(CAST(${l} AS STRING), '\\u0000') = COALESCE(CAST(${r} AS STRING), '\\u0000')`
 ```
-JS 소스      '\\u0000'      ← 백슬래시를 이스케이프
-생성된 SQL   '\u0000'       ← 6글자 텍스트. 실제 NUL 문자가 아니다
-BigQuery     NUL 문자        ← SQL 파서가 해석
-```
 
-**이스케이프가 두 단계**라는 것이 요점이다. `\u0000`이라고 쓰면 JS가 먼저
-NUL 문자를 만들어버려서 생성된 SQL 파일에 보이지 않는 제어문자가 섞인다.
+BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 틀렸다.
+게다가 조인 키를 `CAST`로 감싸면 sargable하지 않아 성능만 잃는다.
+지표 하나당 비교 self-join이 최대 4개라 누적된다.
 
-NUL을 고른 이유는 실제 데이터에 나올 일이 없어 **차원 값과 충돌하지 않는 sentinel**이기
-때문이다. `'~'`이나 `'__NULL__'`을 쓰면 그 값을 가진 행과 구별되지 않는다.
+한 줄로 줄어들었는데도 함수로 남긴 이유는 **이름이 뜻을 대신하기 때문이다.**
+`metricSQL`의 조인 조립부는 "NULL 안전 비교"라는 뜻만 읽고 지나가면 된다.
 
 ---
 
@@ -768,5 +767,5 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 | `switch` + `return` | `build.js` — `rollupExpr` |
 | `in` 연산자 | `build.js` — 미선언과 `false` 구분 |
 | `continue` | `build.js` — `metricSQL` 비교 루프 |
-| 이중 이스케이프 | `build.js` — `eqNullSafe` |
+| 한 줄 함수 + 이름 | `build.js` — `eqNullSafe` |
 | 병렬 누적 배열 | `build.js` — `joins` · `cols` |

@@ -15,10 +15,10 @@ const { dailyName, baseColumn }   = require("includes/naming");
 // ── 공통 ──────────────────────────────────────────────────────
 const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 
-// BigQuery에는 IS NOT DISTINCT FROM 이 없다. 차원이 NULL이면 = 비교가
-// false가 되어 그 행이 통째로 사라지므로 COALESCE로 감싼다 (P: 차원 NULL).
-const eqNullSafe = (l, r) =>
-  `COALESCE(CAST(${l} AS STRING), '\\u0000') = COALESCE(CAST(${r} AS STRING), '\\u0000')`;
+// 차원이 NULL이면 = 비교가 false가 되어 그 행이 통째로 사라진다 (P: 차원 NULL).
+// GoogleSQL의 IS NOT DISTINCT FROM 은 NULL = NULL 을 TRUE 로 본다.
+// COALESCE(CAST(...)) 로 감싸면 조인 키가 sargable 하지 않아 손해만 본다.
+const eqNullSafe = (l, r) => `${l} IS NOT DISTINCT FROM ${r}`;
 
 // 조인 슬롯 식별자. 테이블 이름만 쓰면 역할 차원이 충돌한다
 const joinAlias = (d) => `${d.from}__${d.key}`;
