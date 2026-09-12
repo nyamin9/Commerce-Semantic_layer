@@ -414,6 +414,12 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 상류 **모델 로직**이 바뀌어 과거 값이 달라지는 것은 구간으로 못 잡는다.
 그때는 `--full-refresh`다.
 
+**증분 테이블의 MERGE 키에는 `NULL` 이 있으면 안 된다.**
+`ON` 절이 `=` 비교라 `NULL` 인 키는 영원히 매칭되지 않고, 재실행마다 그 행이
+쌓인다 — 에러 없이 숫자만 늘어난다. 차원의 `NULL` 자체는 정당한 버킷이지만(P6-1)
+MERGE 키로는 쓸 수 없다. 마트에서 라벨을 붙이고(unknown member), `daily_` 에
+`nonNull` assertion 을 걸어 확인한다.
+
 ---
 
 ## 4. 확정된 결정
@@ -451,6 +457,7 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | 4 | `fct_orders` 적재 지연 | order_items는 08-26, orders는 08-24까지 | 주문 grain 지표가 최근 이틀 결측 |
 | 5 | SCD 이력 부족 | `valid_from` 최솟값 2026-08-15, fact는 2019-01-13부터 | point-in-time 매칭률 4.46% |
 | 6 | `dim_date` 부재 | — | semantic layer가 생성 |
+| 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 **24개**. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 라벨. 증분 MERGE 키라 NULL 을 못 둔다 |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased`인데 `viewed_product`가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없다** |
 
 2~4번은 모두 최근 구간에 몰려 있어 late-arriving 문제로 보인다.
