@@ -155,7 +155,7 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
 | 4 | `gen_daily.js` | ✅ 14개 생성 완료. 원본 대조 통과 |
 | 4 | `gen_metric.js` | ✅ 14개 생성 완료 |
-| 5 | `gen_registry.js` | ⬜ |
+| 5 | `gen_registry.js` | ✅ `metric_registry` 26행 생성 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | ⬜ |
 
 ---
@@ -178,6 +178,7 @@ definitions/                        Dataform action
   assertions/upstream_contract.js   상류 계약 감시
   semantic/gen_daily.js             daily_<metric> 14개를 선언에서 생성
   semantic/gen_metric.js            metric_<metric> 14개. 기간 확장 + 비교 기준값
+  metadata/gen_registry.js          metric_registry. 선언만 읽는다 (ref 없음)
 
 docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
@@ -411,6 +412,6 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
 | `semantic` | `daily_*` 14 + `metric_*` 14 **생성 완료.** 711.2 MB · 854만 행. 최대 55.72 MB |
-| `semantic_metadata` | 비어 있음 — 5단계에서 `metric_registry` |
-| `semantic_assertions` | assertion 결과. 마트 14 + `daily_` 28 + `metric_` 28 + 상류 감시 5 |
+| `semantic_metadata` | `metric_registry` 생성됨. base 14 · ratio 7 · excluded 5 |
+| `semantic_assertions` | assertion 결과. 마트 14 + `daily_` 28 + `metric_` 28 + registry 2 + 상류 감시 5 |
 
