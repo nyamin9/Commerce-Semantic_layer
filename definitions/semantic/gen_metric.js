@@ -28,11 +28,16 @@ Object.entries(METRICS).forEach(([name, m]) => {
   };
   for (const d of dims) columns[d] = `차원. ${e.dims[d].via || "fact 자체 컬럼"}`;
 
-  // 증감률이 아니라 시프트한 기간의 값이다. 나눗셈은 소비 시점에 한다 (P12)
+  // 증감률이 아니라 시프트한 기간의 값이다. 나눗셈은 소비 시점에 한다 (P12).
+  //
+  // NULL 은 0 이 아니라 "그 기간에 같은 차원 조합이 없었다" 는 뜻이다.
+  // 차원을 걷어내며 SUM 하면 NULL 이 빠져 과소 집계된다 — 걷을 거면 그 grain 에서
+  // 다시 시프트 조인해야 한다 (P14-1)
   for (const [label, applicable] of applicableCompares(m)) {
     columns[baseColumn(label)] =
       `${applicable.map(([p]) => p).join(" · ")} 행에서만 채워진다. ` +
-      `${label.toUpperCase()} 기준 기간의 값 — 증감률이 아니다 (P14)`;
+      `${label.toUpperCase()} 기준 기간의 값 — 증감률이 아니다 (P14). ` +
+      `NULL 은 그 기간에 같은 차원 조합이 없었다는 뜻. 차원을 걷으며 SUM 하지 말 것 (P14-1)`;
   }
 
   publish(metricName(name), {
