@@ -199,6 +199,23 @@ function rollupExpr(col, additive) {
 const canRollup = (m, pName) =>
   PERIODS[pName].type === "passthrough" || rollupExpr("x", m.additive.time) !== null;
 
+// 이 지표가 만들 수 있는 기간. additive.time 이 롤업 불가면 daily 만 남는다 (P10-3)
+const usablePeriods = (m) => Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
+
+// 라벨 → [[기간, 간격], ...] 중 이 지표가 만들 수 있는 것만.
+// metricSQL 이 조인을 만들 때와 gen_metric.js 가 컬럼을 문서화할 때 같은 규칙을 써야
+// 한다. 두 곳에 따로 쓰면 언젠가 어긋나고, 어긋나도 아무도 모른다 (P19)
+function applicableCompares(m) {
+  const usable = usablePeriods(m);
+  const acc = [];
+
+  for (const [label, byPeriod] of Object.entries(COMPARE_LABELS)) {
+    const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
+    if (applicable.length) acc.push([label, applicable]);
+  }
+  return acc;
+}
+
 // ── 2단계: metric — 기간 확장 + 비교 기준값 ───────────────────
 // period_type 별 한 블록을 UNION ALL 한다.
 // period_start 는 기간의 시작일, as_of_date 는 종료일이다 (P13).
@@ -221,7 +238,7 @@ GROUP BY ${seq(dims.length + 3)}`;
 
 function metricSQL(ctx, name, m) {
   const dims   = resolveDims(name, m).map((d) => d.name);
-  const usable = Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
+  const usable = usablePeriods(m);
 
   if (usable.length === 0) {
     throw new Error(`[${name}] 생성 가능한 기간이 없다. additive.time을 확인한다`);
@@ -233,10 +250,7 @@ function metricSQL(ctx, name, m) {
   // 해당 라벨을 선언한 period_type 행에서만 채워지고 나머지는 NULL 이다.
   const joins = [];
   const cols  = [];
-  for (const [label, byPeriod] of Object.entries(COMPARE_LABELS)) {
-    const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
-    if (applicable.length === 0) continue;
-
+  for (const [label, applicable] of applicableCompares(m)) {
     const a  = `b_${label}`;
     const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
 
@@ -277,6 +291,7 @@ ${joins.join("\n")}`.trim();
 
 module.exports = {
   seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS,
+  usablePeriods, applicableCompares,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };

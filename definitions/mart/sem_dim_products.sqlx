@@ -11,7 +11,7 @@ config {
   columns: {
     product_id:  "상품 식별자. PK",
     category:    "상품 카테고리. 지표 전반의 표준 분류 축",
-    brand:       "브랜드. 소스가 비어 있으면 '(unknown)'. 증분 MERGE 키라 NULL 을 둘 수 없다",
+    brand:       "브랜드. 소스가 비어 있으면 '(unknown)'. 차원은 아니다 (P4)",
     department:  "부문",
     unit_cost:   "단위 원가",
     retail_price:"정가",
@@ -21,8 +21,8 @@ config {
 -- DW 컬럼명을 semantic layer 규칙에 맞춘다. 이름 변경은 이 레이어의 일이고,
 -- 상류가 category_name 을 바꿔도 충격이 여기서 멈춘다.
 -- brand 는 소스에서 24개 상품이 비어 있다 (2026-09-13 측정. 결함 8).
--- NULL 로 두면 daily_ 의 증분 MERGE 키에서 = 매칭이 실패해 재실행마다 행이 쌓인다.
--- 라벨을 붙여 버킷을 드러내는 쪽이 Kimball 의 unknown member 이기도 하다 (P6-1).
+-- 라벨을 붙여 버킷을 드러낸다 — Kimball 의 unknown member (P6-1).
+-- 차원으로는 쓰지 않는다. 고유값이 2,753개라 롤업이 깨진다 (P4, entities.js 주석).
 SELECT
   product_id,
   product_name,

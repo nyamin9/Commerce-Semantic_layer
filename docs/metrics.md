@@ -28,7 +28,6 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**�
 | 차원 | 조인 이름 | 출처 | 조인 키 | `order_item` | `order` | `session` | `user_event` |
 |---|---|---|---|:---:|:---:|:---:|:---:|
 | `category` | `product` | `sem_dim_products` | `product_id` | ● | | | |
-| `brand` | `product` | `sem_dim_products` | `product_id` | ● | | | |
 | `department` | `product` | `sem_dim_products` | `product_id` | ● | | | |
 | `country` | `user` | `sem_dim_users` | `user_id` | ● | ● | ● | ● |
 | `age_group` | `user` | `sem_dim_users` | `user_id` | ● | ● | | |

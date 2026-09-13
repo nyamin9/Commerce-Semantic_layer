@@ -46,9 +46,12 @@ const ENTITIES = {
       user:    { to: USER,    key: "user_id"    },
     },
 
+    // brand 는 차원이 아니다 (P4). 고유값 2,753개라 격자를 2,753배 부풀리는데,
+    // 그러면 기간 롤업이 작동하지 않는다 — 2,754일을 8년으로 접어도 행이
+    // 178,916 로 5% 밖에 안 줄었다. 빼면 83,320 이다 (2026-09-13 측정).
+    // 브랜드별 집계가 필요하면 semantic_mart 에 직접 SQL 을 쓴다.
     dims: {
       category:            { via: "product", col: "category"   },
-      brand:               { via: "product", col: "brand"      },
       department:          { via: "product", col: "department" },
       country:             { via: "user",    col: "country"             },
       age_group:           { via: "user",    col: "age_group"           },
