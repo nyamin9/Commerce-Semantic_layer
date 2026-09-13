@@ -195,7 +195,7 @@ docs/
 | | 파일 | 하는 일 |
 |---|---|---|
 | **builder** | `includes/build.js` | 선언을 읽어 **SQL 문자열**을 만든다 |
-| **generator** | `definitions/gen_*.js` ※ 미구현 | builder를 불러 **Dataform action**(테이블)을 만든다 |
+| **generator** | `definitions/**/gen_*.js` | builder를 불러 **Dataform action**(테이블)을 만든다 |
 
 ---
 
@@ -359,7 +359,8 @@ naming.js ──→ entities.js ──┬──→ metrics.js   allDims() 로 �
 periods.js ──┬──→ build.js   ENTITIES · PERIODS · naming 을 모두 읽는다
 naming.js  ──┘
 
-build.js ────────→ (미구현) gen_daily.js · gen_metric.js
+build.js ────────→ gen_daily.js · gen_period.js · gen_metric.js
+metrics.js ──────→ gen_registry.js   (테이블을 안 읽는다)
 ```
 
 `naming.js`는 아무것도 읽지 않는다 — 이름 규칙이 다른 선언에 의존하면 순환한다.
@@ -376,7 +377,8 @@ fct_sessions     → sem_fct_sessions
 fct_user_events  → sem_fct_user_events
 (없음)           → sem_dim_date   ※ 하류가 없다 (아래)
 
-sem_* ──→ daily_<metric> ──→ metric_<metric>        ※ 미구현
+sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metric>
+(없음)   →  metric_registry                     선언만 읽는다
 ```
 
 마트 테이블끼리는 서로 참조하지 않는다. 전부 DW declaration만 읽는다 —
