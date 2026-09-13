@@ -57,7 +57,10 @@ const ENTITIES = {
       age_group:           { via: "user",    col: "age_group"           },
       gender:              { via: "user",    col: "gender"              },
       acquisition_channel: { via: "user",    col: "acquisition_channel" },
-      order_status:        self("order_status"),
+      // 라인 grain 이므로 라인 상태를 쓴다. 헤더 상태(order_status)를 쓰면
+      // 한 주문에 배송분과 반품분이 섞일 때 갈라진다. DW 의 is_revenue_recognized
+      // 도 라인 상태에서 나온다 — order_item_status NOT IN ('cancelled','returned')
+      order_item_status:   self("order_item_status"),
     },
   },
 

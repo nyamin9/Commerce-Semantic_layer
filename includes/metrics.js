@@ -51,6 +51,12 @@ const METRICS = {
     additive: uniform("order_item", true),
     description: "매출 인식된 매출총이익",
   },
+  order_item_count: {
+    // 매출 인식 여부로 거르지 않는다. order_item_status 로 걸러 쓴다
+    entity: "order_item", expr: "COUNT(*)",
+    additive: uniform("order_item", true),
+    description: "주문 라인 수. 취소·반품 포함",
+  },
   units_sold: {
     entity: "order_item", expr: "COUNTIF({is_revenue_recognized})",
     additive: uniform("order_item", true),
@@ -64,9 +70,12 @@ const METRICS = {
   buyer_count: {
     // 고객 하나가 여러 날에 걸치므로 날짜축 비가산이다. 고객 grain fact가
     // 없어 entity를 옮길 수 없으므로 스케치로 저장한다 (P10-2).
-    entity: "order_item", expr: hll("user_id"), filter: "{is_revenue_recognized}",
+    //
+    // 매출 인식 필터를 걸지 않는다. order_item_status 가 차원이라 소비 시점에
+    // 거를 수 있고, 필터를 박으면 전체 구매자를 낼 방법이 없어진다 (P4).
+    entity: "order_item", expr: hll("user_id"),
     additive: uniform("order_item", "sketch"),
-    description: "구매 고객 수 (HLL 근사)",
+    description: "구매 고객 수 (HLL 근사). 취소·반품 포함",
   },
 
   // ── order ───────────────────────────────────────────────────

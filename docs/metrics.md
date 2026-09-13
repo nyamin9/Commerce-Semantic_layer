@@ -33,7 +33,8 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**�
 | `age_group` | `user` | `sem_dim_users` | `user_id` | ● | ● | | |
 | `gender` | `user` | `sem_dim_users` | `user_id` | ● | ● | | |
 | `acquisition_channel` | `user` | `sem_dim_users` | `user_id` | ● | ● | ● | |
-| `order_status` | — | fact 자체 | 조인 없음 | ● | ● | | |
+| `order_item_status` | — | fact 자체 | 조인 없음 | ● | | | |
+| `order_status` | — | fact 자체 | 조인 없음 | | ● | | |
 | `entry_traffic_source` | — | fact 자체 | 조인 없음 | | | ● | |
 | `browser` | — | fact 자체 | 조인 없음 | | | ● | |
 | `event_type` | — | fact 자체 | 조인 없음 | | | | ● |
@@ -271,9 +272,10 @@ periods.js   ────→  기간 롤업 + 비교 기준값 조인  ──→
 | `net_revenue` | `order_item` | `SUM({net_revenue})` | — | ● |
 | `cogs` | `order_item` | `SUM(IF({is_revenue_recognized}, {unit_cost}, 0))` | — | ● |
 | `gross_profit` | `order_item` | `SUM({net_gross_profit})` | — | ● |
+| `order_item_count` | `order_item` | `COUNT(*)` | — | ● |
 | `units_sold` | `order_item` | `COUNTIF({is_revenue_recognized})` | — | ● |
 | `units_returned` | `order_item` | `COUNTIF({order_item_status} = 'returned')` | — | ● |
-| `buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | `{is_revenue_recognized}` | ○ |
+| `buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | — | ○ |
 | `order_count` | `order` | `COUNT(*)` | — | ● |
 | `returned_order_count` | `order` | `COUNTIF({order_status} = 'returned')` | — | ● |
 | `session_count` | `session` | `COUNT(*)` | — | ● |
@@ -515,7 +517,7 @@ entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 �
 |---|---|---|
 | `category` · `brand` · `department` | `semantic_mart.sem_dim_products` | `product_id` |
 | `country` · `age_group` · `gender` · `acquisition_channel` | `semantic_mart.sem_dim_users` | `user_id` |
-| `order_status` | `sem_fct_order_items` 자체 컬럼 | 조인 없음 |
+| `order_item_status` | `sem_fct_order_items` 자체 컬럼 | 조인 없음 |
 
 이 중 필요한 것만 `dims`에 적으면, builder가 그 차원에 닿는 조인만 골라서 붙인다.
 

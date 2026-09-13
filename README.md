@@ -5,8 +5,8 @@ BigQuery + Dataform 위에 커머스 semantic layer를 구축하는 프로젝트
 변환(transformation)은 **dbt-airflow**가 담당하고, 이 레포는 **semantic layer만** 담당한다.
 DW 테이블은 만들지 않고 `declaration`으로 읽기만 한다.
 
-- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 7개 포함 29항)
-- 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 14 · 비율 7 · 제외 5
+- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 8개 포함 30항)
+- 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 15 · 비율 7 · 제외 5
 - 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 18가지 · `build.js` 읽는 순서
 
 ---
@@ -153,10 +153,21 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 | 1 | `includes/` 선언 계층 + builder | ✅ |
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
-| 4 | `gen_daily.js` | ✅ 14개 생성 완료. 원본 대조 통과 |
-| 4 | `gen_metric.js` | ✅ 14개 생성 완료 |
-| 5 | `gen_registry.js` | ✅ `metric_registry` 26행 생성 |
-| 6 | `rpt_*` 대조 후 SSOT 전환 | ⬜ |
+| 4 | `gen_daily.js` | ✅ 15개 생성 완료. 원본 대조 통과 |
+| 4 | `gen_metric.js` | 🔶 15개 중 12개. `order_item_count` · `units_sold` · `units_returned` 가 BigQuery CPU 한도 초과 |
+| 5 | `gen_registry.js` | ✅ `metric_registry` 27행 생성 |
+| 6 | `rpt_*` 대조 후 SSOT 전환 | 🔶 `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
+
+### 알려진 미해결 — `metric_` 롤업 재계산
+
+`metricSQL` 의 `rolled` CTE 가 **5번 참조되어 5번 재계산된다** (본 쿼리 1 + 비교 조인 4).
+차원 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의 CPU/바이트 비율 제한에 걸린다.
+
+스캔은 14 MB 라 비용 문제가 아니다 — **같은 집계를 5번 하는 낭비**가 본질이다.
+조인 술어를 바꿔도(=, COALESCE, IS NOT DISTINCT FROM 전부 3,600대) 변하지 않고,
+`rolled` 를 테이블로 물화하면 통과한다.
+
+해법은 `daily_` → `period_` → `metric_` 3단계로 나누는 것이다.
 
 ---
 
@@ -256,7 +267,7 @@ builder가 만든 이름이 아니라 여기 적힌 이름이라 선언이 build
 
 | export | 내용 |
 |---|---|
-| `METRICS` | 기본 지표 14개. `entity` · `expr` · `filter` · `dims` · `additive` · `description` |
+| `METRICS` | 기본 지표 15개. `entity` · `expr` · `filter` · `dims` · `additive` · `description` |
 | `RATIOS` | 비율 지표 7개. `numerator` · `denominator`. **테이블을 만들지 않는다** |
 | `EXCLUDED` | 의도적으로 제외한 5개와 그 이유. registry에는 남는다 |
 | `HLL_PRECISION` | 15 고정. 바꾸면 과거 스케치와 병합할 수 없다 |
@@ -411,7 +422,7 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
-| `semantic` | `daily_*` 14 + `metric_*` 14 **생성 완료.** 711.2 MB · 854만 행. 최대 55.72 MB |
+| `semantic` | `daily_*` 15 생성 완료. `metric_*` 12/15 — 나머지는 롤업 분리 후 (아래) |
 | `semantic_metadata` | `metric_registry` 생성됨. base 14 · ratio 7 · excluded 5 |
 | `semantic_assertions` | assertion 결과. 마트 14 + `daily_` 28 + `metric_` 28 + registry 2 + 상류 감시 5 |
 
