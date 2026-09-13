@@ -12,7 +12,7 @@
 const { METRICS }                      = require("includes/metrics");
 const { ENTITIES, refreshOf }          = require("includes/entities");
 const { dailyName }                    = require("includes/naming");
-const { dailySQL, resolveDims }        = require("includes/build");
+const { dailySQL, resolveDims, incrementalPreOps } = require("includes/build");
 
 Object.entries(METRICS).forEach(([name, m]) => {
   const e           = ENTITIES[m.entity];
@@ -35,21 +35,17 @@ Object.entries(METRICS).forEach(([name, m]) => {
     description: `${m.description} — 날짜 × 차원 집계. ${e.grain} 에서 산출`,
     columns,
 
-    // 증분은 (dt, 차원 전부) 로 MERGE 한다. 재처리 구간의 행이 덮이지 않고
-    // 쌓이면 그 구간만 두 배가 된다 — 에러 없이 숫자만 틀리는 사고다
-    uniqueKey: incremental ? ["dt", ...dims] : undefined,
-
+    // uniqueKey 를 주면 Dataform 이 MERGE 를 쓴다. MERGE 는 지우지 않아서
+    // 유령 행이 남으므로 쓰지 않는다 — preOps 에서 구간을 지우고 INSERT 한다
     bigquery: { partitionBy: "dt" },
 
-    // uniqueKey — 첫 적재는 INSERT 라 MERGE 가 유일성을 보장하지 않는다.
-    //   조인이 fan-out 되면 여기서 잡힌다.
-    //
-    // nonNull — 증분일 때만 차원까지 건다. MERGE 의 ON 은 = 비교라 NULL 인 키는
-    //   영원히 매칭되지 않고 재실행마다 그 행이 쌓인다. 에러 없이 숫자만 늘어난다.
-    //   차원의 NULL 자체는 정당한 버킷이지만(P6-1) MERGE 키로는 쓸 수 없다.
+    // 조인이 fan-out 되면 여기서 잡힌다. 증분이 구간을 지우고 다시 넣으므로
+    // 유령 행이 남지 않는다 — MERGE 를 쓸 때와 달리 차원에 NULL 이 있어도 된다 (P6-1)
     assertions: {
       uniqueKey: ["dt", ...dims],
-      nonNull:   incremental ? ["dt", ...dims] : ["dt"],
+      nonNull:   ["dt"],
     },
-  }).query((ctx) => dailySQL(ctx, name, m, { incremental: ctx.incremental() }));
+  })
+    .preOps((ctx) => ctx.when(ctx.incremental(), incrementalPreOps(ctx, e)))
+    .query((ctx) => dailySQL(ctx, name, m, { incremental: ctx.incremental() }));
 });

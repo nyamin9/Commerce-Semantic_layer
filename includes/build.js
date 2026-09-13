@@ -144,23 +144,36 @@ const joinClause = (ctx, j) =>
   `LEFT JOIN ${ctx.ref(j.to)} AS ${j.name}\n` +
   `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 
-// ── 증분 구간 ────────────────────────────────────────────────
-// 상류 raw 는 매 런마다 [ds-3, ds] 4일치를 덮어쓴다 (airflow config.py).
-// 그보다 오래된 raw 는 바뀌지 않으므로 여기가 불변 경계다.
+// ── 증분 구간 (insert_overwrite) ──────────────────────────────
+// MERGE 는 지우지 않는다. dim 속성이 바뀌면 (dt, 차원) 키가 달라져서 옛 행이
+// 매칭되지 않고 그대로 남는다 — 유령 행이 되어 합계가 부푼다. uniqueKey
+// assertion 도 못 잡는다. 키는 여전히 유일하기 때문이다 (2026-09-13 실측 3,933행).
 //
-// 구간을 좁히면 늦게 도착한 행을 영원히 놓친다 — 결함 2·3·4 가 전부 그 구간에
-// 몰려 있다. 넓히면 이득 없이 다시 읽기만 한다. 상류와 같은 값을 쓴다.
+// 그래서 구간을 통째로 지우고 다시 넣는다. dbt 의 insert_overwrite 와 같은 모양이다.
 //
-// CURRENT_DATE 가 아니라 이미 적재된 MAX(dt) 를 기준으로 잡는다. 파이프라인이
-// 며칠 멈췄다 재개해도 그 사이가 비지 않는다.
+// 경계를 변수로 고정하는 이유 — DELETE 가 MAX(dt) 를 바꾸므로 DELETE 와 본 쿼리가
+// 각자 계산하면 서로 다른 구간을 보고 그 사이가 중복되거나 빈다.
 //
-// 상류 모델의 로직이 바뀌어 과거 구간의 값이 달라지면 이 구간으로는 못 잡는다.
-// 그때는 --full-refresh 로 다시 만든다.
+// LEAST 를 쓰는 이유 — 상류 raw 는 [ds-3, ds] 만 덮어쓰지만, 우리가 며칠 쉬면
+// 그 사이 날짜도 새로 들어온다. 소스 기준만 쓰면 그 구간이 빈 채로 남는다.
+//   정상   우리 max ≈ 소스 max  →  소스 max - 3 부터
+//   밀림   우리 max ≪ 소스 max  →  우리 max - 3 부터. 빈 구간이 안 생긴다
 const LOOKBACK_DAYS = 3;
+const CUTOFF_VAR    = "reprocess_from";
 
-const incrementalWhere = (ctx, e) =>
-  `base.${e.date_col} >= DATE_SUB(` +
-  `(SELECT MAX(dt) FROM ${ctx.self()}), INTERVAL ${LOOKBACK_DAYS} DAY)`;
+function incrementalPreOps(ctx, e) {
+  return `DECLARE ${CUTOFF_VAR} DATE DEFAULT (
+  SELECT DATE_SUB(
+    LEAST(COALESCE(MAX(dt), DATE "1900-01-01"),
+          (SELECT MAX(${e.date_col}) FROM ${ctx.ref(e.source)})),
+    INTERVAL ${LOOKBACK_DAYS} DAY)
+  FROM ${ctx.self()}
+);
+---
+DELETE FROM ${ctx.self()} WHERE dt >= ${CUTOFF_VAR}`;
+}
+
+const incrementalWhere = (e) => `base.${e.date_col} >= ${CUTOFF_VAR}`;
 
 // ── 1단계: daily — 조인이 실행되는 유일한 곳 (P5) ─────────────
 // incremental 은 gen_daily.js 가 ctx.incremental() 을 그대로 넘긴다.
@@ -172,7 +185,7 @@ function dailySQL(ctx, name, m, { incremental = false } = {}) {
 
   const conds = [];
   if (m.filter)   conds.push(renderExpr(name, m, m.filter, "filter"));
-  if (incremental) conds.push(incrementalWhere(ctx, e));
+  if (incremental) conds.push(incrementalWhere(e));
 
   return `
 SELECT
@@ -290,7 +303,7 @@ ${joins.join("\n")}`.trim();
 }
 
 module.exports = {
-  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS,
+  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
   usablePeriods, applicableCompares,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
