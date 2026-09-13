@@ -342,7 +342,7 @@ joins: {
 
 ## 9. 고차 함수 — `map` · `filter` · `join`
 
-SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:157-160`:
+SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:193-195`:
 
 ```js
   ${dims.map(dimSelect).join(",\n  ")},
@@ -363,20 +363,16 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 `map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀린다.
 인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감싼다.
 
-`filter`로 후보를 거른다. `includes/build.js:201`:
+`filter`로 후보를 거른다. `includes/build.js:216`:
 
 ```js
-  const usable = Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
+const usablePeriods = (m) => Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
 ```
 
-**콜백에서 구조 분해**도 자주 쓴다. `includes/build.js:214-218`:
+**콜백에서 구조 분해**도 자주 쓴다. `includes/build.js:226`:
 
 ```js
     const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
-    if (applicable.length === 0) continue;
-
-    const a  = `b_${label}`;
-    const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
 ```
 
 `([pName])`는 `[키, 값]` 쌍에서 첫 원소만 꺼내고 값은 버린다는 뜻이다.
@@ -386,13 +382,17 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 
 ## 10. 템플릿 리터럴 — SQL 조립
 
-`includes/build.js:148-163` — `dailySQL` 전문.
+`includes/build.js:181-199` — `dailySQL` 전문.
 
 ```js
-function dailySQL(ctx, name, m) {
+function dailySQL(ctx, name, m, { incremental = false } = {}) {
   const e     = ENTITIES[m.entity];
   const dims  = resolveDims(name, m);
   const joins = resolveJoins(name, m, dims);
+
+  const conds = [];
+  if (m.filter)   conds.push(renderExpr(name, m, m.filter, "filter"));
+  if (incremental) conds.push(incrementalWhere(e));
 
   return `
 SELECT
@@ -401,10 +401,13 @@ SELECT
   ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
 ${joins.map((j) => joinClause(ctx, j)).join("\n")}
-${m.filter ? `WHERE ${m.filter}` : ""}
+${conds.length ? `WHERE ${conds.join("\n  AND ")}` : ""}
 GROUP BY ${seq(dims.length + 1)}`.trim();
 }
 ```
+
+`conds` 는 필터와 증분 조건을 같이 모은다. 둘 다 없으면 `WHERE` 자체가 안 붙고,
+하나만 있어도 `AND` 가 남지 않는다 — 배열에 모아 `join` 하면 구분자 처리가 사라진다.
 
 백틱 문자열은 줄바꿈과 `${}` 삽입을 지원한다.
 
@@ -479,7 +482,7 @@ function resolveDims(name, m) {
 | `{ name: d, ...def }` | 스프레드 병합 (7번) |
 
 `build.js` 전체에서 `throw`는 5곳이고 전부 **선언이 잘못됐을 때**다.
-나머지 둘은 `metricSQL`의 "생성 가능한 기간이 없다"와 위 `알 수 없는 entity`다.
+나머지 둘은 `periodSQL`의 "생성 가능한 기간이 없다"와 위 `알 수 없는 entity`다.
 
 Dataform은 include를 컴파일할 때 이 코드를 실행하므로, 예외가 나면
 `dataform compile`이 실패한다. **런타임에 조용히 틀린 숫자가 나오는 대신
@@ -571,27 +574,28 @@ fact에 기록해 둔 이유이기도 하다. **기능은 열되 기본은 fact�
 
 ```js
 // includes/naming.js:16
-module.exports = { MART_PREFIX, martName, dailyName, metricName, baseColumn };
+module.exports = { MART_PREFIX, martName, dailyName, periodName, metricName, baseColumn };
 
 // includes/periods.js:42
 module.exports = { PERIODS, COMPARE_LABELS };
 
 // includes/entities.js:116
-module.exports = { ENTITIES, allDims };
+module.exports = { ENTITIES, allDims, allJoins, refreshOf };
 
 // includes/metrics.js:138
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 
-// includes/build.js:255-259
+// includes/build.js:324-329
 module.exports = {
-  seq, eqNullSafe, renderExpr, exprJoins,
+  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
+  usablePeriods, applicableCompares, periodSQL,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };
 ```
 
 내보내지 않은 것은 파일 안에서만 산다 — `entities.js`의 `self`, `metrics.js`의
-`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`rollupBlock`이 그렇다.
+`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`rollupBlock`·`incrementalWhere`가 그렇다.
 헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워진다.
 
 받는 쪽은 구조 분해로 필요한 것만 꺼낸다. `includes/build.js:11-13`:
@@ -641,7 +645,7 @@ seq(4)   // → "1, 2, 3, 4"
 
 ## 14. `switch` + `return` — `break`가 없는 이유
 
-`includes/build.js:166-174`
+`includes/build.js:202-210`
 
 ```js
 function rollupExpr(col, additive) {
@@ -700,26 +704,31 @@ additive.category          // false  ← 값이 falsy
 
 ## 16. `continue` — 이번 회차만 건너뛰기
 
-`includes/build.js:213-218`:
+`includes/build.js:74-87` — `exprJoins` 전문.
 
 ```js
-  for (const [label, byPeriod] of Object.entries(COMPARE_LABELS)) {
-    const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
-    if (applicable.length === 0) continue;
-
-    const a  = `b_${label}`;
-    const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
+function exprJoins(name, m, sql, where) {
+  const used = new Set();
+  for (const [, head, tail] of sql.matchAll(COLUMN_REF)) {
+    if (!tail) continue;                                   // {col} 은 fact 컬럼
+    if (!(head in (ENTITIES[m.entity].joins || {}))) {
+      throw new Error(/* 선언되지 않은 조인 */);
+    }
+    used.add(head);
+  }
+  return used;
+}
 ```
 
 `break`는 루프를 끝내지만 `continue`는 다음 회차로 넘어간다.
-쓸 수 있는 기간이 하나도 없는 비교 라벨은 컬럼을 만들지 않고 넘긴다.
+`{sale_price}` 처럼 점이 없는 참조는 fact 컬럼이라 조인이 필요 없으므로 넘긴다.
+점이 있는 `{product.unit_cost}` 만 조인 이름을 검사한다.
 
-**언제 그런 일이 생기나** — `additive.time`이 `false`인 지표는 `usable`에 `daily`만 남는다.
-그러면 `mom`(monthly 전용)은 `applicable`이 비어 `mom_base` 컬럼 자체가 만들어지지 않는다.
-NULL로 채운 컬럼을 두면 소비자가 "값이 없다"와 "만들지 않았다"를 구별할 수 없다.
+같은 뜻을 `if (tail) { ... }`로 감쌀 수도 있지만, **들여쓰기가 한 겹 줄어서**
+`continue` 쪽이 읽기 쉽다. 뒤따르는 검사가 길수록 차이가 커진다.
 
-같은 뜻을 `if (applicable.length > 0) { ... }`로 감쌀 수도 있지만,
-**들여쓰기가 한 겹 줄어서** `continue` 쪽이 읽기 쉽다.
+**초기 반환(guard clause)과 같은 발상이다** — 처리할 게 아닌 것을 위에서 걸러내고
+본론을 왼쪽에 붙여 쓴다.
 
 ---
 
@@ -752,14 +761,12 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
 
 ## 18. 병렬 누적 배열 — 조인과 컬럼을 같이 모으기
 
-`includes/build.js:211-236` — 루프 전문.
+`includes/build.js:287-309` — 루프 전문.
 
 ```js
   const joins = [];
   const cols  = [];
-  for (const [label, byPeriod] of Object.entries(COMPARE_LABELS)) {
-    const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
-    if (applicable.length === 0) continue;
+  for (const [label, applicable] of applicableCompares(m)) {
 
     const a  = `b_${label}`;
     const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
@@ -773,7 +780,7 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
         `\n    END`;
 
     joins.push(
-      `LEFT JOIN rolled AS ${a}\n` +
+      `LEFT JOIN ${src} AS ${a}\n` +
       `  ON c.period_type IN (${in_})\n` +
       ` AND ${a}.period_type = c.period_type\n` +
       ` AND ${a}.period_start = ${shift}\n` +
@@ -789,9 +796,9 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
 `yoy` 한 번의 회차가 만드는 것:
 
 ```sql
-SELECT ..., b_yoy.net_revenue AS yoy_base      ← cols 에 push
-FROM rolled AS c
-LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
+SELECT ..., b_yoy.net_revenue AS yoy_base          ← cols 에 push
+FROM period_net_revenue AS c
+LEFT JOIN period_net_revenue AS b_yoy ON ...       ← joins 에 push
 ```
 
 **둘의 순서가 어긋나면 안 되므로** 같은 루프에서 같이 push 한다.
@@ -815,20 +822,87 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
 | 4 | `rollupExpr` · `canRollup` | `additive` → 함수 선택, 생성 가부 (14번) |
-| 5 | `rollupBlock` | 기간 하나의 `SELECT` 블록 |
-| 6 | `metricSQL` | 5를 `UNION ALL` + 비교 조인 조립 (16·18번) |
+| 5 | `rollupBlock` · `usablePeriods` | 기간 하나의 `SELECT` 블록, 만들 수 있는 기간 |
+| 6 | `periodSQL` | 5를 `UNION ALL` 로 이어 붙인다 |
+| 7 | `applicableCompares` · `metricSQL` | 비교 라벨 판정과 조인 조립 (18번) |
 
-`metricSQL`은 세 덩이로 나뉜다.
+**6과 7이 나뉘어 있는 것이 핵심이다.** 예전에는 `metricSQL` 하나가 둘 다 했고
+기간 확장이 `rolled` CTE 였는데, `metricSQL` 이 그것을 다섯 번 참조해(본 쿼리 1 +
+비교 조인 4) 같은 집계가 다섯 번 돌았다. CTE 는 결과를 저장하지 않기 때문이다.
 
 ```
-1) blocks    기간별 SELECT 를 UNION ALL 로 이어 붙임        → rolled CTE 의 내용
-2) joins/cols 비교 라벨마다 조인 한 줄 + 컬럼 한 줄          → 병렬 배열
-3) 조립       WITH daily → rolled → SELECT + joins          → 최종 문자열
+periodSQL   daily_ → 기간 4종 UNION ALL          → period_<metric> 테이블
+metricSQL   period_ 를 시프트해 자기 자신과 조인  → metric_<metric> 테이블
+```
+
+`metricSQL` 은 두 덩이다.
+
+```
+1) joins/cols  비교 라벨마다 조인 한 줄 + 컬럼 한 줄   → 병렬 배열 (18번)
+2) 조립         SELECT + joins                        → 최종 문자열
 ```
 
 `ctx`는 Dataform이 넘겨주는 객체다. `ctx.ref(name)`이 이름을 정규화된 테이블
 경로로 바꾸면서 **동시에 의존 관계를 등록한다.** 그래서 `build.js`는 프로젝트 이름도,
 데이터셋 이름도 모른다 — 알 필요가 없게 만든 것이다.
+
+---
+
+## 19. `publish()` 체이닝과 `ctx` 콜백 — generator 의 모양
+
+`definitions/semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js` ·
+`definitions/metadata/gen_registry.js` 넷이 같은 모양이다.
+
+```js
+Object.entries(METRICS).forEach(([name, m]) => {
+  publish(dailyName(name), { type, schema, columns, assertions, bigquery })
+    .preOps((ctx) => ctx.when(ctx.incremental(), incrementalPreOps(ctx, e)))
+    .query((ctx) => dailySQL(ctx, name, m, { incremental: ctx.incremental() }));
+});
+```
+
+**선언 하나가 테이블 하나가 된다** (P17). 지표를 추가하면 `forEach` 가 한 바퀴 더 돈다.
+
+### `ctx` 가 콜백으로 오는 이유
+
+`publish()` 의 첫 인자(config)는 **컴파일 타임에 확정**되지만, `query` 와 `preOps` 는
+**콜백**이다. Dataform 이 실행 직전에 `ctx` 를 넣어 부른다.
+
+```js
+ctx.ref(name)        이름 → 정규화된 테이블 경로. 동시에 의존 관계를 등록한다
+ctx.self()           이 테이블 자신의 경로
+ctx.incremental()    지금이 증분 실행인가. 첫 적재에서는 false
+ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
+```
+
+`ctx.incremental()` 이 **config 가 아니라 콜백 안에 있는 것**이 중요하다.
+첫 적재에서는 `false` 라 증분 조건이 붙지 않고 전 기간을 만들고, 이후 실행에서만
+`true` 가 된다. config 에서 판단했다면 그 구분을 할 수 없다.
+
+`build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 모른다 —
+**알 필요가 없게 만든 것이다.**
+
+### 계산된 키로 컬럼 문서를 만든다
+
+```js
+const columns = {
+  dt: `집계 기준일. ${e.source}.${e.date_col}`,
+  [name]: sketch ? `${m.description} — HLL 스케치(BYTES)` : m.description,
+};
+for (const d of dims) columns[d] = `차원. ${e.dims[d].via || "fact 자체 컬럼"}`;
+```
+
+컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(3번). 차원은 개수가 달라서
+루프로 붙인다. 이렇게 만든 설명이 **BigQuery 콘솔의 컬럼 설명으로 그대로 간다.**
+
+### 넷의 차이
+
+| | 읽는 것 | 특징 |
+|---|---|---|
+| `gen_daily.js` | `sem_*` | 조인이 실행된다. 증분이면 `preOps` 로 구간을 지운다 |
+| `gen_period.js` | `daily_` | 기간 4종 확장 |
+| `gen_metric.js` | `period_` | 시프트 self-join |
+| `gen_registry.js` | **없음** | 선언만 읽어 리터럴로 만든다. `ref()` 가 하나도 없다 |
 
 ---
 
@@ -850,6 +924,7 @@ LEFT JOIN rolled AS b_yoy ON ...               ← joins 에 push
 | `Array.from({length})` | `build.js` — `seq()` |
 | `switch` + `return` | `build.js` — `rollupExpr` |
 | `in` 연산자 | `build.js` — 미선언과 `false` 구분 |
-| `continue` | `build.js` — `metricSQL` 비교 루프 |
+| `continue` | `build.js` — `exprJoins` |
 | 콜백 `replace` + 캡처 그룹 | `build.js` — `renderExpr` |
 | 병렬 누적 배열 | `build.js` — `joins` · `cols` |
+| `publish()` 체이닝 · `ctx` 콜백 | `gen_*.js` 넷 |

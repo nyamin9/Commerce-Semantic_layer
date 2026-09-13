@@ -7,7 +7,7 @@ DW 테이블은 만들지 않고 `declaration`으로 읽기만 한다.
 
 - 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 9개 포함 31항)
 - 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 15 · 비율 7 · 제외 5
-- 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 18가지 · `build.js` 읽는 순서
+- 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 19가지 · `build.js` 읽는 순서
 
 ---
 
@@ -214,7 +214,7 @@ definitions/                        Dataform action
 docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
   metrics.md                        지표 정의서 · 집계 경로 · 추가 절차
-  js-patterns.md                    코드에 쓰인 JS 패턴 18가지 + build.js 읽는 순서
+  js-patterns.md                    코드에 쓰인 JS 패턴 19가지 + build.js 읽는 순서
 ```
 
 문서에 나오는 두 말은 이렇게 나뉜다.
