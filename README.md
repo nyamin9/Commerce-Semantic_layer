@@ -153,7 +153,7 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 | 1 | `includes/` 선언 계층 + builder | ✅ |
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
-| 4 | `gen_daily.js` | 🔶 선언 완료 · `daily_net_revenue` 만 BigQuery 검증 |
+| 4 | `gen_daily.js` | ✅ 14개 생성 완료. 원본 대조 통과 |
 | 4 | `gen_metric.js` | ⬜ |
 | 5 | `gen_registry.js` | ⬜ |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | ⬜ |
@@ -409,7 +409,7 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
-| `semantic` | `daily_net_revenue` 생성됨(16.28 MB · 187,477행). 나머지 13 + `metric_*` 14 대기 |
+| `semantic` | `daily_*` **14개 생성됨.** 171.8 MB · 248만 행. 최대 16.39 MB (`daily_active_user`) |
 | `semantic_metadata` | 비어 있음 — 5단계에서 `metric_registry` |
-| `semantic_assertions` | assertion 결과. 게이트 14 + 상류 감시 5 + `daily_` 게이트 2/지표 |
+| `semantic_assertions` | assertion 결과. 마트 게이트 14 + `daily_` 게이트 28 + 상류 감시 5 |
 

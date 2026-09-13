@@ -449,7 +449,7 @@ MERGE 키로는 쓸 수 없다. 마트에서 라벨을 붙이고(unknown member)
 | SCD | 당분간 현재 상태만 사용. 이력 커버리지 4.46% |
 | `daily_` 갱신 | entity별. 상류를 따른다 (P22). 증분 구간 `[ds-3, ds]` |
 | `metric_` 갱신 | 전부 `table`. 하루가 늘면 그 주·월·연 행과 1년 뒤 `yoy_base`까지 바뀐다 |
-| clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 `daily_net_revenue` 실측이 16.28 MB다 |
+| clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 `daily_*` 14개 실측 최대가 16.39 MB다 |
 
 `metric_<metric>`은 `period_type` 판별 컬럼으로 모든 기간을 담고 `daily`도 포함한다.
 두 테이블 모두 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라
