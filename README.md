@@ -160,8 +160,35 @@ semantic_metadata.metric_registry   지표 카탈로그
 | 4 | `gen_daily.js` | ✅ 15개 생성 완료. 원본 대조 통과 |
 | 4 | `gen_period.js` · `gen_metric.js` | ✅ 15개씩 생성 완료 |
 | 5 | `gen_registry.js` | ✅ `metric_registry` 27행 생성 |
-| 6 | `rpt_*` 대조 후 SSOT 전환 | 🔶 `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
+| 6 | `rpt_*` 대조 후 SSOT 전환 | ✅ `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
 
+
+## `rpt_*` 대조 결과 (6단계)
+
+`dbt_dev_marts_reporting.rpt_daily_revenue` 와 일자 × 부서 grain 으로 전 구간 대조했다.
+키 5,451개 · 2019-01-07 ~ 2026-09-16.
+
+| `rpt_` 컬럼 | 우리 쪽 | 다른 키 | 판정 |
+|---|---|---|:---:|
+| `net_revenue` | `metric_net_revenue` | 0 | 동일 |
+| `net_gross_profit` | `metric_gross_profit` | 0 | 동일 |
+| `order_item_count` | `metric_order_item_count` | 0 | 동일 |
+| `returned_item_count` | `metric_units_returned` | 0 | 동일 |
+| `buyer_count` | `metric_buyer_count` | 12 | HLL 근사 오차 (0.2%) |
+| `net_revenue_wtd/mtd/ytd` | 저장 안 함 (P15) | 0 | **소비 시점 재현 성공** |
+| `net_revenue_yoy_rate` | 저장 안 함 (P12) | — | `yoy_base` 로 재현 가능 |
+| `order_count` | `metric_order_count` | — | **rpt 가 33% 이중 계산** (결함 9) |
+
+**두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같다.**
+누계와 증감률을 저장하지 않기로 한 판단(P15·P12)도 재현으로 검증됐다.
+
+### 존치하는 것
+
+`rpt_daily_funnel` · `rpt_user_cohort_retention` 은 폐기 대상이 아니다.
+우리가 **의도적으로 만들지 않은 영역**이고 registry 에 `is_generated: false` 로 남아 있다 (P17).
+퍼널은 상류 결함 7, 코호트는 사용자 생애주기 — 후속 페이즈에서 다룬다.
+
+---
 
 ## 파일 구조
 
