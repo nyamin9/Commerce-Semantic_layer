@@ -1,7 +1,7 @@
-// metric_<metric> 생성. daily_ 를 기간 4종으로 펼치고 비교 기준값을 붙인다.
+// metric_<metric> 생성. period_ 를 시프트해 자기 자신과 조인하고 비교 기준값을 붙인다.
 //
-// 여기서는 조인이 없다 (P5). daily_ 하나만 읽으므로 metric_ 을 다시 만들 때
-// atomic fact 와 dimension 을 다시 읽지 않는다 (P11).
+// dimension 조인은 없다 (P5). period_ 하나만 읽으므로 atomic fact 와 dimension 을
+// 다시 읽지 않는다 (P11). 기간 확장은 period_ 가 이미 해뒀다.
 //
 // 전부 table 이다 (P22). 하루가 추가되면 그 주·월·연 행이 다시 계산되고
 // 1년 뒤 행의 yoy_base 까지 바뀐다 — 무효화 범위가 흩어져 있어 증분이 이득이 없다.

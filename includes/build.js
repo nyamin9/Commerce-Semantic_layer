@@ -10,7 +10,7 @@
 
 const { ENTITIES, allDims, allJoins } = require("includes/entities");
 const { PERIODS, COMPARE_LABELS } = require("includes/periods");
-const { dailyName, baseColumn }   = require("includes/naming");
+const { dailyName, periodName, baseColumn } = require("includes/naming");
 
 // ── 공통 ──────────────────────────────────────────────────────
 const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
@@ -249,7 +249,17 @@ FROM daily
 GROUP BY ${seq(dims.length + 3)}`;
 }
 
-function metricSQL(ctx, name, m) {
+// ── 2단계: period — 기간 확장 ────────────────────────────────
+// 예전에는 metricSQL 안의 rolled CTE 였다. 테이블로 떼어낸 이유는 하나다.
+//
+// CTE 는 이름 붙인 서브쿼리라 결과를 저장하지 않는다. metricSQL 이 rolled 를
+// 다섯 번 참조하므로(본 쿼리 1 + 비교 조인 4) 같은 집계가 다섯 번 돌았다.
+// 차원 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의 CPU/바이트 비율
+// 제한에 걸렸다 — 스캔은 14 MB 라 비용이 아니라 낭비가 문제였다 (2026-09-13).
+//
+// 조인 술어를 바꿔도 변하지 않았고(= · COALESCE · IS NOT DISTINCT FROM 전부
+// 3,600대) 물화하니 통과했다. 한 번만 계산하게 하는 것이 해법이다.
+function periodSQL(ctx, name, m) {
   const dims   = resolveDims(name, m).map((d) => d.name);
   const usable = usablePeriods(m);
 
@@ -259,12 +269,25 @@ function metricSQL(ctx, name, m) {
 
   const blocks = usable.map((pName) => rollupBlock(name, m, dims, pName)).join("\nUNION ALL");
 
+  return `
+WITH daily AS (
+  SELECT * FROM ${ctx.ref(dailyName(name))}
+)
+${blocks.trim()}`.trim();
+}
+
+// ── 3단계: metric — 비교 기준값 ──────────────────────────────
+// period_ 를 시프트해 자기 자신과 조인한다. 물리 테이블이라 재계산이 없다.
+function metricSQL(ctx, name, m) {
+  const dims = resolveDims(name, m).map((d) => d.name);
+  const src  = ctx.ref(periodName(name));
+
   // 비교 기준값. 증감률이 아니라 시프트한 행의 값을 복사한다 (P12·P14).
   // 해당 라벨을 선언한 period_type 행에서만 채워지고 나머지는 NULL 이다.
   const joins = [];
   const cols  = [];
   for (const [label, applicable] of applicableCompares(m)) {
-    const a  = `b_${label}`;
+    const a   = `b_${label}`;
     const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
 
     // 간격이 기간마다 다르다. weekly YoY 는 364일이어야 주 시작일에 떨어진다
@@ -276,7 +299,7 @@ function metricSQL(ctx, name, m) {
         `\n    END`;
 
     joins.push(
-      `LEFT JOIN rolled AS ${a}\n` +
+      `LEFT JOIN ${src} AS ${a}\n` +
       `  ON c.period_type IN (${in_})\n` +
       ` AND ${a}.period_type = c.period_type\n` +
       ` AND ${a}.period_start = ${shift}\n` +
@@ -286,11 +309,6 @@ function metricSQL(ctx, name, m) {
   }
 
   return `
-WITH daily AS (
-  SELECT * FROM ${ctx.ref(dailyName(name))}
-),
-rolled AS (${blocks}
-)
 SELECT
   c.period_type,
   c.period_start,
@@ -298,13 +316,14 @@ SELECT
   ${dims.map((d) => `c.${d}`).join(",\n  ")},
   c.${name},
   ${cols.join(",\n  ")}
-FROM rolled AS c
+FROM ${src} AS c
 ${joins.join("\n")}`.trim();
 }
 
+
 module.exports = {
   seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
-  usablePeriods, applicableCompares,
+  usablePeriods, applicableCompares, periodSQL,
   resolveDims, resolveJoins, rollupExpr, canRollup,
   dailySQL, metricSQL,
 };

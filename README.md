@@ -136,12 +136,16 @@ semantic_mart                우리 소유. 이름 정규화 · 자연키 제거
         │
         │  includes/build.js  ← entities.js 의 join graph 만큼 LEFT JOIN
         ▼
-semantic.daily_<metric>      날짜 × 차원 집계. 재집계 가능한 중간 상태
-        │                    ※ 미구현
-        │  includes/build.js  ← periods.js 의 기간만큼 롤업 + 비교 기준값
+semantic.daily_<metric>      날짜 × 차원 집계. 조인이 실행되는 유일한 곳
+        │
+        │  includes/build.js  ← periods.js 의 기간만큼 롤업
+        ▼
+semantic.period_<metric>     기간 4종 확장. metric_ 의 재료
+        │
+        │  includes/build.js  ← 시프트 self-join
         ▼
 semantic.metric_<metric>     기간 4종 + 비교 기준값. 서빙 표면
-semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
+semantic_metadata.metric_registry   지표 카탈로그
 ```
 
 ---
@@ -154,22 +158,10 @@ semantic_metadata.metric_registry   지표 카탈로그   ※ 미구현
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
 | 4 | `gen_daily.js` | ✅ 15개 생성 완료. 원본 대조 통과 |
-| 4 | `gen_metric.js` | 🔶 15개 중 12개. `order_item_count` · `units_sold` · `units_returned` 가 BigQuery CPU 한도 초과 |
+| 4 | `gen_period.js` · `gen_metric.js` | ✅ 15개씩 생성 완료 |
 | 5 | `gen_registry.js` | ✅ `metric_registry` 27행 생성 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | 🔶 `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
 
-### 알려진 미해결 — `metric_` 롤업 재계산
-
-`metricSQL` 의 `rolled` CTE 가 **5번 참조되어 5번 재계산된다** (본 쿼리 1 + 비교 조인 4).
-차원 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의 CPU/바이트 비율 제한에 걸린다.
-
-스캔은 14 MB 라 비용 문제가 아니다 — **같은 집계를 5번 하는 낭비**가 본질이다.
-조인 술어를 바꿔도(=, COALESCE, IS NOT DISTINCT FROM 전부 3,600대) 변하지 않고,
-`rolled` 를 테이블로 물화하면 통과한다.
-
-해법은 `daily_` → `period_` → `metric_` 3단계로 나누는 것이다.
-
----
 
 ## 파일 구조
 
@@ -187,8 +179,9 @@ definitions/                        Dataform action
   sources/declarations.js           DW 읽기 전용 참조
   mart/*.sqlx                       semantic_mart 7개
   assertions/upstream_contract.js   상류 계약 감시
-  semantic/gen_daily.js             daily_<metric> 14개를 선언에서 생성
-  semantic/gen_metric.js            metric_<metric> 14개. 기간 확장 + 비교 기준값
+  semantic/gen_daily.js             daily_<metric>   조인 실행
+  semantic/gen_period.js            period_<metric>  기간 4종 확장
+  semantic/gen_metric.js            metric_<metric>  비교 기준값
   metadata/gen_registry.js          metric_registry. 선언만 읽는다 (ref 없음)
 
 docs/
@@ -422,7 +415,7 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
-| `semantic` | `daily_*` 15 생성 완료. `metric_*` 12/15 — 나머지는 롤업 분리 후 (아래) |
+| `semantic` | `daily_*` · `period_*` · `metric_*` 15개씩 **45개.** 1.4 GB · 1,712만 행 |
 | `semantic_metadata` | `metric_registry` 생성됨. base 14 · ratio 7 · excluded 5 |
 | `semantic_assertions` | assertion 결과. 마트 14 + `daily_` 28 + `metric_` 28 + registry 2 + 상류 감시 5 |
 

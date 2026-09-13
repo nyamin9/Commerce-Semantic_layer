@@ -306,8 +306,17 @@ DW 의 `is_revenue_recognized` 도 라인 상태에서 나온다.
 
 | | 역할 |
 |---|---|
-| `daily_<metric>` | **조인이 실행되는 유일한 곳.** 날짜 × 차원 집계. 모든 기간의 재료 |
-| `metric_<metric>` | `daily_`를 4개 기간으로 확장하고 비교 기준값을 붙인다 |
+| `daily_<metric>` | **조인이 실행되는 유일한 곳.** 날짜 × 차원 집계 |
+| `period_<metric>` | 기간 4종으로 확장 |
+| `metric_<metric>` | `period_`를 시프트해 자기 자신과 조인. 비교 기준값 |
+
+**셋으로 나눈 이유는 비용이다.** 기간 확장을 CTE 로 두면 `metric_` 이 다섯 번
+참조해(본 쿼리 1 + 비교 조인 4) 같은 집계가 다섯 번 돈다. CTE 는 결과를 저장하지
+않기 때문이다. 차원 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의
+CPU/바이트 비율 제한에 걸렸다 — 스캔은 14 MB 라 **비용이 아니라 낭비가 문제였다.**
+
+조인 술어를 바꿔도 변하지 않았고(`=` · `COALESCE` · `IS NOT DISTINCT FROM` 전부
+3,600대), 중간 단계를 물화하니 통과했다 (2026-09-13).
 
 분리해 두면 `metric_`을 다시 만들 때 atomic fact와 dimension을 다시 읽지 않는다.
 
@@ -480,7 +489,7 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | 파생 차원 | `semantic_mart`의 `dim_*`에서 생성 |
 | 비율 지표 | registry에 선언만. 테이블 생성 안 함 |
 | HLL precision | **15 고정.** 나중에 바꾸면 과거 스케치와 병합 불가 |
-| 지표당 테이블 | **2개** — `daily_<metric>` + `metric_<metric>`. 둘 다 물리 테이블 |
+| 지표당 테이블 | **3개** — `daily_` + `period_` + `metric_`. 전부 물리 테이블 |
 | 기간 | `daily` `weekly` `monthly` `yearly` — 누계는 저장하지 않음 (P15) |
 | 비교 | `dod_base` `wow_base` `mom_base` `yoy_base` — 증감률은 저장하지 않음.<br>주간 YoY는 364일 시프트 |
 | SCD | 당분간 현재 상태만 사용. 이력 커버리지 4.46% |
@@ -488,9 +497,8 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | `metric_` 갱신 | 전부 `table`. 하루가 늘면 그 주·월·연 행과 1년 뒤 `yoy_base`까지 바뀐다 |
 | clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 `daily_*` 14개 실측 최대가 16.39 MB다 |
 
-`metric_<metric>`은 `period_type` 판별 컬럼으로 모든 기간을 담고 `daily`도 포함한다.
-두 테이블 모두 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라
-역할이다 — `daily_`는 조인이 실행되는 곳, `metric_`은 기간 확장과 비교.
+`period_` 와 `metric_` 은 `period_type` 판별 컬럼으로 모든 기간을 담고 `daily` 도 포함한다.
+셋 다 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라 역할이다.
 
 ---
 
