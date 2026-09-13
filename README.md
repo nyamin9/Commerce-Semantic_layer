@@ -161,7 +161,45 @@ semantic_metadata.metric_registry   지표 카탈로그
 | 4 | `gen_period.js` · `gen_metric.js` | ✅ 15개씩 생성 완료 |
 | 5 | `gen_registry.js` | ✅ `metric_registry` 27행 생성 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | ✅ `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
+| 7 | 스케줄 · 실행 계정 | ✅ `infra/workflows.json` + 전용 SA |
 
+
+---
+
+## 실행 계획
+
+`dataform compile` 이 만드는 것은 **무엇을 만들지**이고, 언제 어떤 계정으로 돌릴지는
+Dataform 의 release/workflow configuration 이 정한다. 그건 GCP 리소스라 git 에 없다 —
+레포만 보고는 무엇이 언제 도는지 알 수 없다.
+
+그래서 `infra/workflows.json` 을 원천으로 두고 `apply.js` 가 맞춘다.
+
+```bash
+node infra/apply.js --dry-run   # 선언과 GCP 의 차이
+node infra/apply.js             # 적용
+```
+
+| | cron (UTC) | 태그 | 성격 |
+|---|---|---|---|
+| `production` (release) | `0 4 * * *` | — | `main` 컴파일 |
+| `semantic-daily` | `30 4 * * *` | `mart` `semantic` | 본 파이프라인. 게이트 포함 |
+| `upstream-monitoring` | `0 5 * * *` | `monitoring` | 상류 감시. 실패해도 본 파이프라인은 돈다 (P20) |
+
+상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작한다. 1시간 30분 여유를 뒀고
+`semantic-daily` 는 실측 5분(159 액션) 걸린다.
+
+### 실행 계정
+
+```
+dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com
+  roles/bigquery.jobUser                     프로젝트 — 쿼리 실행
+  dataEditor  semantic_mart · semantic · semantic_metadata · semantic_assertions
+  dataViewer  dbt_dev_marts_core             읽기만
+```
+
+**P1 의 소유 경계가 IAM 으로 강제된다.** DW 에 쓸 수 없는 것이 코드 규율이 아니라
+권한이다. Dataform 서비스 에이전트에는 이 계정을 가장할
+`roles/iam.serviceAccountTokenCreator` 가 필요하다.
 
 ## `rpt_*` 대조 결과 (6단계)
 
@@ -210,6 +248,10 @@ definitions/                        Dataform action
   semantic/gen_period.js            period_<metric>  기간 4종 확장
   semantic/gen_metric.js            metric_<metric>  비교 기준값
   metadata/gen_registry.js          metric_registry. 선언만 읽는다 (ref 없음)
+
+infra/                              실행 계획 — GCP 리소스 선언
+  workflows.json                    release · workflow configuration
+  apply.js                          선언을 Dataform 에 적용
 
 docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함

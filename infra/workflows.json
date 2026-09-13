@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "실행 계획 선언. 어떤 태그가 언제 어떤 계정으로 도는지가 여기에 있다.",
+    "적용은 `node infra/apply.js`. 먼저 --dry-run 으로 차이를 본다.",
+    "",
+    "Dataform 의 release/workflow configuration 은 GCP 리소스라 git 에 남지 않는다.",
+    "그러면 레포만 보고는 무엇이 언제 도는지 알 수 없다 — 이 파일이 그 원천이다.",
+    "",
+    "태그 자체는 definitions/ 쪽에 붙는다.",
+    "  mart        definitions/mart/*.sqlx          마트 7개 + 게이트 assertion 14",
+    "  semantic    definitions/semantic/gen_*.js    daily_ · period_ · metric_",
+    "              definitions/metadata/gen_*.js    metric_registry",
+    "  monitoring  definitions/assertions/*.js      상류 감시 5"
+  ],
+
+  "project": "analytics-engineering-practice",
+  "location": "asia-northeast3",
+  "repository": "commerce_semantic",
+
+  "releaseConfigs": {
+    "production": {
+      "_comment": "상류 thelook_dw_daily 가 03:00 UTC 시작. 코드 변경을 04:00 에 반영한다",
+      "gitCommitish": "main",
+      "cronSchedule": "0 4 * * *",
+      "timeZone": "UTC",
+      "codeCompilationConfig": {}
+    }
+  },
+
+  "workflowConfigs": {
+    "semantic-daily": {
+      "_comment": [
+        "본 파이프라인. 마트 → daily_ → period_ → metric_ → registry.",
+        "게이트 assertion 을 포함하므로 깨지면 멈춘다 (P20).",
+        "상류 완료까지 1시간 30분 여유. 실측 5분 소요."
+      ],
+      "releaseConfig": "production",
+      "cronSchedule": "30 4 * * *",
+      "timeZone": "UTC",
+      "invocationConfig": {
+        "includedTags": ["mart", "semantic"],
+        "transitiveDependenciesIncluded": true,
+        "serviceAccount": "dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com"
+      }
+    },
+
+    "upstream-monitoring": {
+      "_comment": [
+        "상류 계약 감시. 게이트가 아니라 감시라 본 파이프라인과 분리한다 (P20).",
+        "여기서 깨지는 것은 우리가 고칠 수 없다 — 실패해도 semantic-daily 는 돈다.",
+        "5장의 알려진 결함 때문에 상시 실패 상태인 것이 정상이다."
+      ],
+      "releaseConfig": "production",
+      "cronSchedule": "0 5 * * *",
+      "timeZone": "UTC",
+      "invocationConfig": {
+        "includedTags": ["monitoring"],
+        "transitiveDependenciesIncluded": false,
+        "serviceAccount": "dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com"
+      }
+    }
+  }
+}
