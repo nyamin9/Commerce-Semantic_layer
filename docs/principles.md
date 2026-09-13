@@ -55,7 +55,7 @@
 | `semantic_mart` | **이 레포** | 소유 |
 | `semantic` | **이 레포** | 소유 |
 | `semantic_metadata` | **이 레포** | 소유 |
-| `dbt_dev_marts_reporting` | dbt-airflow | 대조 후 폐기 대상 |
+| `dbt_dev_marts_reporting` | dbt-airflow | `rpt_daily_revenue` 폐기 가능. 나머지 2개는 존치 |
 
 ```
 dbt_dev_marts_core          DW. 소유하지 않음
@@ -507,7 +507,8 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 
 | 항목 | 결정 |
 |---|---|
-| SSOT | semantic layer. `rpt_*`는 대조 후 폐기 |
+| SSOT | semantic layer. `rpt_daily_revenue` 는 대조 완료 — 폐기 가능 |
+| `rpt_daily_funnel` · `rpt_user_cohort_retention` | **존치.** 우리가 의도적으로 만들지 않은 영역이다 (P17).<br>퍼널은 상류 결함 7, 코호트는 사용자 생애주기 — 후속 페이즈 |
 | `dim_date` | semantic layer가 소유. 변환이 아니라 축이다.<br>**`daily_`가 조인하지 않는다** — 격자를 채우면 지표당 수백만 행. 소비 시점에 쓴다 (P15) |
 | 파생 차원 | `semantic_mart`의 `dim_*`에서 생성 |
 | 비율 지표 | registry에 선언만. 테이블 생성 안 함 |
@@ -537,7 +538,8 @@ Looker · MetricFlow · Cube 모두 period-to-date를 조회 시점에 전개한
 | 4 | `fct_orders` 적재 지연 | order_items는 08-26, orders는 08-24까지 | 주문 grain 지표가 최근 이틀 결측 |
 | 5 | SCD 이력 부족 | `valid_from` 최솟값 2026-08-15, fact는 2019-01-13부터 | point-in-time 매칭률 4.46% |
 | 6 | `dim_date` 부재 | — | semantic layer가 생성 |
-| 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 **24개**. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 라벨. 증분 MERGE 키라 NULL 을 못 둔다 |
+| 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 **24개**. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 라벨 |
+| 9 | `rpt_daily_revenue.order_count` 이중 계산 | 부서별 합산 **183,826** vs 실제 **138,061** (33% 과다) | `COUNT(DISTINCT order_key)` 를 부서별로 센 것. 부서를 걷으면 틀린다 (P9).<br>우리는 `order` entity 로 옮겨 부서축을 없앴다 (P10-1) |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased`인데 `viewed_product`가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없다** |
 
 2~4번은 모두 최근 구간에 몰려 있어 late-arriving 문제로 보인다.
