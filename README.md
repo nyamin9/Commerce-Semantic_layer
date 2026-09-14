@@ -257,6 +257,7 @@ docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
   metrics.md                        지표 정의서 · 집계 경로 · 추가 절차
   js-patterns.md                    코드에 쓰인 JS 패턴 19가지 + build.js 읽는 순서
+  ptd-design.md                     기간 누계 설계 노트 (작업 중. 끝나면 접고 삭제)
 ```
 
 문서에 나오는 두 말은 이렇게 나뉜다.
