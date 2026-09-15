@@ -385,46 +385,45 @@ function cumNone(name, axes) {
   FROM grid`;
 }
 
-// 롤업 행은 차원 컬럼이 NULL 로 채워져 나온다. IFNULL 로 치환하면 원본의 진짜
-// NULL 까지 '(all)' 이 되어 조용히 이중 계산된다 — 그 NULL 행은 롤업 행에 이미
-// 포함돼 있다. GROUPING() 이 둘을 가른다.
+// 마지막 겹 — 각 축의 '(all)' 행을 만든다.
 //
-// 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다.
+// GROUPING SETS 를 쓰지 않는다. BigQuery 가 집합마다 입력을 다시 읽어서, 축이
+// 4개면 cum 이 16번 재계산된다. cum 안에 1년 구간 자기조인이 들어 있는 스케치
+// 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다 (2026-09-16).
 //
-// 소스 컬럼을 cum. 으로 한정한다. 그러지 않으면 GROUP BY 가 이름을 SELECT 의
-// alias(집계를 품은 IF 식)로 풀어 "contains an aggregation function" 으로 거부된다
-const rollupAxis = (d) => `IF(GROUPING(cum.${d}) = 1, '${ALL}', cum.${d}) AS ${d}`;
+// 대신 마스크를 CROSS JOIN 으로 붙인다. cum 을 한 번만 읽고 행을 2^n 배로 펼친
+// 뒤 한 번 집계한다. 비트가 0인 축이 '(all)' 이 된다.
+//
+//   mask 0b1111  country  age_group  gender  acq      기저 조합
+//   mask 0b0001  country  (all)      (all)   (all)    country 별 롤업
+//   mask 0b0000  (all)    (all)      (all)   (all)    전사
+//
+// 진짜 NULL 은 NULL 로 남는다. 마스크가 그 축을 살린 행에서는 원본 값이 그대로
+// 오므로 "값이 없는 버킷"(P6-1)과 '(all)' 이 섞이지 않는다.
+//
+// 접는 함수는 차원 축 가산성이 고른다 (P9). 완결 플래그는 record_date 에서
+// 결정론적으로 나오고 record_date 가 grouping key 라 여기서 같이 만든다
+const ALL_MASK_VAR = "axis_mask";
 
-// BigQuery 는 CUBE 를 다른 grouping element 와 섞지 못한다 —
-// `GROUP BY record_date, CUBE(...)` 가 "only supports CUBE when there are no
-// other grouping elements" 로 거부된다. 그래서 부분집합을 직접 펼친다.
-// 축이 n 개면 2^n 개 집합이고, 전부 record_date 를 포함한다.
-function groupingSets(axes) {
-  const sets = [];
-  for (let mask = (1 << axes.length) - 1; mask >= 0; mask--) {
-    const keep = axes.filter((_, i) => mask & (1 << i));
-    sets.push(`    (${[RECORD_DATE, ...keep].map((c) => `cum.${c}`).join(", ")})`);
-  }
-  return `GROUP BY GROUPING SETS (\n${sets.join(",\n")}\n)`;
-}
-
-// 마지막 겹 — 각 축의 '(all)' 행을 만든다. 접는 함수는 차원 축 가산성이 고른다.
-// 완결 플래그는 record_date 에서 결정론적으로 나오고, record_date 는 모든
-// grouping set 에 들어 있으므로 여기서 같이 만든다
 function rollupSelect(name, m, axes) {
   const kind = dimFold(name, m, resolveDims(name, m).map((d) => d.name));
+
+  const dims = axes.map((d, i) =>
+    `  IF((${ALL_MASK_VAR} >> ${i}) & 1 = 1, cum.${d}, '${ALL}') AS ${d}`);
   const flags = END_FLAGS.map((f) =>
     `  cum.${RECORD_DATE} = LAST_DAY(cum.${RECORD_DATE}, ${f.trunc}) AS ${f.name}`);
   const vals = valueColumns(name, m).map((c) => `  ${foldExpr(`cum.${c}`, kind)} AS ${c}`);
 
+  const masks = axes.length
+    ? `\nCROSS JOIN UNNEST(GENERATE_ARRAY(0, ${(1 << axes.length) - 1})) AS ${ALL_MASK_VAR}`
+    : "";
+
   return `
 SELECT
   cum.${RECORD_DATE},
-${axes.map((d) => `  ${rollupAxis(d)}`).join(",\n")}${axes.length ? "," : ""}
-${flags.join(",\n")},
-${vals.join(",\n")}
-FROM cum
-${axes.length ? groupingSets(axes) : `GROUP BY cum.${RECORD_DATE}`}`;
+${[...dims, ...flags, ...vals].join(",\n")}
+FROM cum${masks}
+GROUP BY ${seq(axes.length + 1)}`;
 }
 
 function periodSQL(ctx, name, m) {

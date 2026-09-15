@@ -63,7 +63,7 @@ record_date = LAST_DAY(record_date, YEAR)          AS is_year_end
 
 미래 날짜의 행은 **아예 생기지 않는다.** 격자가 `daily_` 가 가진 구간까지만 뻗기 때문이다.
 
-## 차원은 4축 CUBE 로 통일한다
+## 차원은 conformed 4축으로 통일한다
 
 직전에는 `daily`·`weekly`·`monthly`·`yearly` 가 7차원이고 누계만 conformed 4차원이었다.
 한 테이블 안에 grain 이 둘이었던 셈이다. 4차원으로 통일한다.
@@ -80,20 +80,6 @@ serving_dims   country(15) · age_group(6) · gender(2) · acquisition_channel(5
 
 각 축의 롤업 행까지 물화한다. 소비자가 차원을 걷을 필요가 없다.
 
-BigQuery 는 `CUBE` 를 다른 grouping element 와 섞지 못한다 —
-`GROUP BY record_date, CUBE(...)` 가 *"only supports CUBE when there are no other
-grouping elements"* 로 거부된다. 그래서 부분집합을 직접 펼친다. 축이 n 개면
-2^n 개 집합이고 전부 `record_date` 를 포함한다.
-
-```sql
-GROUP BY GROUPING SETS (
-  (record_date, country, age_group, gender, acquisition_channel),
-  (record_date, age_group, gender, acquisition_channel),
-  ...
-  (record_date)
-)
-```
-
 ```
 조합         720  →  1,708   (2.37배)
 × 날짜     2,811
@@ -105,36 +91,51 @@ GROUP BY GROUPING SETS (
 
 다른 entity 는 더 작다.
 
-| entity | serving_dims | 조합 | CUBE |
+| entity | serving_dims | 기저 조합 | 롤업 포함 |
 |---|---|---|---|
 | `order_item` · `order` | country · age_group · gender · acquisition_channel | 720 | 1,708 |
 | `session` | country · acquisition_channel | 68 | 89 |
 | `user_event` | country | 15 | 16 |
 
-### `GROUPING()` 으로 갈라야 한다
+### `CUBE` 도 `GROUPING SETS` 도 쓰지 않는다
 
-롤업 행은 차원 컬럼이 `NULL` 로 채워져 나온다. `IFNULL(country,'(all)')` 로
-치환하면 원본의 진짜 `NULL` 까지 `'(all)'` 이 된다.
+둘 다 BigQuery 에서 막힌다.
 
-```
-naive    GROUPING()      v
-(all)         0          5   ← 상류가 흘린 진짜 NULL
-KR            0         10
-US            0         20
-(all)         1         35   ← 전체 롤업
-```
+**`CUBE` 는 다른 grouping element 와 섞이지 않는다.** `GROUP BY record_date, CUBE(...)`
+가 *"only supports CUBE when there are no other grouping elements"* 로 거부된다.
 
-`naive` 로 두면 5가 35에 이미 포함돼 있는데 둘 다 `'(all)'` 이라 **이중 계산**된다.
+**`GROUPING SETS` 는 집합마다 입력을 다시 읽는다.** 축이 4개면 16번이다. 그 입력에
+1년 구간 자기조인이 들어 있는 스케치 지표에서 CPU 357,307초를 써 한도(5,100)에
+걸렸다. 이 레포가 `period_` 를 `metric_` 에서 떼어낸 것과 같은 문제다.
+
+대신 **마스크를 `CROSS JOIN` 으로 붙인다.** 입력을 한 번만 읽고 행을 2ⁿ 배로 펼친 뒤
+한 번 집계한다. 비트가 0인 축이 `'(all)'` 이 된다.
 
 ```sql
-IF(GROUPING(country) = 1, '(all)', country) AS country
+SELECT
+  cum.record_date,
+  IF((axis_mask >> 0) & 1 = 1, cum.country,   '(all)') AS country,
+  IF((axis_mask >> 1) & 1 = 1, cum.age_group, '(all)') AS age_group,
+  ...
+  HLL_COUNT.MERGE_PARTIAL(cum.buyer_count_mtd) AS buyer_count_mtd
+FROM cum
+CROSS JOIN UNNEST(GENERATE_ARRAY(0, 15)) AS axis_mask
+GROUP BY 1, 2, 3, 4, 5
 ```
 
-진짜 `NULL` 은 `NULL` 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지하기 위해서다.
-그래서 하류 조인은 `IS NOT DISTINCT FROM` 을 쓴다.
+```
+mask 0b1111   country  age_group  gender  acq      기저 조합
+mask 0b0001   country  (all)      (all)   (all)    country 별 롤업
+mask 0b0000   (all)    (all)      (all)   (all)    전사
+```
+
+**진짜 `NULL` 은 `NULL` 로 남는다.** 마스크가 그 축을 살린 행에서는 원본 값이 그대로
+오므로 "값이 없는 버킷"(P6-1)과 `'(all)'` 이 섞이지 않는다. `CUBE`·`GROUPING SETS` 였다면
+롤업 행도 `NULL` 로 나와서 `GROUPING()` 으로 갈라야 했다 — 안 그러면 원본의 `NULL` 행이
+롤업 행에 이미 포함돼 있는데 둘 다 `'(all)'` 이 되어 **조용히 이중 계산**된다.
 
 지금 conformed 4축에 `NULL` 은 0건이라 당장은 차이가 없다. 상류가 하나 흘리는 순간
-조용히 틀리기 때문에 처음부터 이렇게 쓴다.
+틀리기 때문에 처음부터 갈라 둔다. 하류 조인이 `IS NOT DISTINCT FROM` 인 것도 같은 이유다.
 
 ## daily → period → metric
 
