@@ -158,7 +158,7 @@ semantic_metadata.metric_registry   지표 카탈로그
 | 2 | `semantic_mart` 7개 + 감시 assertion | ✅ BigQuery 생성 완료 |
 | 3 | `sem_dim_date` | ✅ 2단계에 포함 |
 | 4 | `gen_daily.js` | ✅ 15개 생성 완료. 원본 대조 통과 |
-| 4 | `gen_period.js` · `gen_metric.js` | ✅ 15개씩 생성 완료 |
+| 4 | `gen_period.js` · `gen_metric.js` | ✅ 15개씩 생성 완료. 가로 구조로 재작성 |
 | 5 | `gen_registry.js` | ✅ `metric_registry` 27행 생성 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | ✅ `rpt_daily_revenue` 대조 완료. 퍼널·코호트는 후속 페이즈 |
 | 7 | 스케줄 · 실행 계정 | ✅ `infra/workflows.json` + 전용 SA |
@@ -213,12 +213,15 @@ dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com
 | `order_item_count` | `metric_order_item_count` | 0 | 동일 |
 | `returned_item_count` | `metric_units_returned` | 0 | 동일 |
 | `buyer_count` | `metric_buyer_count` | 12 | HLL 근사 오차 (0.2%) |
-| `net_revenue_wtd/mtd/ytd` | 저장 안 함 (P15) | 0 | **소비 시점 재현 성공** |
+| `net_revenue_wtd/mtd/ytd` | `net_revenue_wtd/mtd/ytd` | 0 | 동일 |
 | `net_revenue_yoy_rate` | 저장 안 함 (P12) | — | `yoy_base` 로 재현 가능 |
 | `order_count` | `metric_order_count` | — | **rpt 가 33% 이중 계산** (결함 9) |
 
 **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같다.**
-누계와 증감률을 저장하지 않기로 한 판단(P15·P12)도 재현으로 검증됐다.
+
+대조 시점에는 누계를 저장하지 않고 소비 시점에 재현했다. 지금은 컬럼으로
+저장한다 (P15) — 차원이 `serving_dims` 로 좁혀져 격자 비용이 감당되기 때문이다.
+증감률은 여전히 저장하지 않는다 (P12).
 
 ### 존치하는 것
 
@@ -235,7 +238,7 @@ workflow_settings.yaml              프로젝트 설정 · 데이터셋 vars
 
 includes/                           선언 계층 — 사람이 쓰는 곳
   naming.js                         이름 규칙
-  periods.js                        기간 4종 + 비교 간격
+  periods.js                        기간 컬럼 4종 + 비교 간격
   entities.js                       join graph
   metrics.js                        지표 선언
   build.js                          SQL builder (정책 집행부)
@@ -245,8 +248,8 @@ definitions/                        Dataform action
   mart/*.sqlx                       semantic_mart 7개
   assertions/upstream_contract.js   상류 계약 감시
   semantic/gen_daily.js             daily_<metric>   조인 실행
-  semantic/gen_period.js            period_<metric>  기간 4종 확장
-  semantic/gen_metric.js            metric_<metric>  비교 기준값
+  semantic/gen_period.js            period_<metric>  차원 롤업 + 기간 컬럼
+  semantic/gen_metric.js            metric_<metric>  비교 기준값 8컬럼
   metadata/gen_registry.js          metric_registry. 선언만 읽는다 (ref 없음)
 
 infra/                              실행 계획 — GCP 리소스 선언
@@ -257,7 +260,7 @@ docs/
   principles.md                     P1~P22 · 확정된 결정 · 알려진 결함
   metrics.md                        지표 정의서 · 집계 경로 · 추가 절차
   js-patterns.md                    코드에 쓰인 JS 패턴 19가지 + build.js 읽는 순서
-  ptd-design.md                     기간 누계 설계 노트 (작업 중. 끝나면 접고 삭제)
+  ptd-design.md                     서빙 테이블 구조 설계 노트 (작업 중. 끝나면 접고 삭제)
 ```
 
 문서에 나오는 두 말은 이렇게 나뉜다.
