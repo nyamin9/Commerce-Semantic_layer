@@ -273,50 +273,37 @@ const ALL = "(all)";
 
 // ── 2단계: period — 기간을 가로로 편다 ───────────────────────
 //
-// 세 겹이다.
-//   folded  daily_ 를 serving_dims 의 모든 부분집합으로 접는다. 활동한 날짜만
+// 네 겹이다.
+//   base    daily_ 를 serving_dims 로 접는다.              기저 조합만
 //   grid    sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
 //   cum     그 위에 누적한다.                              daily 는 그대로 통과
+//   rollup  각 축의 '(all)' 행을 만든다.                    GROUPING SETS
 //
-// CTE 이름이 folded 인 것은 cube 가 GoogleSQL 예약어이기 때문이다
+// ── 접기가 누적보다 나중인 이유 ──────────────────────────────
+// 순서를 바꿔도 값은 같다. SUM 은 결합법칙이 성립하고, HLL 병합은 합집합이라
+// 조합별 WTD 스케치를 합친 것이 전체 WTD 스케치와 같다.
 //
-// grid 가 핵심이다. 활동한 날에만 누계를 만들면 걷는 순간 대부분이 사라진다 —
-// 실측으로 국가별 MTD 가 실제의 13% 였다. 그날 안 팔린 조합의 앞 구간 매출이
-// 통째로 빠지기 때문이다. 행을 만들어 두면 누적값이 앞 구간을 그대로 들고 간다.
+// 비용은 전혀 다르다. 먼저 접으면 '(all)' 행의 스케치가 조밀해지는데, 스케치
+// 누계는 1년 구간을 자기조인해 병합하므로 그 조밀한 스케치를 하루당 180여 번씩
+// 읽는다. buyer_count 가 CPU 1,748,227초를 써서 한도(5,100)에 걸렸다 (2026-09-16).
+//
+// 기저 조합에서 누적하면 스케치가 희소한 채로 조인되고, 접기는 누적이 끝난 뒤
+// 집계 한 번으로 끝난다.
+//
+// ── grid 가 핵심인 이유 ──────────────────────────────────────
+// 활동한 날에만 누계를 만들면 걷는 순간 대부분이 사라진다 — 실측으로 국가별
+// MTD 가 실제의 13% 였다. 그날 안 팔린 조합의 앞 구간 매출이 통째로 빠지기
+// 때문이다. 행을 만들어 두면 누적값이 앞 구간을 그대로 들고 간다.
 
-// 롤업 행은 차원 컬럼이 NULL 로 채워져 나온다. IFNULL 로 치환하면 원본의 진짜
-// NULL 까지 '(all)' 이 되어 조용히 이중 계산된다 — 그 NULL 행은 롤업 행에 이미
-// 포함돼 있다. GROUPING() 이 둘을 가른다.
-//
-// 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다.
-//
-// 소스 컬럼을 daily. 로 한정한다. 그러지 않으면 GROUP BY 가 이름을 SELECT 의
-// alias(집계를 품은 IF 식)로 풀어 "contains an aggregation function" 으로 거부된다
-const cubeAxis = (d) => `IF(GROUPING(daily.${d}) = 1, '${ALL}', daily.${d}) AS ${d}`;
-
-// BigQuery 는 CUBE 를 다른 grouping element 와 섞지 못한다 —
-// `GROUP BY record_date, CUBE(...)` 가 "only supports CUBE when there are no
-// other grouping elements" 로 거부된다. 그래서 부분집합을 직접 펼친다.
-// 축이 n 개면 2^n 개 집합이고, 전부 record_date 를 포함한다.
-function groupingSets(axes) {
-  const sets = [];
-  for (let mask = (1 << axes.length) - 1; mask >= 0; mask--) {
-    const keep = axes.filter((_, i) => mask & (1 << i));
-    sets.push(`    (${[RECORD_DATE, ...keep].map((c) => `daily.${c}`).join(", ")})`);
-  }
-  return `GROUP BY GROUPING SETS (\n${sets.join(",\n")}\n  )`;
-}
-
-function foldedCTE(name, m, axes) {
+// 기저 조합 — serving_dims 밖의 축을 접어 없앤다
+function baseCTE(name, m, axes) {
   const fold = foldExpr(name, dimFold(name, m, resolveDims(name, m).map((d) => d.name)));
+  const key  = [RECORD_DATE, ...axes];
 
   return `
-  SELECT
-    daily.${RECORD_DATE},
-    ${axes.map(cubeAxis).join(",\n    ")},
-    ${fold} AS v
+  SELECT ${key.join(", ")}, ${fold} AS v
   FROM daily
-  ${axes.length ? groupingSets(axes) : `GROUP BY daily.${RECORD_DATE}`}`;
+  GROUP BY ${seq(key.length)}`;
 }
 
 // 날짜 뼈대는 sem_dim_date 다. daily_ 의 날짜를 쓰면 전사적으로 거래가 0인 날이
@@ -339,8 +326,8 @@ function gridCTE(ctx, m, axes) {
     WHERE date_day BETWEEN (SELECT MIN(${RECORD_DATE}) FROM daily)
                        AND (SELECT MAX(${RECORD_DATE}) FROM daily)
   ) d
-  CROSS JOIN (SELECT DISTINCT ${axes.join(", ")} FROM folded) c
-  LEFT JOIN folded a
+  CROSS JOIN (SELECT DISTINCT ${axes.join(", ")} FROM base) c
+  LEFT JOIN base a
     ON a.${RECORD_DATE} = d.${RECORD_DATE}
 ${axes.map((x) => `   AND ${eqNullSafe(`a.${x}`, `c.${x}`)}`).join("\n")}`;
 }
@@ -350,16 +337,14 @@ ${axes.map((x) => `   AND ${eqNullSafe(`a.${x}`, `c.${x}`)}`).join("\n")}`;
 function cumWindowed(name, axes) {
   const part = axes.length ? `${axes.join(", ")}, ` : "";
   const wins = CUMULATIVE.map((p) =>
-    `  SUM(v) OVER (PARTITION BY ${part}DATE_TRUNC(${RECORD_DATE}, ${PERIODS[p].trunc}) ` +
+    `    SUM(v) OVER (PARTITION BY ${part}DATE_TRUNC(${RECORD_DATE}, ${PERIODS[p].trunc}) ` +
     `ORDER BY ${RECORD_DATE}) AS ${valueColumn(name, p)}`);
 
   return `
-SELECT
-  ${RECORD_DATE},
-${axes.length ? `  ${axes.join(",\n  ")},\n` : ""}  ${endFlagSelect().join(",\n  ")},
-  v AS ${name},
+  SELECT ${[RECORD_DATE, ...axes].join(", ")},
+    v AS ${name},
 ${wins.join(",\n")}
-FROM grid`;
+  FROM grid`;
 }
 
 // 스케치 — HLL_COUNT.MERGE_PARTIAL 은 analytic function 을 지원하지 않는다.
@@ -379,48 +364,87 @@ function cumSketch(name, axes) {
     const arg  = last
       ? "b.v"
       : `IF(b.${RECORD_DATE} >= DATE_TRUNC(g.${RECORD_DATE}, ${PERIODS[p].trunc}), b.v, NULL)`;
-    return `  HLL_COUNT.MERGE_PARTIAL(${arg}) AS ${valueColumn(name, p)}`;
+    return `    HLL_COUNT.MERGE_PARTIAL(${arg}) AS ${valueColumn(name, p)}`;
   });
 
   return `
-SELECT
-  g.${RECORD_DATE},
-${axes.length ? `  ${axes.map((x) => `g.${x}`).join(",\n  ")},\n` : ""}  ${endFlagSelect("g.").join(",\n  ")},
-  ANY_VALUE(g.v) AS ${name},
+  SELECT ${[RECORD_DATE, ...axes].map((c) => `g.${c}`).join(", ")},
+    ANY_VALUE(g.v) AS ${name},
 ${merges.join(",\n")}
-FROM grid g
-LEFT JOIN folded b
-  ON b.${RECORD_DATE} BETWEEN DATE_TRUNC(g.${RECORD_DATE}, ${widest}) AND g.${RECORD_DATE}
-${axes.map((x) => ` AND ${eqNullSafe(`b.${x}`, `g.${x}`)}`).join("\n")}
-GROUP BY ${seq(axes.length + 1)}`;
+  FROM grid g
+  LEFT JOIN base b
+    ON b.${RECORD_DATE} BETWEEN DATE_TRUNC(g.${RECORD_DATE}, ${widest}) AND g.${RECORD_DATE}
+${axes.map((x) => `   AND ${eqNullSafe(`b.${x}`, `g.${x}`)}`).join("\n")}
+  GROUP BY ${seq(axes.length + 1)}`;
 }
 
 // 누계를 못 만드는 지표. daily 컬럼 하나만 내보낸다 (P10-3)
 function cumNone(name, axes) {
   return `
+  SELECT ${[RECORD_DATE, ...axes].join(", ")}, v AS ${name}
+  FROM grid`;
+}
+
+// 롤업 행은 차원 컬럼이 NULL 로 채워져 나온다. IFNULL 로 치환하면 원본의 진짜
+// NULL 까지 '(all)' 이 되어 조용히 이중 계산된다 — 그 NULL 행은 롤업 행에 이미
+// 포함돼 있다. GROUPING() 이 둘을 가른다.
+//
+// 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다.
+//
+// 소스 컬럼을 cum. 으로 한정한다. 그러지 않으면 GROUP BY 가 이름을 SELECT 의
+// alias(집계를 품은 IF 식)로 풀어 "contains an aggregation function" 으로 거부된다
+const rollupAxis = (d) => `IF(GROUPING(cum.${d}) = 1, '${ALL}', cum.${d}) AS ${d}`;
+
+// BigQuery 는 CUBE 를 다른 grouping element 와 섞지 못한다 —
+// `GROUP BY record_date, CUBE(...)` 가 "only supports CUBE when there are no
+// other grouping elements" 로 거부된다. 그래서 부분집합을 직접 펼친다.
+// 축이 n 개면 2^n 개 집합이고, 전부 record_date 를 포함한다.
+function groupingSets(axes) {
+  const sets = [];
+  for (let mask = (1 << axes.length) - 1; mask >= 0; mask--) {
+    const keep = axes.filter((_, i) => mask & (1 << i));
+    sets.push(`    (${[RECORD_DATE, ...keep].map((c) => `cum.${c}`).join(", ")})`);
+  }
+  return `GROUP BY GROUPING SETS (\n${sets.join(",\n")}\n)`;
+}
+
+// 마지막 겹 — 각 축의 '(all)' 행을 만든다. 접는 함수는 차원 축 가산성이 고른다.
+// 완결 플래그는 record_date 에서 결정론적으로 나오고, record_date 는 모든
+// grouping set 에 들어 있으므로 여기서 같이 만든다
+function rollupSelect(name, m, axes) {
+  const kind = dimFold(name, m, resolveDims(name, m).map((d) => d.name));
+  const flags = END_FLAGS.map((f) =>
+    `  cum.${RECORD_DATE} = LAST_DAY(cum.${RECORD_DATE}, ${f.trunc}) AS ${f.name}`);
+  const vals = valueColumns(name, m).map((c) => `  ${foldExpr(`cum.${c}`, kind)} AS ${c}`);
+
+  return `
 SELECT
-  ${RECORD_DATE},
-${axes.length ? `  ${axes.join(",\n  ")},\n` : ""}  ${endFlagSelect().join(",\n  ")},
-  v AS ${name}
-FROM grid`;
+  cum.${RECORD_DATE},
+${axes.map((d) => `  ${rollupAxis(d)}`).join(",\n")}${axes.length ? "," : ""}
+${flags.join(",\n")},
+${vals.join(",\n")}
+FROM cum
+${axes.length ? groupingSets(axes) : `GROUP BY cum.${RECORD_DATE}`}`;
 }
 
 function periodSQL(ctx, name, m) {
   const axes = servingAxes(name, m);
 
-  const body = !canCumulate(m) ? cumNone(name, axes)
-             : m.additive.time === "sketch" ? cumSketch(name, axes)
-             : cumWindowed(name, axes);
+  const cum = !canCumulate(m) ? cumNone(name, axes)
+            : m.additive.time === "sketch" ? cumSketch(name, axes)
+            : cumWindowed(name, axes);
 
   return `
 WITH daily AS (
   SELECT * FROM ${ctx.ref(dailyName(name))}
 ),
-folded AS (${foldedCTE(name, m, axes).trim()}
+base AS (${baseCTE(name, m, axes).trim()}
 ),
 grid AS (${gridCTE(ctx, m, axes).trim()}
+),
+cum AS (${cum.trim()}
 )
-${body.trim()}`.trim();
+${rollupSelect(name, m, axes).trim()}`.trim();
 }
 
 // ── 3단계: metric — 비교 기준값 ──────────────────────────────
