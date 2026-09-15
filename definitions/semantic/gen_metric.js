@@ -47,12 +47,15 @@ Object.entries(METRICS).forEach(([name, m]) => {
     description: `${m.description} — 기간 4종 + 비교 기준값. 서빙 표면`,
     columns,
 
-    bigquery: { partitionBy: "period_start" },
+    // as_of_date 로 자른다. 비교 조인이 이 컬럼으로 맞고, 누계 조회도
+    // "8/14 기준" 처럼 as_of_date 를 건다
+    bigquery: { partitionBy: "as_of_date" },
 
-    // period_type 이 키에 들어가야 한다. 같은 period_start 라도 daily 와 weekly 는
-    // 다른 행이다 — 2026-03-02 은 그날이면서 그 주의 시작일이기도 하다
+    // 키는 as_of_date 다. 누계는 같은 period_start 에 cutoff 가 여러 개라
+    // (mtd 8/01 은 8/01~8/31 의 31행) period_start 로는 유일하지 않다.
+    // period_type 도 들어가야 한다 — 2026-03-02 은 그날이면서 그 주의 시작일이다
     assertions: {
-      uniqueKey:     ["period_type", "period_start", ...dims],
+      uniqueKey:     ["period_type", "as_of_date", ...dims],
       nonNull:       ["period_type", "period_start", "as_of_date"],
       rowConditions: ["as_of_date >= period_start"],
     },

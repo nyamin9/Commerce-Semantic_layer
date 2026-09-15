@@ -209,8 +209,21 @@ function rollupExpr(col, additive) {
   }
 }
 
-const canRollup = (m, pName) =>
-  PERIODS[pName].type === "passthrough" || rollupExpr("x", m.additive.time) !== null;
+// passthrough 는 접지 않으므로 롤업 함수가 필요 없다.
+//
+// 누계는 창 함수로 만드는데 BigQuery 가 HLL_COUNT.MERGE_PARTIAL 을 analytic
+// function 으로 지원하지 않는다. 그래서 스케치 지표는 누계를 만들지 않는다 (P18).
+//   dry run 은 통과하고 실행에서 "Analytic function MERGE_PARTIAL is not
+//   supported" 로 떨어진다 — 컴파일로도 dry run 으로도 못 잡는다.
+//
+// 누계 distinct 가 필요하면 소비 시점에 daily_ 스케치를 구간 병합한다.
+// 임의 구간이 되므로 오히려 달력 경계보다 자유롭다.
+const canRollup = (m, pName) => {
+  const t = PERIODS[pName].type;
+  if (t === "passthrough") return true;
+  if (t === "cumulative")  return m.additive.time === true;
+  return rollupExpr("x", m.additive.time) !== null;
+};
 
 // 이 지표가 만들 수 있는 기간. additive.time 이 롤업 불가면 daily 만 남는다 (P10-3)
 const usablePeriods = (m) => Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
@@ -239,6 +252,19 @@ function rollupBlock(name, m, dims, pName) {
   if (p.type === "passthrough") {
     return `
 SELECT '${pName}' AS period_type, dt AS period_start, dt AS as_of_date, ${cols}, ${name}
+FROM daily`;
+  }
+
+  // 누계는 접지 않는다. 기간 시작부터 그날까지를 창 함수로 누적하므로 행 수가
+  // daily 와 같고, as_of_date 가 달력 끝이 아니라 그날이다 (P13).
+  //
+  // 롤업 함수를 그대로 창 함수로 쓴다 — SUM 도 HLL_COUNT.MERGE_PARTIAL 도
+  // BigQuery 에서 analytic function 으로 동작한다.
+  if (p.type === "cumulative") {
+    const part = [...dims, `DATE_TRUNC(dt, ${p.trunc})`].join(", ");
+    return `
+SELECT '${pName}', DATE_TRUNC(dt, ${p.trunc}), dt, ${cols},
+       ${rollupExpr(name, m.additive.time)} OVER (PARTITION BY ${part} ORDER BY dt)
 FROM daily`;
   }
 
@@ -290,19 +316,28 @@ function metricSQL(ctx, name, m) {
     const a   = `b_${label}`;
     const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
 
+    // period_start 가 아니라 as_of_date 를 시프트한다.
+    //
+    // 누계는 같은 period_start 에 cutoff 가 여러 개다 — mtd 8/01 행이 지난달의
+    // 모든 cutoff(7/01~7/31)에 매칭되면 틀린다. (period_type, as_of_date) 가
+    // 차원 조합마다 유일하므로 그쪽이 맞는 기준이다.
+    //
+    // 완결 기간은 결과가 같다. DATE_SUB 이 월말을 보정한다 —
+    // 2026-03-31 - 1 MONTH = 2026-02-28 로 2월 monthly 행과 맞는다.
+    //
     // 간격이 기간마다 다르다. weekly YoY 는 364일이어야 주 시작일에 떨어진다
     const shift = applicable.length === 1
-      ? `DATE_SUB(c.period_start, INTERVAL ${applicable[0][1]})`
+      ? `DATE_SUB(c.as_of_date, INTERVAL ${applicable[0][1]})`
       : `CASE c.period_type\n` +
         applicable.map(([pName, iv]) =>
-          `      WHEN '${pName}' THEN DATE_SUB(c.period_start, INTERVAL ${iv})`).join("\n") +
+          `      WHEN '${pName}' THEN DATE_SUB(c.as_of_date, INTERVAL ${iv})`).join("\n") +
         `\n    END`;
 
     joins.push(
       `LEFT JOIN ${src} AS ${a}\n` +
       `  ON c.period_type IN (${in_})\n` +
       ` AND ${a}.period_type = c.period_type\n` +
-      ` AND ${a}.period_start = ${shift}\n` +
+      ` AND ${a}.as_of_date = ${shift}\n` +
       dims.map((d) => ` AND ${eqNullSafe(`${a}.${d}`, `c.${d}`)}`).join("\n")
     );
     cols.push(`${a}.${name} AS ${baseColumn(label)}`);
