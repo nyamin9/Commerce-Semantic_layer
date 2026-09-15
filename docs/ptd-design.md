@@ -129,13 +129,28 @@ mask 0b0001   country  (all)      (all)   (all)    country 별 롤업
 mask 0b0000   (all)    (all)      (all)   (all)    전사
 ```
 
-**진짜 `NULL` 은 `NULL` 로 남는다.** 마스크가 그 축을 살린 행에서는 원본 값이 그대로
-오므로 "값이 없는 버킷"(P6-1)과 `'(all)'` 이 섞이지 않는다. `CUBE`·`GROUPING SETS` 였다면
-롤업 행도 `NULL` 로 나와서 `GROUPING()` 으로 갈라야 했다 — 안 그러면 원본의 `NULL` 행이
-롤업 행에 이미 포함돼 있는데 둘 다 `'(all)'` 이 되어 **조용히 이중 계산**된다.
+**값이 없는 버킷은 `'(unknown)'` 이다.** 마스크가 그 축을 살린 행에서는 원본 값이
+그대로 오므로 `'(all)'` 과 섞이지 않는다. `CUBE`·`GROUPING SETS` 였다면 롤업 행도
+`NULL` 로 나와서 `GROUPING()` 으로 갈라야 했다 — 안 그러면 원본의 `NULL` 행이 롤업
+행에 이미 포함돼 있는데 둘 다 `'(all)'` 이 되어 **조용히 이중 계산**된다.
 
-지금 conformed 4축에 `NULL` 은 0건이라 당장은 차이가 없다. 상류가 하나 흘리는 순간
-틀리기 때문에 처음부터 갈라 둔다. 하류 조인이 `IS NOT DISTINCT FROM` 인 것도 같은 이유다.
+### 서빙 차원에 `NULL` 을 두지 않는다
+
+`daily_` 의 `NULL` 은 1단계에서 `'(unknown)'` 으로 바뀐다. 뜻은 그대로
+"값이 없는 버킷"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
+
+바뀌는 것은 조인이다. `NULL` 을 남기면 `IS NOT DISTINCT FROM` 을 써야 하는데,
+**BigQuery 가 그것을 해시 조인 키로 쓰지 못한다.** 평범한 조인에서는 티가 안 나다가
+구간 자기조인에서 터진다.
+
+```
+period_buyer_count 의 누계 단계 — 격자 2,023,920 행 × 1년 구간
+IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
+=                      통과
+```
+
+지금 conformed 4축에 `NULL` 은 0건이라 값은 달라지지 않는다. 상류가 하나 흘리는
+순간을 대비해 처음부터 버킷으로 둔다.
 
 ## daily → period → metric
 

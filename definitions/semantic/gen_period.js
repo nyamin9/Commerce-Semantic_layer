@@ -28,7 +28,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
     [RECORD_DATE]: "기준일. daily 는 그날, 누계는 기간 시작부터 이 날까지다",
   };
   for (const d of axes) {
-    columns[d] = `차원. '(all)' 은 이 축을 걷은 롤업 행, '(unknown)' 은 값이 없는 버킷 (P6-1)`;
+    columns[d] = `차원. '(all)' 은 이 축을 걷은 롤업 행, '(unknown)' 은 값이 없는 버킷 (P6-3)`;
   }
   for (const f of endFlagNames()) {
     columns[f] = `이 날이 해당 기간의 마지막 날인가. 완결 기간 집계를 고를 때 쓴다 (P13)`;

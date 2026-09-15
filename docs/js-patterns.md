@@ -597,7 +597,7 @@ module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 
 // includes/build.js
 module.exports = {
-  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
+  seq, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
   resolveDims, resolveJoins, servingAxes,
   usablePeriods, valueColumns, comparePlan, endFlagNames,
   dailySQL, periodSQL, metricSQL,
@@ -744,30 +744,46 @@ function exprJoins(name, m, sql, where) {
 
 ---
 
-## 17. 한 줄 함수로 남기기 — 이름이 주는 것
+## 17. 상수 하나로 문제를 옮기기 — `NULL` 을 값으로 바꾼다
 
-`includes/build.js:18-21`
-
-```js
-const eqNullSafe = (l, r) => `${l} IS NOT DISTINCT FROM ${r}`;
-```
-
-차원이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고,
-`ON` 절에서 그 행은 매칭되지 않는다. 비교 기준값이 통째로 비어버린다.
-GoogleSQL의 `IS NOT DISTINCT FROM`은 `NULL = NULL`을 `TRUE`로 본다.
-
-**예전에는 이렇게 썼다.**
+`includes/build.js` 의 `UNKNOWN`
 
 ```js
-`COALESCE(CAST(${l} AS STRING), '\\u0000') = COALESCE(CAST(${r} AS STRING), '\\u0000')`
+const UNKNOWN = "(unknown)";
+...
+`COALESCE(${d}, '${UNKNOWN}') AS ${d}`
 ```
 
-BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 틀렸다.
-게다가 조인 키를 `CAST`로 감싸면 sargable하지 않아 성능만 잃는다.
-지표 하나당 비교 self-join이 최대 4개라 누적된다.
+차원이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고, `ON` 절에서
+그 행은 매칭되지 않는다. 그래서 한동안 `IS NOT DISTINCT FROM` 을 썼다 —
+GoogleSQL 에 있는 연산자이고 `NULL = NULL` 을 `TRUE` 로 본다.
 
-한 줄로 줄어들었는데도 함수로 남긴 이유는 **이름이 뜻을 대신하기 때문이다.**
-`metricSQL`에서 조인을 조립하는 쪽은 "NULL 안전 비교"라는 뜻만 읽고 지나가면 된다.
+**그런데 BigQuery 가 그것을 해시 조인 키로 쓰지 못한다.** 등가 조인이면 양쪽을
+해시로 나눠 붙이는데, `IS NOT DISTINCT FROM` 은 일반 술어라 중첩 루프가 된다.
+평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌다.
+
+```
+period_buyer_count 의 누계 단계 — 격자 2,023,920 행 × 1년 구간
+IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
+=                      통과
+```
+
+고치는 방법이 둘이었다.
+
+| | |
+|---|---|
+| 조인 술어를 바꾼다 | `COALESCE(l,'x') = COALESCE(r,'x')` — 조인마다 식이 붙는다 |
+| **값에서 `NULL` 을 없앤다** | 한 단계에서 `'(unknown)'` 으로 바꾸면 이후 조인이 전부 `=` 다 |
+
+뒤쪽을 골랐다. `NULL` 이 사라지는 것이 아니라 **이름을 얻는다** — 뜻은 그대로
+"값이 없는 버킷"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
+소비자도 `IS NULL` 대신 `= '(unknown)'` 을 쓴다.
+
+`'(all)'` 과는 겹치지 않는다. `'(unknown)'` 은 값이 없는 버킷이고 `'(all)'` 은 그 축을
+걷은 롤업 행이다.
+
+**상수를 파일 맨 위에 둔 이유**도 여기 있다. 문자열이 여러 곳에 흩어지면 하나를
+고쳤을 때 나머지가 조용히 어긋난다 — `'(all)'` 과 `'(unknown)'` 둘 다 그렇다.
 
 ---
 
@@ -790,7 +806,7 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
     const a = shiftAlias(interval);
     return `LEFT JOIN ${src} AS ${a}\n` +
            `  ON ${a}.${RECORD_DATE} = DATE_SUB(c.${RECORD_DATE}, INTERVAL ${interval})\n` +
-           axes.map((d) => ` AND ${eqNullSafe(`${a}.${d}`, `c.${d}`)}`).join("\n");
+           axes.map((d) => ` AND ${a}.${d} = c.${d}`).join("\n");
   });
 
   const bases = plan.map((c) =>

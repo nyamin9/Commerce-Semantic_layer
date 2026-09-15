@@ -5,7 +5,7 @@ BigQuery + Dataform 위에 커머스 semantic layer를 구축하는 프로젝트
 변환(transformation)은 **dbt-airflow**가 담당하고, 이 레포는 **semantic layer만** 담당한다.
 DW 테이블은 만들지 않고 `declaration`으로 읽기만 한다.
 
-- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 9개 포함 31항)
+- 판단 기준은 [docs/principles.md](docs/principles.md) — P1~P22 (세부 10개 포함 32항)
 - 지표 정의는 [docs/metrics.md](docs/metrics.md) — 기본 15 · 비율 7 · 제외 5
 - 코드 읽는 법은 [docs/js-patterns.md](docs/js-patterns.md) — JS 패턴 19가지 · `build.js` 읽는 순서
 
@@ -390,7 +390,7 @@ false     복원 불가                 → 생성 거부
 | `periodSQL(ctx, name, m)` | 채운 격자 → 누적 → `'(all)'` 롤업. 가산은 창 함수, 스케치는 구간 병합 |
 | `comparePlan(m)` | 비교 컬럼 8개와 각각의 기간·간격 |
 | `metricSQL(ctx, name, m)` | 간격별 self-join 5번 + 비교 기준값 |
-| `eqNullSafe(l, r)` | 차원 NULL 비교. `IS NOT DISTINCT FROM`으로 NULL = NULL을 맞춘다 |
+| `UNKNOWN` · `ALL` | 서빙 차원의 두 sentinel. `'(unknown)'` 은 값이 없는 버킷, `'(all)'` 은 롤업 행 |
 
 ---
 
