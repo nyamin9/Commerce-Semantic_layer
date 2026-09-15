@@ -10,7 +10,7 @@
 | 종류 | 예 | 성격 |
 |---|---|---|
 | **선언 데이터** | `PERIODS` `ENTITIES` `METRICS` `SOURCES` | 사람이 읽고 쓰는 설정. 로직 없음 |
-| **파생 인덱스** | `COMPARE_LABELS` | 선언을 builder가 쓰기 좋은 방향으로 가공 |
+| **파생 인덱스** | `SHIFTS` | 선언을 builder가 쓰기 좋은 방향으로 가공 |
 | **헬퍼 함수** | `allDims()` `uniform()` `self()` `dailySQL()` | 선언에서 필요한 조각을 꺼내거나 조립 |
 
 선언은 손으로 쓰고, 파생과 헬퍼는 선언을 읽는다. **역방향은 없다** —
@@ -23,30 +23,29 @@
 객체는 그냥 `for...of`를 돌 수 없다. `[키, 값]` 배열로 바꿔야 한다.
 
 ```js
-Object.entries({ daily: {...}, weekly: {...} })
-// → [ ["daily", {...}], ["weekly", {...}] ]
+Object.entries({ daily: {...}, wtd: {...} })
+// → [ ["daily", {...}], ["wtd", {...}] ]
 ```
 
-`includes/periods.js:33-38` — 실제로 쓰인 곳. 중첩 두 겹이다.
+`includes/periods.js` 의 `SHIFTS` — 실제로 쓰인 곳. 중첩 두 겹이다.
 
 ```js
   for (const [pName, p] of Object.entries(PERIODS)) {
     for (const [label, interval] of Object.entries(p.compare)) {
-      acc[label] = acc[label] || {};
-      acc[label][pName] = interval;
+      (acc[interval] = acc[interval] || []).push({ period: pName, label });
     }
   }
 ```
 
 `const [pName, p] of ...`는 그 쌍을 두 변수로 분해한다(구조 분해).
-바깥 루프에서 `pName = "weekly"`, `p = { type, trunc, compare }`가 되고,
+바깥 루프에서 `pName = "wtd"`, `p = { type, label, trunc, end_flag, compare }`가 되고,
 안쪽 루프가 그 `p.compare`를 다시 순회한다.
 
 **변형 셋을 상황에 따라 골라 쓴다.**
 
 ```js
-// 값은 안 쓰므로 keys — includes/build.js:201
-const usable = Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
+// 값은 안 쓰므로 keys — includes/build.js
+const usable = canCumulate(m) ? Object.keys(PERIODS) : ["daily"];
 
 // 키·값 둘 다 쓰고 순회만 하면 forEach — definitions/sources/declarations.js:26-28
 Object.entries(SOURCES).forEach(([schema, tables]) => {
@@ -58,15 +57,14 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 
 ## 2. IIFE — `const`에 여러 줄 계산을 담기
 
-`includes/periods.js:31-40` — 실제 코드 전문.
+`includes/periods.js` 의 `SHIFTS` — 실제 코드 전문.
 
 ```js
-const COMPARE_LABELS = (() => {
+const SHIFTS = (() => {
   const acc = {};
   for (const [pName, p] of Object.entries(PERIODS)) {
     for (const [label, interval] of Object.entries(p.compare)) {
-      acc[label] = acc[label] || {};
-      acc[label][pName] = interval;
+      (acc[interval] = acc[interval] || []).push({ period: pName, label });
     }
   }
   return acc;
@@ -76,9 +74,9 @@ const COMPARE_LABELS = (() => {
 첫 줄과 마지막 줄만 떼어 보면 구조가 보인다.
 
 ```js
-const COMPARE_LABELS = (() => { ... return acc; })();
-//                     ^^^^^^^^^^^^^^^^^^^^^^^^^^ 함수 정의
-//                                                ^^ 즉시 호출
+const SHIFTS = (() => { ... return acc; })();
+//             ^^^^^^^^^^^^^^^^^^^^^^^^^^ 함수 정의
+//                                        ^^ 즉시 호출
 ```
 
 `const`는 값 하나만 받는데 계산이 여러 줄일 때 쓴다. 이점이 둘이다.
@@ -93,48 +91,55 @@ const COMPARE_LABELS = (() => { ... return acc; })();
 
 ## 3. 파생 인덱스 — 표를 뒤집기
 
-`includes/periods.js:31-40`
+`includes/periods.js` 의 `SHIFTS`
 
-`periods.js`의 `COMPARE_LABELS`가 대표 사례다. 선언과 사용의 **방향이 반대**라서 뒤집는다.
+선언과 사용의 **방향이 반대**라서 뒤집는다.
 
 ```
-PERIODS          기간 → 비교 목록    "weekly는 wow와 yoy를 쓴다"      ← 사람이 쓰기 편한 방향
-COMPARE_LABELS   비교 → 기간 목록    "yoy는 4개 기간에서 쓰인다"       ← builder가 쓰기 편한 방향
+PERIODS   기간 → 비교 목록    "wtd는 wow와 yoy를 쓴다"          ← 사람이 쓰기 편한 방향
+SHIFTS    간격 → 비교 목록    "1 YEAR 로는 3개를 가져온다"       ← builder가 쓰기 편한 방향
 ```
+
+`metric_` 의 self-join 을 **간격 단위로 묶기 위해서**다. 비교 컬럼이 8개인데
+간격이 5개뿐이라, 뒤집지 않으면 같은 조인을 8번 쓴다.
 
 ```js
 const acc = {};
 for (const [pName, p] of Object.entries(PERIODS)) {
   for (const [label, interval] of Object.entries(p.compare)) {
-    acc[label] = acc[label] || {};   // 처음 보는 라벨이면 빈 객체
-    acc[label][pName] = interval;
+    (acc[interval] = acc[interval] || []).push({ period: pName, label });
   }
 }
 ```
 
 실행 추적:
 
-| pName | label | interval | `acc[label]` |
+| pName | label | interval | `acc[interval]` |
 |---|---|---|---|
-| daily | dod | 1 DAY | `undefined` → `{daily: "1 DAY"}` |
-| daily | yoy | 1 YEAR | `undefined` → `{daily: "1 YEAR"}` |
-| weekly | yoy | **364 DAY** | → `{daily: "1 YEAR", weekly: "364 DAY"}` |
-| monthly | yoy | 1 YEAR | → `{daily, weekly, monthly}` |
-| yearly | yoy | 1 YEAR | → `{daily, weekly, monthly, yearly}` |
+| daily | dod | 1 DAY | `undefined` → `[{daily, dod}]` |
+| daily | wow | 1 WEEK | `undefined` → `[{daily, wow}]` |
+| daily | yoy | 1 YEAR | `undefined` → `[{daily, yoy}]` |
+| wtd | wow | 1 WEEK | → `[{daily, wow}, {wtd, wow}]` |
+| wtd | yoy | **364 DAY** | `undefined` → `[{wtd, yoy}]` |
+| mtd | yoy | 1 YEAR | → `[{daily, yoy}, {mtd, yoy}]` |
+| ytd | yoy | 1 YEAR | → `[{daily, yoy}, {mtd, yoy}, {ytd, yoy}]` |
 
 결과 — 이 값이 만들어진다. 파일에 이렇게 적혀 있는 것은 아니다.
 
 ```js
-COMPARE_LABELS = {
-  dod: { daily: "1 DAY" },
-  wow: { daily: "1 WEEK", weekly: "1 WEEK" },
-  yoy: { daily: "1 YEAR", weekly: "364 DAY", monthly: "1 YEAR", yearly: "1 YEAR" },
-  mom: { monthly: "1 MONTH" },
+SHIFTS = {
+  "1 DAY":   [{ period: "daily", label: "dod" }],
+  "1 WEEK":  [{ period: "daily", label: "wow" }, { period: "wtd", label: "wow" }],
+  "1 YEAR":  [{ period: "daily", label: "yoy" }, { period: "mtd", label: "yoy" },
+              { period: "ytd",   label: "yoy" }],
+  "364 DAY": [{ period: "wtd",   label: "yoy" }],
+  "1 MONTH": [{ period: "mtd",   label: "mom" }],
 }
 ```
 
-`yoy` 하나에 기간 4개가 쌓이면서 **`weekly`만 364일**이라는 사실이 보존된다.
-이것이 `build.js`가 `CASE period_type`을 만드는 근거다.
+`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋을 채운다.
+
+**`wtd`만 364일**이라 별도 간격으로 갈라지는 것도 이 표에서 보인다.
 
 ---
 
@@ -363,19 +368,20 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 `map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀린다.
 인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감싼다.
 
-`filter`로 후보를 거른다. `includes/build.js:216`:
+`filter`로 후보를 거른다. `includes/build.js` 의 `servingAxes`:
 
 ```js
-const usablePeriods = (m) => Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
+const have = new Set(resolveDims(name, m).map((d) => d.name));
+return servingDims(m.entity).filter((d) => have.has(d));
 ```
 
-**콜백에서 구조 분해**도 자주 쓴다. `includes/build.js:226`:
+**콜백에서 구조 분해**도 자주 쓴다. `includes/metrics.js`:
 
 ```js
-    const applicable = Object.entries(byPeriod).filter(([pName]) => usable.includes(pName));
+for (const [name, m] of Object.entries(METRICS)) { ... }
 ```
 
-`([pName])`는 `[키, 값]` 쌍에서 첫 원소만 꺼내고 값은 버린다는 뜻이다.
+`([pName])`처럼 쓰면 `[키, 값]` 쌍에서 첫 원소만 꺼내고 값은 버린다는 뜻이다.
 둘 다 필요하면 `([pName, iv])`로 받는다.
 
 ---
@@ -573,40 +579,46 @@ fact에 기록해 둔 이유이기도 하다. **기능은 열되 기본은 fact�
 각 파일 끝에서 무엇을 밖으로 내보낼지 정한다.
 
 ```js
-// includes/naming.js:16
-module.exports = { MART_PREFIX, martName, dailyName, periodName, metricName, baseColumn };
+// includes/naming.js
+module.exports = {
+  MART_PREFIX, martName,
+  dailyName, periodName, metricName,
+  RECORD_DATE, valueColumn, baseColumn,
+};
 
-// includes/periods.js:42
-module.exports = { PERIODS, COMPARE_LABELS };
+// includes/periods.js
+module.exports = { PERIODS, CUMULATIVE, END_FLAGS, SHIFTS };
 
-// includes/entities.js:116
-module.exports = { ENTITIES, allDims, allJoins, refreshOf };
+// includes/entities.js
+module.exports = { ENTITIES, allDims, allJoins, refreshOf, servingDims };
 
-// includes/metrics.js:138
+// includes/metrics.js
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 
-// includes/build.js:324-329
+// includes/build.js
 module.exports = {
   seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
-  usablePeriods, applicableCompares, periodSQL,
-  resolveDims, resolveJoins, rollupExpr, canRollup,
-  dailySQL, metricSQL,
+  resolveDims, resolveJoins, servingAxes,
+  usablePeriods, valueColumns, comparePlan, endFlagNames,
+  dailySQL, periodSQL, metricSQL,
 };
 ```
 
 내보내지 않은 것은 파일 안에서만 산다 — `entities.js`의 `self`, `metrics.js`의
-`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`rollupBlock`·`incrementalWhere`가 그렇다.
+`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`cubeCTE`·`gridCTE`·`incrementalWhere`가 그렇다.
 헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워진다.
 
 받는 쪽은 구조 분해로 필요한 것만 꺼낸다. `includes/build.js:11-13`:
 
 ```js
-const { ENTITIES, allDims, allJoins } = require("includes/entities");
-const { PERIODS, COMPARE_LABELS } = require("includes/periods");
-const { dailyName, baseColumn }   = require("includes/naming");
+const { ENTITIES, allDims, allJoins, servingDims } = require("includes/entities");
+const { PERIODS, CUMULATIVE, END_FLAGS } = require("includes/periods");
+const { dailyName, periodName, martName,
+        RECORD_DATE, valueColumn, baseColumn } = require("includes/naming");
 ```
 
-`naming.js`는 5개를 내보내는데 `build.js`는 2개만 받는다. 무엇을 쓰는지가 파일 맨 위에 드러난다.
+`periods.js`는 4개를 내보내는데 `build.js`는 3개만 받는다 — `SHIFTS` 는 안 쓴다.
+무엇을 쓰는지가 파일 맨 위에 드러난다.
 
 **`includes/`의 파일은 두 가지로 쓸 수 있다.**
 
@@ -645,14 +657,14 @@ seq(4)   // → "1, 2, 3, 4"
 
 ## 14. `switch` + `return` — `break`가 없는 이유
 
-`includes/build.js:202-210`
+`includes/build.js` 의 `foldExpr`
 
 ```js
-function rollupExpr(col, additive) {
+function foldExpr(col, additive) {
   switch (additive) {
     case true:     return `SUM(${col})`;
     case "sketch": return `HLL_COUNT.MERGE_PARTIAL(${col})`;
-    case "last":   return `ANY_VALUE(${col} HAVING MAX dt)`;
+    case "last":   return `ANY_VALUE(${col} HAVING MAX ${RECORD_DATE})`;
     default:       return null;
   }
 }
@@ -661,8 +673,8 @@ function rollupExpr(col, additive) {
 `switch`는 보통 `break`가 필요하다. 없으면 다음 `case`로 흘러내린다(fall-through).
 여기서는 **`return`이 함수를 즉시 끝내므로** `break`가 필요 없다.
 
-`default: return null`이 "롤업할 수 없다"는 신호다. 호출한 쪽(`canRollup`)이
-`!== null`로 검사해 생성 여부를 정한다 — 예외를 던지지 않고 값으로 표현했다.
+`default: return null`이 "접을 수 없다"는 신호다. 호출한 쪽(`dimFold`)이
+`!== null`로 검사해 예외를 던질지 정한다 — 판정과 처리가 나뉘어 있다.
 
 ---
 
@@ -761,54 +773,47 @@ BigQuery에 이 연산자가 없다고 보고 우회한 코드인데, 전제가 
 
 ## 18. 병렬 누적 배열 — 조인과 컬럼을 같이 모으기
 
-`includes/build.js:287-309` — 루프 전문.
+`includes/build.js` 의 `metricSQL`
+
+비교 컬럼은 8개인데 시프트 간격은 5개뿐이다. **간격 하나가 컬럼 여럿을 채운다** —
+`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋이 나온다.
+그래서 먼저 간격으로 묶는다.
 
 ```js
-  const joins = [];
-  const cols  = [];
-  for (const [label, applicable] of applicableCompares(m)) {
-
-    const a  = `b_${label}`;
-    const in_ = applicable.map(([pName]) => `'${pName}'`).join(", ");
-
-    // 간격이 기간마다 다르다. weekly YoY 는 364일이어야 주 시작일에 떨어진다
-    const shift = applicable.length === 1
-      ? `DATE_SUB(c.period_start, INTERVAL ${applicable[0][1]})`
-      : `CASE c.period_type\n` +
-        applicable.map(([pName, iv]) =>
-          `      WHEN '${pName}' THEN DATE_SUB(c.period_start, INTERVAL ${iv})`).join("\n") +
-        `\n    END`;
-
-    joins.push(
-      `LEFT JOIN ${src} AS ${a}\n` +
-      `  ON c.period_type IN (${in_})\n` +
-      ` AND ${a}.period_type = c.period_type\n` +
-      ` AND ${a}.period_start = ${shift}\n` +
-      dims.map((d) => ` AND ${eqNullSafe(`${a}.${d}`, `c.${d}`)}`).join("\n")
-    );
-    cols.push(`${a}.${name} AS ${baseColumn(label)}`);
+  const byInterval = new Map();
+  for (const c of plan) {
+    if (!byInterval.has(c.interval)) byInterval.set(c.interval, []);
+    byInterval.get(c.interval).push(c);
   }
+
+  const joins = [...byInterval.keys()].map((interval) => {
+    const a = shiftAlias(interval);
+    return `LEFT JOIN ${src} AS ${a}\n` +
+           `  ON ${a}.${RECORD_DATE} = DATE_SUB(c.${RECORD_DATE}, INTERVAL ${interval})\n` +
+           axes.map((d) => ` AND ${eqNullSafe(`${a}.${d}`, `c.${d}`)}`).join("\n");
+  });
+
+  const bases = plan.map((c) =>
+    `  ${shiftAlias(c.interval)}.${valueColumn(name, c.period)} AS ${c.column}`);
 ```
 
-하나의 비교 라벨이 **SQL의 두 자리**에 흔적을 남긴다 — `SELECT` 절의 컬럼과 `FROM` 뒤의 조인.
-두 자리가 떨어져 있으므로 배열을 둘 두고 같이 채운 뒤 마지막에 각각 `join()`한다.
+**`joins` 는 간격으로, `bases` 는 컬럼으로 돈다.** 길이가 다르다 (5 대 8).
+둘을 잇는 것은 `shiftAlias(interval)` 뿐이다 — 같은 간격이면 같은 alias 가 나오므로
+`bases` 가 `joins` 가 만든 alias 를 그대로 가리킨다.
 
-`yoy` 한 번의 회차가 만드는 것:
+`1 YEAR` 회차가 만드는 것:
 
 ```sql
-SELECT ..., b_yoy.net_revenue AS yoy_base          ← cols 에 push
+SELECT ..., b_1_year.net_revenue     AS yoy_base
+            b_1_year.net_revenue_mtd AS mtd_yoy_base      ← bases 3줄
+            b_1_year.net_revenue_ytd AS ytd_yoy_base
 FROM period_net_revenue AS c
-LEFT JOIN period_net_revenue AS b_yoy ON ...       ← joins 에 push
+LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 ```
 
-**둘의 순서가 어긋나면 안 되므로** 같은 루프에서 같이 push 한다.
-
-`shift`의 삼항 연산자는 10번(템플릿 리터럴)과 9번(고차 함수)이 겹친 곳이다.
-기간이 하나면 `DATE_SUB` 한 줄, 여럿이면 `CASE`를 조립한다 —
-`applicable.length === 1`로 갈라 불필요한 `CASE`를 만들지 않는다.
-
-`applicable[0][1]`은 `[["monthly", "1 MONTH"]]`의 첫 쌍의 두 번째 원소,
-곧 `"1 MONTH"`다. 배열의 배열이라 인덱스가 두 겹이다.
+`shiftAlias` 는 `"364 DAY"` 를 `"b_364_day"` 로 바꾼다. 간격 문자열이 그대로
+식별자가 되므로 공백과 대문자를 지운다 — 값 하나에서 이름을 만드는 방식이라
+간격을 추가해도 alias 규칙을 손댈 일이 없다.
 
 ---
 
@@ -821,25 +826,31 @@ LEFT JOIN period_net_revenue AS b_yoy ON ...       ← joins 에 push
 | 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (11번) |
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
-| 4 | `rollupExpr` · `canRollup` | `additive` → 함수 선택, 생성 가부 (14번) |
-| 5 | `rollupBlock` · `usablePeriods` | 기간 하나의 `SELECT` 블록, 만들 수 있는 기간 |
-| 6 | `periodSQL` | 5를 `UNION ALL` 로 이어 붙인다 |
-| 7 | `applicableCompares` · `metricSQL` | 비교 라벨 판정과 조인 조립 (18번) |
+| 4 | `foldExpr` · `dimFold` | `additive` → 함수 선택, 접기 가부 (14번) |
+| 5 | `cubeCTE` · `gridCTE` | 차원 접기와 격자 채우기 |
+| 6 | `periodSQL` · `cumWindowed` · `cumSketch` | 5 위에 누적. 가산/스케치 두 갈래 |
+| 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
 **6과 7이 나뉘어 있는 것이 핵심이다.** 예전에는 `metricSQL` 하나가 둘 다 했고
 기간 확장이 `rolled` CTE 였는데, `metricSQL` 이 그것을 다섯 번 참조해(본 쿼리 1 +
 비교 조인 4) 같은 집계가 다섯 번 돌았다. CTE 는 결과를 저장하지 않기 때문이다.
 
 ```
-periodSQL   daily_ → 기간 4종 UNION ALL          → period_<metric> 테이블
-metricSQL   period_ 를 시프트해 자기 자신과 조인  → metric_<metric> 테이블
+periodSQL   daily_ → CUBE → 채운 격자 → 누적       → period_<metric> 테이블
+metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metric> 테이블
+```
+
+`periodSQL` 은 세 겹의 CTE 를 이어 붙이고 마지막에 갈래를 고른다.
+
+```
+cube → grid → cumWindowed (가산) 또는 cumSketch (스케치)
 ```
 
 `metricSQL` 은 두 덩이다.
 
 ```
-1) joins/cols  비교 라벨마다 조인 한 줄 + 컬럼 한 줄   → 병렬 배열 (18번)
-2) 조립         SELECT + joins                        → 최종 문자열
+1) joins/bases  간격마다 조인 한 줄, 컬럼마다 한 줄   → 길이가 다른 두 배열 (18번)
+2) 조립          SELECT + joins                       → 최종 문자열
 ```
 
 `ctx`는 Dataform이 넘겨주는 객체다. `ctx.ref(name)`이 이름을 정규화된 테이블
@@ -911,7 +922,7 @@ for (const d of dims) columns[d] = `차원. ${e.dims[d].via || "fact 자체 컬�
 | 패턴 | 쓰인 곳 |
 |---|---|
 | `Object.entries` 순회 | `periods.js` `build.js` `declarations.js` |
-| IIFE | `periods.js` — `COMPARE_LABELS` |
+| IIFE | `periods.js` — `SHIFTS` |
 | 파생 인덱스 | `periods.js` — 표 뒤집기 |
 | `|| {}` 초기화 · 기본값 | `periods.js` `build.js` |
 | 계산된 키 `[x]:` | `declarations.js` — 데이터셋명이 vars에서 옴 |
@@ -922,7 +933,7 @@ for (const d of dims) columns[d] = `차원. ${e.dims[d].via || "fact 자체 컬�
 | 템플릿 리터럴 | `build.js` — SQL 조립 |
 | `throw` | `build.js` — 선언 검증 5곳 |
 | `Array.from({length})` | `build.js` — `seq()` |
-| `switch` + `return` | `build.js` — `rollupExpr` |
+| `switch` + `return` | `build.js` — `foldExpr` |
 | `in` 연산자 | `build.js` — 미선언과 `false` 구분 |
 | `continue` | `build.js` — `exprJoins` |
 | 콜백 `replace` + 캡처 그룹 | `build.js` — `renderExpr` |

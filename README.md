@@ -89,11 +89,11 @@ Dataform이 컴파일 타임 도구라 런타임 조립이 구조적으로 불�
 선언으로 만들면  metrics.js 14항목 + 고정 파일 5개
 ```
 
-- 기간 하나 추가 → `periods.js` 한 줄 → **14개 지표에 전부 적용**
-- 지표 하나 추가 → `metrics.js` 한 항목 → **기간 4종 · 비교 4종 자동**
+- 기간 하나 추가 → `periods.js` 한 줄 → **15개 지표에 전부 적용**
+- 지표 하나 추가 → `metrics.js` 한 항목 → **기간 컬럼 4 · 비교 컬럼 8 · `'(all)'` 롤업 자동**
 
-`weekly`의 YoY를 364일로 고친 것이 실제 사례다. 한 줄로 14개 지표의 주간 비교가
-전부 맞아졌다. 손으로 만들었다면 14곳을 고쳐야 했고 하나는 빠뜨렸을 것이다.
+`wtd`의 YoY를 364일로 고친 것이 실제 사례다. 한 줄로 15개 지표의 주간 비교가
+전부 맞아졌다. 손으로 만들었다면 15곳을 고쳐야 했고 하나는 빠뜨렸을 것이다.
 
 ### 커스텀 요청은 어디까지 답하는가
 
@@ -136,15 +136,15 @@ semantic_mart                우리 소유. 이름 정규화 · 자연키 제거
         │
         │  includes/build.js  ← entities.js 의 join graph 만큼 LEFT JOIN
         ▼
-semantic.daily_<metric>      날짜 × 차원 집계. 조인이 실행되는 유일한 곳
+semantic.daily_<metric>      날짜 × 전체 차원 집계. 조인이 실행되는 유일한 곳
         │
-        │  includes/build.js  ← periods.js 의 기간만큼 롤업
+        │  includes/build.js  ← serving_dims 로 CUBE, 채운 격자 위에 누적
         ▼
-semantic.period_<metric>     기간 4종 확장. metric_ 의 재료
+semantic.period_<metric>     4축 CUBE × 기간 컬럼. metric_ 의 재료
         │
-        │  includes/build.js  ← 시프트 self-join
+        │  includes/build.js  ← record_date 를 시프트한 self-join 5번
         ▼
-semantic.metric_<metric>     기간 4종 + 비교 기준값. 서빙 표면
+semantic.metric_<metric>     기간 컬럼 4 + 비교 기준값 8. 서빙 표면
 semantic_metadata.metric_registry   지표 카탈로그
 ```
 
@@ -282,22 +282,33 @@ docs/
 | `martName(base)` | `sem_` 접두사 — DW와 이름이 겹치면 `ref()`가 충돌한다 |
 | `dailyName(metric)` | `daily_<metric>` |
 | `metricName(metric)` | `metric_<metric>` |
-| `baseColumn(label)` | `<label>_base` — 증감률이 아니라 기준 기간의 값 |
+| `periodName(metric)` | `period_<metric>` |
+| `RECORD_DATE` | `record_date` — 세 단계가 같은 날짜 컬럼 이름을 쓴다 |
+| `valueColumn(metric, period)` | `net_revenue` · `net_revenue_wtd` — 접두어가 없으면 `daily` |
+| `baseColumn(period, label)` | `wow_base` · `wtd_wow_base` — 증감률이 아니라 기준 시점의 값 |
 
-### `periods.js` (42줄)
+### `periods.js`
+
+기간은 행이 아니라 **컬럼**이다. 여기 한 줄을 더하면 모든 지표의 서빙 테이블에
+값 컬럼 1개와 비교 컬럼 n개가 생긴다.
 
 ```js
 PERIODS = {
-  daily:   { type: "passthrough", trunc: null,           compare: { dod, wow, yoy } },
-  weekly:  { type: "rollup",      trunc: "WEEK(MONDAY)", compare: { wow, yoy: "364 DAY" } },
-  monthly: { type: "rollup",      trunc: "MONTH",        compare: { mom, yoy } },
-  yearly:  { type: "rollup",      trunc: "YEAR",         compare: { yoy } },
+  daily: { type: "passthrough", trunc: null,           end_flag: null,           compare: { dod, wow, yoy } },
+  wtd:   { type: "cumulative",  trunc: "WEEK(MONDAY)", end_flag: "is_week_end",  compare: { wow, yoy: "364 DAY" } },
+  mtd:   { type: "cumulative",  trunc: "MONTH",        end_flag: "is_month_end", compare: { mom, yoy } },
+  ytd:   { type: "cumulative",  trunc: "YEAR",         end_flag: "is_year_end",  compare: { yoy } },
 }
 ```
 
-- **`weekly`의 YoY만 364일**이다. `1 YEAR`로 하면 주 시작일에 떨어지지 않아 매칭이 전부 실패한다
-- `COMPARE_LABELS`는 위 선언을 뒤집어 `라벨 → { period_type: 간격 }`을 만든다. 라벨마다 컬럼이 하나 생긴다
-- **WTD·MTD·YTD는 없다.** 저장하지 않고 소비 시점에 파생한다 (P15)
+- **`weekly`·`monthly`·`yearly` 는 없다.** 완결 기간의 롤업은 누계와 같은 값이라
+  `is_*_end` 로 고른다 — `monthly = mtd where is_month_end`. 실측으로 완결 주
+  10,080 조합 전부 일치했다
+- **`wtd`의 YoY만 364일**이다. `1 YEAR`로 하면 요일이 어긋나 매칭이 전부 실패한다
+- **누계는 좁은 것부터 선언해야 한다.** 스케치 누계가 가장 넓은 구간으로 한 번만
+  조인하고 좁은 기간을 `IF` 로 걸러내기 때문에, 마지막 것이 조인 범위가 된다
+- `SHIFTS`는 위 선언을 뒤집어 `간격 → [기간, 라벨]`을 만든다. 비교 컬럼 8개가
+  서로 다른 시프트 5개에서 나오므로 `metric_`의 self-join도 5번이다
 
 ### `entities.js` (116줄)
 
@@ -318,6 +329,17 @@ PERIODS = {
 | `dims` | `{ via, col }` | 그 조인에서 어느 컬럼을 차원으로 쓰는가 |
 
 `via: null`이면 fact 자체 컬럼이라 조인이 없다(`self()`).
+
+**`serving_dims` 는 서빙 테이블의 grain 이다.** `dims` 전체가 아니라 그 부분집합이고,
+`CUBE` 로 각 축의 `'(all)'` 롤업 행까지 물화된다. 전체 차원을 쓰지 않는 이유는
+격자 때문이다 — 크기가 (조합 수 × 날짜)로만 정해져서 `category`(26) 하나만 넣어도
+26배가 된다 (P4·P15).
+
+| entity | `serving_dims` | 조합 | CUBE |
+|---|---|---|---|
+| `order_item` · `order` | country · age_group · gender · acquisition_channel | 720 | 1,708 |
+| `session` | country · acquisition_channel | 68 | 89 |
+| `user_event` | country | 15 | 16 |
 
 조인에 이름이 있어야 지표 수식이 dim 컬럼을 가리킬 수 있다 — `{product.unit_cost}`.
 builder가 만든 이름이 아니라 여기 적힌 이름이라 선언이 builder 내부를 모른다 (P5).
@@ -358,9 +380,12 @@ false     복원 불가                 → 생성 거부
 | `exprJoins(name, m, sql, where)` | 수식이 참조한 조인 이름. 선언 안 된 이름이면 예외 |
 | `resolveJoins(name, m, dims)` | 차원과 수식이 쓰는 조인의 합집합을 선언 순서로.<br>예약어·`base` 이름이면 예외 |
 | `dailySQL(ctx, name, m)` | 조인 + `날짜 × 차원 GROUP BY`. **조인이 실행되는 유일한 곳** |
-| `rollupExpr(col, additive)` | `additive` → 롤업 함수. `null`이면 생성 거부 |
-| `canRollup(m, pName)` | 그 기간을 만들 수 있는가 |
-| `metricSQL(ctx, name, m)` | 기간별 `UNION ALL` + 비교 기준값 self-join |
+| `foldExpr(col, additive)` | `additive` → 접는 함수. `null`이면 생성 거부 |
+| `dimFold(name, m, dims)` | 차원 축을 접을 함수. 축마다 가산성이 다르면 예외 |
+| `servingAxes(name, m)` | 이 지표의 서빙 차원. `serving_dims` ∩ 선언된 `dims` |
+| `periodSQL(ctx, name, m)` | `CUBE` → 채운 격자 → 누적. 가산은 창 함수, 스케치는 구간 병합 |
+| `comparePlan(m)` | 비교 컬럼 8개와 각각의 기간·간격 |
+| `metricSQL(ctx, name, m)` | 간격별 self-join 5번 + 비교 기준값 |
 | `eqNullSafe(l, r)` | 차원 NULL 비교. `IS NOT DISTINCT FROM`으로 NULL = NULL을 맞춘다 |
 
 ---
@@ -454,16 +479,12 @@ sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metri
 마트 테이블끼리는 서로 참조하지 않는다. 전부 DW declaration만 읽는다 —
 **fact 간 조인이 금지**되어 있기 때문이다.
 
-**`daily_`는 `sem_dim_date`를 조인하지 않는다.**
+**`daily_`는 `sem_dim_date`를 조인하지 않는다.** 전체 차원(최대 7축)으로 빈 날짜를
+채우면 지표 하나가 수백만 행이 된다. 거래가 있었던 날만 들어간다.
 
-조인하면 활동이 없는 날까지 행으로 채워야 하는데, 그러려면 (날짜 × 차원 전 조합)
-격자를 만들어야 한다. `order_item`은 차원이 8개라 지표 하나가 수백만 행이 된다.
-`periods.js`가 누계(WTD·MTD·YTD)를 저장하지 않기로 한 것과 같은 이유다 (P15).
-
-그래서 `daily_`에는 **거래가 있었던 날만** 들어간다.
-
-다만 **누계(`wtd`·`mtd`·`ytd`)는 `sem_dim_date`를 쓴다** — 격자의 날짜 뼈대다.
-`daily_`의 날짜를 쓰면 전사적으로 거래가 0인 날이 빠져 누계가 끊긴다.
+**격자를 채우는 곳은 `period_` 다.** 차원이 `serving_dims` 4축으로 접혀 있어 크기가
+감당된다. 여기서 `sem_dim_date` 가 날짜 뼈대가 된다 — `daily_` 의 날짜를 쓰면
+전사적으로 거래가 0인 날이 통째로 빠져 누계의 연속성이 끊긴다 (P15-1).
 
 ---
 
