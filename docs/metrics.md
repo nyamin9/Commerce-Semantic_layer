@@ -43,6 +43,18 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**�
 **`country`와 `acquisition_channel`만 네 entity를 가로지른다.** 이 둘이 conformed
 dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축은 이것뿐이다 (P7).
 
+**`serving_dims` 는 이 표에서 뽑아낸 것이다.** `period_`·`metric_` 은 entity 별로
+아래 축만 갖고, 각 축의 `'(all)'` 롤업 행까지 물화한다 (P4·P15).
+
+| entity | `serving_dims` |
+|---|---|
+| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` |
+| `session` | `country` · `acquisition_channel` |
+| `user_event` | `country` |
+
+나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
+있다. 격자가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없다.
+
 **`order`에 상품 차원이 비어 있는 것은 누락이 아니다.** 한 주문이 여러 상품을
 포함하므로 주문 grain에서 카테고리는 정의되지 않는다. 이 공백이 P10의 근거다.
 
