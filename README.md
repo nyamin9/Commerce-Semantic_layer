@@ -513,7 +513,7 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블 생성됨. 게이트 assertion 14개 통과 |
-| `semantic` | `daily_*` · `period_*` · `metric_*` 15개씩 **45개.** 1.4 GB · 1,712만 행 |
-| `semantic_metadata` | `metric_registry` 생성됨. base 14 · ratio 7 · excluded 5 |
+| `semantic` | `daily_*` · `period_*` · `metric_*` 15개씩 **45개.** 13.8 GB · 1억 52만 행 |
+| `semantic_metadata` | `metric_registry` 생성됨. base 15 · ratio 7 · excluded 5 |
 | `semantic_assertions` | assertion 결과. 마트 14 + `daily_` 28 + `metric_` 28 + registry 2 + 상류 감시 5 |
 
