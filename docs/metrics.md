@@ -3,7 +3,7 @@
 `docs/principles.md`의 P8~P12를 이 프로젝트의 실제 지표에 적용한 것.
 `includes/metrics.js`는 이 문서의 기계 판독 가능한 형태이고, **이 문서가 정본이다.**
 
-- **기본 지표 14개** — 직접 집계된다. `daily_<metric>` + `metric_<metric>` 두 테이블을 갖는다
+- **기본 지표 15개** — 직접 집계된다. `daily_` + `period_` + `metric_` 세 테이블을 갖는다
 - **비율 지표 7개** — 기본 지표의 나눗셈이다. registry에만 등록하고 테이블을 만들지 않는다 (P12)
 
 ---
@@ -237,7 +237,7 @@ LEFT JOIN period_net_revenue AS b_1_year
 ```
 
 차원 축에 `false`를 쓰게 되면 기록하고 넘어갈 사실이 아니라 **고쳐야 할 신호**다.
-현재 기본 지표 14개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
+현재 기본 지표 15개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
 옮기면서 마지막 하나가 사라졌다.
 
 `metrics.js`의 `dims`에 있는 차원이 `additive`에 없으면 `dataform compile`이 실패한다 (P19).

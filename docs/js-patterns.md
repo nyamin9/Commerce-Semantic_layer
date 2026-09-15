@@ -267,7 +267,7 @@ const uniform = (entity, value) => {
 
 `uniform("session", true)`가 `{ time: true, country: true, acquisition_channel: true,
 entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 쓰면 차원이 늘 때
-지표 14개를 다 고쳐야 하므로, 선언은 짧게 두고 펼치는 일은 코드가 한다.
+지표 15개를 다 고쳐야 하므로, 선언은 짧게 두고 펼치는 일은 코드가 한다.
 
 ---
 
