@@ -289,6 +289,19 @@ const ALL = "(all)";
 // 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다
 const cubeAxis = (d) => `IF(GROUPING(${d}) = 1, '${ALL}', ${d}) AS ${d}`;
 
+// BigQuery 는 CUBE 를 다른 grouping element 와 섞지 못한다 —
+// `GROUP BY record_date, CUBE(...)` 가 "only supports CUBE when there are no
+// other grouping elements" 로 거부된다. 그래서 부분집합을 직접 펼친다.
+// 축이 n 개면 2^n 개 집합이고, 전부 record_date 를 포함한다.
+function groupingSets(axes) {
+  const sets = [];
+  for (let mask = (1 << axes.length) - 1; mask >= 0; mask--) {
+    const keep = axes.filter((_, i) => mask & (1 << i));
+    sets.push(`    (${[RECORD_DATE, ...keep].join(", ")})`);
+  }
+  return `GROUP BY GROUPING SETS (\n${sets.join(",\n")}\n  )`;
+}
+
 function cubeCTE(name, m, axes) {
   const fold = foldExpr(name, dimFold(name, m, resolveDims(name, m).map((d) => d.name)));
 
@@ -298,7 +311,7 @@ function cubeCTE(name, m, axes) {
     ${axes.map(cubeAxis).join(",\n    ")},
     ${fold} AS v
   FROM daily
-  GROUP BY ${RECORD_DATE}${axes.length ? `, CUBE(${axes.join(", ")})` : ""}`;
+  ${axes.length ? groupingSets(axes) : `GROUP BY ${RECORD_DATE}`}`;
 }
 
 // 날짜 뼈대는 sem_dim_date 다. daily_ 의 날짜를 쓰면 전사적으로 거래가 0인 날이

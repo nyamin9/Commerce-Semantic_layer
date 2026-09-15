@@ -117,7 +117,7 @@ GROUP BY 1, 2, 3
 세 겹이다.
 
 ```
-cube   daily_ 를 CUBE(serving_dims) 로 접는다.        활동한 날짜만
+cube   daily_ 를 serving_dims 의 모든 부분집합으로 접는다. 활동한 날짜만
 grid   sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
 cum    그 위에 누적한다.                             daily 는 그대로 통과
 ```
@@ -132,10 +132,16 @@ SELECT
   ...
   SUM(net_revenue) AS v                       -- 스케치면 HLL_COUNT.MERGE_PARTIAL
 FROM semantic.daily_net_revenue
-GROUP BY record_date, CUBE(country, age_group, gender, acquisition_channel)
+GROUP BY GROUPING SETS (
+  (record_date, country, age_group, gender, acquisition_channel),
+  ...                                         -- 2^4 = 16개 집합
+  (record_date)
+)
 ```
 
-> **`GROUPING()` 이 필요한 이유.** `CUBE` 는 롤업한 행의 차원 컬럼을 `NULL` 로 채운다.
+> BigQuery 는 `CUBE` 를 다른 grouping element 와 섞지 못해 부분집합을 직접 펼친다.
+
+> **`GROUPING()` 이 필요한 이유.** 롤업 행은 차원 컬럼이 `NULL` 로 채워져 나온다.
 > `IFNULL(country,'(all)')` 로 치환하면 원본의 진짜 `NULL` 까지 `'(all)'` 이 되어
 > 조용히 이중 계산된다 — 그 `NULL` 행은 롤업 행에 이미 포함돼 있다.
 
@@ -198,8 +204,8 @@ LEFT JOIN period_net_revenue AS b_1_year
 
 | 축 | additive | 패턴 |
 |---|---|---|
-| 차원 | `true` | `SUM` + `GROUP BY CUBE` |
-| 차원 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + `GROUP BY CUBE` |
+| 차원 | `true` | `SUM` + `GROUP BY GROUPING SETS` |
+| 차원 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + `GROUP BY GROUPING SETS` |
 | 시간 | `true` | `SUM(v) OVER (PARTITION BY ... ORDER BY record_date)` |
 | 시간 | `"sketch"` | 구간 자기조인 + `HLL_COUNT.MERGE_PARTIAL` |
 | 시간 | 그 밖 | **누계 컬럼을 만들지 않는다.** `daily` 하나만 남는다 (P10-3) |

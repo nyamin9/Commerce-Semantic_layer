@@ -78,7 +78,21 @@ serving_dims   country(15) · age_group(6) · gender(2) · acquisition_channel(5
 
 ### `'(all)'` 을 미리 만들어 둔다
 
-`GROUP BY CUBE` 로 각 축의 롤업 행까지 물화한다. 소비자가 차원을 걷을 필요가 없다.
+각 축의 롤업 행까지 물화한다. 소비자가 차원을 걷을 필요가 없다.
+
+BigQuery 는 `CUBE` 를 다른 grouping element 와 섞지 못한다 —
+`GROUP BY record_date, CUBE(...)` 가 *"only supports CUBE when there are no other
+grouping elements"* 로 거부된다. 그래서 부분집합을 직접 펼친다. 축이 n 개면
+2^n 개 집합이고 전부 `record_date` 를 포함한다.
+
+```sql
+GROUP BY GROUPING SETS (
+  (record_date, country, age_group, gender, acquisition_channel),
+  (record_date, age_group, gender, acquisition_channel),
+  ...
+  (record_date)
+)
+```
 
 ```
 조합         720  →  1,708   (2.37배)
@@ -97,9 +111,9 @@ serving_dims   country(15) · age_group(6) · gender(2) · acquisition_channel(5
 | `session` | country · acquisition_channel | 68 | 89 |
 | `user_event` | country | 15 | 16 |
 
-### `CUBE` 는 `GROUPING()` 으로 갈라야 한다
+### `GROUPING()` 으로 갈라야 한다
 
-`CUBE` 는 롤업한 행의 차원 컬럼을 `NULL` 로 채운다. `IFNULL(country,'(all)')` 로
+롤업 행은 차원 컬럼이 `NULL` 로 채워져 나온다. `IFNULL(country,'(all)')` 로
 치환하면 원본의 진짜 `NULL` 까지 `'(all)'` 이 된다.
 
 ```
@@ -139,7 +153,7 @@ metric_<metric>   = period_ + 비교 기준값 8컬럼   서빙 표면
 ### 2단계는 세 겹이다
 
 ```
-1) cube    daily_ 를 CUBE(serving_dims) 로 접는다.        활동한 날짜만
+1) cube    daily_ 를 serving_dims 의 모든 부분집합으로 접는다. 활동한 날짜만
 2) grid    sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
 3) cum     그 위에 누적한다.                              daily 는 그대로 통과
 ```

@@ -827,7 +827,7 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
 | 4 | `foldExpr` · `dimFold` | `additive` → 함수 선택, 접기 가부 (14번) |
-| 5 | `cubeCTE` · `gridCTE` | 차원 접기와 격자 채우기 |
+| 5 | `cubeCTE` · `groupingSets` · `gridCTE` | 차원 접기와 격자 채우기 |
 | 6 | `periodSQL` · `cumWindowed` · `cumSketch` | 5 위에 누적. 가산/스케치 두 갈래 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
