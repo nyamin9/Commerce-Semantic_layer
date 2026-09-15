@@ -10,7 +10,7 @@
 
 const { ENTITIES, allDims, allJoins, cumulativeDims } = require("includes/entities");
 const { PERIODS, COMPARE_LABELS } = require("includes/periods");
-const { dailyName, periodName, baseColumn } = require("includes/naming");
+const { dailyName, periodName, baseColumn, martName } = require("includes/naming");
 
 // ── 공통 ──────────────────────────────────────────────────────
 const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
@@ -260,8 +260,15 @@ GROUP BY ${seq(dims.length + 3)}`;
 // (entities.js 의 cumulative_dims). 빠진 축은 '(all)' 이다.
 const ALL = "(all)";
 
-// 격자 — 날짜 × conformed 조합. 값이 없으면 채운다
-function cumulativeGrid(name, m, cd) {
+// 격자 — 날짜 × conformed 조합. 값이 없으면 채운다.
+//
+// 날짜 뼈대는 sem_dim_date 다. daily_ 의 날짜를 쓰면 전사적으로 거래가 0인 날이
+// 통째로 빠져 누계의 연속성이 끊긴다 — 실측으로 2,802일 중 42일이 그랬다.
+// 빈 날짜를 행으로 만드는 것이 이 차원 테이블의 존재 이유다 (P15-1).
+//
+// 범위는 daily_ 가 가진 구간으로 자른다. 그러지 않으면 2018~2031 스파인 전체가
+// 조합 수만큼 곱해진다.
+function cumulativeGrid(ctx, name, m, cd) {
   const sketch = m.additive.time === "sketch";
   const key    = cd.join(", ");
   const fill   = sketch
@@ -270,7 +277,10 @@ function cumulativeGrid(name, m, cd) {
 
   return `
     SELECT d.dt, ${cd.map((c) => `c.${c}`).join(", ")}, ${fill} AS v
-    FROM (SELECT DISTINCT dt FROM daily) d
+    FROM (
+      SELECT date_day AS dt FROM ${ctx.ref(martName("dim_date"))}
+      WHERE date_day BETWEEN (SELECT MIN(dt) FROM daily) AND (SELECT MAX(dt) FROM daily)
+    ) d
     CROSS JOIN (SELECT DISTINCT ${key} FROM daily) c
     LEFT JOIN daily a
       ON a.dt = d.dt AND ${cd.map((x) => `a.${x} = c.${x}`).join(" AND ")}
@@ -278,7 +288,7 @@ function cumulativeGrid(name, m, cd) {
 }
 
 // 가산 지표 — 창 함수로 3종을 한 번에. 기간별로 블록을 나누면 격자가 세 번 재계산된다
-function cumulativeWindowed(name, m, dims, cd, types) {
+function cumulativeWindowed(ctx, name, m, dims, cd, types) {
   const key  = cd.join(", ");
   const part = cd.length ? `${key}, ` : "";
   const out  = dims.map((d) => (cd.includes(d) ? d : `'${ALL}'`)).join(", ");
@@ -295,7 +305,7 @@ SELECT s.period_type, s.period_start, g.dt, ${out}, s.v
 FROM (
   SELECT dt, ${key},
 ${wins}
-  FROM (${cumulativeGrid(name, m, cd)}
+  FROM (${cumulativeGrid(ctx, name, m, cd)}
   )
 ) g
 CROSS JOIN UNNEST([
@@ -311,7 +321,7 @@ ${structs}
 // 좁은 기간은 IF 로 걸러낸다 — 집계 함수가 NULL 을 무시하는 성질을 쓴다.
 //
 // periods.js 는 누계를 좁은 것부터 선언해야 한다. 마지막 것이 조인 범위가 된다.
-function cumulativeSketch(name, m, dims, cd, types) {
+function cumulativeSketch(ctx, name, m, dims, cd, types) {
   const widest = PERIODS[types[types.length - 1]].trunc;
   const key    = cd.join(", ");
   const out    = dims.map((d) => (cd.includes(d) ? `g.${d}` : `'${ALL}'`)).join(", ");
@@ -329,7 +339,7 @@ SELECT s.period_type, s.period_start, w.dt, ${dims.map((d) => (cd.includes(d) ? 
 FROM (
   SELECT g.dt, ${cd.map((c) => `g.${c}`).join(", ")},
 ${merges}
-  FROM (${cumulativeGrid(name, m, cd)}
+  FROM (${cumulativeGrid(ctx, name, m, cd)}
   ) g
   LEFT JOIN (
     SELECT dt, ${key}, HLL_COUNT.MERGE_PARTIAL(${name}) AS v
@@ -342,14 +352,14 @@ ${structs}
 ]) s`;
 }
 
-function cumulativeBlocks(name, m, dims, usable) {
+function cumulativeBlocks(ctx, name, m, dims, usable) {
   const cd    = cumulativeDims(m.entity);
   const types = usable.filter((p) => PERIODS[p].type === "cumulative");
   if (types.length === 0 || cd.length === 0) return [];
 
   return [m.additive.time === "sketch"
-    ? cumulativeSketch(name, m, dims, cd, types)
-    : cumulativeWindowed(name, m, dims, cd, types)];
+    ? cumulativeSketch(ctx, name, m, dims, cd, types)
+    : cumulativeWindowed(ctx, name, m, dims, cd, types)];
 }
 
 // ── 2단계: period — 기간 확장 ────────────────────────────────
@@ -374,7 +384,7 @@ function periodSQL(ctx, name, m) {
     .filter((pName) => PERIODS[pName].type !== "cumulative")
     .map((pName) => rollupBlock(name, m, dims, pName));
 
-  const blocks = [...plain, ...cumulativeBlocks(name, m, dims, usable)].join("\nUNION ALL");
+  const blocks = [...plain, ...cumulativeBlocks(ctx, name, m, dims, usable)].join("\nUNION ALL");
 
   return `
 WITH daily AS (
