@@ -210,8 +210,8 @@ function foldExpr(col, additive) {
   }
 }
 
-// CUBE 는 차원 축으로 접는다. 시간 축이 아니라 접히는 차원의 가산성이 함수를
-// 고른다 (P9). 축마다 다르면 한 컬럼으로 만들 수 없으므로 거부한다 (P18)
+// 차원 축으로 접을 때는 시간 축이 아니라 접히는 차원의 가산성이 함수를 고른다
+// (P9). 축마다 다르면 한 컬럼으로 만들 수 없으므로 거부한다 (P18)
 function dimFold(name, m, dims) {
   const kinds = new Set(dims.map((d) => m.additive[d]));
   if (kinds.size > 1) {
@@ -284,11 +284,12 @@ const ALL = "(all)";
 // 실측으로 국가별 MTD 가 실제의 13% 였다. 그날 안 팔린 조합의 앞 구간 매출이
 // 통째로 빠지기 때문이다. 행을 만들어 두면 누적값이 앞 구간을 그대로 들고 간다.
 
-// CUBE 는 롤업한 행의 차원 컬럼을 NULL 로 채운다. IFNULL 로 치환하면 원본의
-// 진짜 NULL 까지 '(all)' 이 되어 조용히 이중 계산된다 — 그 NULL 행은 롤업 행에
-// 이미 포함돼 있다. GROUPING() 이 둘을 가른다.
+// 롤업 행은 차원 컬럼이 NULL 로 채워져 나온다. IFNULL 로 치환하면 원본의 진짜
+// NULL 까지 '(all)' 이 되어 조용히 이중 계산된다 — 그 NULL 행은 롤업 행에 이미
+// 포함돼 있다. GROUPING() 이 둘을 가른다.
 //
-// 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다
+// 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다.
+//
 // 소스 컬럼을 daily. 로 한정한다. 그러지 않으면 GROUP BY 가 이름을 SELECT 의
 // alias(집계를 품은 IF 식)로 풀어 "contains an aggregation function" 으로 거부된다
 const cubeAxis = (d) => `IF(GROUPING(daily.${d}) = 1, '${ALL}', daily.${d}) AS ${d}`;
