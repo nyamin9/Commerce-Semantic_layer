@@ -211,19 +211,8 @@ function rollupExpr(col, additive) {
 
 // passthrough 는 접지 않으므로 롤업 함수가 필요 없다.
 //
-// 누계는 창 함수로 만드는데 BigQuery 가 HLL_COUNT.MERGE_PARTIAL 을 analytic
-// function 으로 지원하지 않는다. 그래서 스케치 지표는 누계를 만들지 않는다 (P18).
-//   dry run 은 통과하고 실행에서 "Analytic function MERGE_PARTIAL is not
-//   supported" 로 떨어진다 — 컴파일로도 dry run 으로도 못 잡는다.
-//
-// 누계 distinct 가 필요하면 소비 시점에 daily_ 스케치를 구간 병합한다.
-// 임의 구간이 되므로 오히려 달력 경계보다 자유롭다.
-const canRollup = (m, pName) => {
-  const t = PERIODS[pName].type;
-  if (t === "passthrough") return true;
-  if (t === "cumulative")  return m.additive.time === true;
-  return rollupExpr("x", m.additive.time) !== null;
-};
+const canRollup = (m, pName) =>
+  PERIODS[pName].type === "passthrough" || rollupExpr("x", m.additive.time) !== null;
 
 // 이 지표가 만들 수 있는 기간. additive.time 이 롤업 불가면 daily 만 남는다 (P10-3)
 const usablePeriods = (m) => Object.keys(PERIODS).filter((pName) => canRollup(m, pName));
@@ -271,22 +260,32 @@ GROUP BY ${seq(dims.length + 3)}`;
 // (entities.js 의 cumulative_dims). 빠진 축은 '(all)' 이다.
 const ALL = "(all)";
 
-// 3종을 한 번에 만든다. 기간별로 따로 블록을 만들면 격자 CTE 가 세 번 재계산된다
-function cumulativeBlock(name, m, dims, usable) {
-  const cd    = cumulativeDims(m.entity);
-  const types = usable.filter((p) => PERIODS[p].type === "cumulative");
-  if (types.length === 0) return null;
+// 격자 — 날짜 × conformed 조합. 값이 없으면 채운다
+function cumulativeGrid(name, m, cd) {
+  const sketch = m.additive.time === "sketch";
+  const key    = cd.join(", ");
+  const fill   = sketch
+    ? `HLL_COUNT.MERGE_PARTIAL(a.${name})`   // 없으면 NULL. MERGE 가 NULL 을 무시한다
+    : `COALESCE(SUM(a.${name}), 0)`;         // 없으면 0. 누적이 앞 구간을 그대로 들고 간다
 
+  return `
+    SELECT d.dt, ${cd.map((c) => `c.${c}`).join(", ")}, ${fill} AS v
+    FROM (SELECT DISTINCT dt FROM daily) d
+    CROSS JOIN (SELECT DISTINCT ${key} FROM daily) c
+    LEFT JOIN daily a
+      ON a.dt = d.dt AND ${cd.map((x) => `a.${x} = c.${x}`).join(" AND ")}
+    GROUP BY ${seq(cd.length + 1)}`;
+}
+
+// 가산 지표 — 창 함수로 3종을 한 번에. 기간별로 블록을 나누면 격자가 세 번 재계산된다
+function cumulativeWindowed(name, m, dims, cd, types) {
   const key  = cd.join(", ");
   const part = cd.length ? `${key}, ` : "";
-
-  // 출력 컬럼 순서는 다른 블록과 같아야 한다 (UNION ALL). 누계에 없는 축은 '(all)'
-  const out = dims.map((d) => (cd.includes(d) ? d : `'${ALL}'`)).join(", ");
+  const out  = dims.map((d) => (cd.includes(d) ? d : `'${ALL}'`)).join(", ");
 
   const wins = types.map((p) =>
     `         SUM(v) OVER (PARTITION BY ${part}DATE_TRUNC(dt, ${PERIODS[p].trunc}) ORDER BY dt) AS ${p}`
   ).join(",\n");
-
   const structs = types.map((p) =>
     `      STRUCT('${p}' AS period_type, DATE_TRUNC(g.dt, ${PERIODS[p].trunc}) AS period_start, g.${p} AS v)`
   ).join(",\n");
@@ -296,18 +295,61 @@ SELECT s.period_type, s.period_start, g.dt, ${out}, s.v
 FROM (
   SELECT dt, ${key},
 ${wins}
-  FROM (
-    SELECT d.dt, ${cd.map((c) => `c.${c}`).join(", ")}, COALESCE(SUM(a.${name}), 0) AS v
-    FROM (SELECT DISTINCT dt FROM daily) d
-    CROSS JOIN (SELECT DISTINCT ${key} FROM daily) c
-    LEFT JOIN daily a
-      ON a.dt = d.dt AND ${cd.map((x) => `a.${x} = c.${x}`).join(" AND ")}
-    GROUP BY ${seq(cd.length + 1)}
+  FROM (${cumulativeGrid(name, m, cd)}
   )
 ) g
 CROSS JOIN UNNEST([
 ${structs}
 ]) s`;
+}
+
+// 스케치 — HLL_COUNT.MERGE_PARTIAL 은 analytic function 을 지원하지 않는다.
+// dry run 은 통과하고 실행에서 떨어진다. 그래서 [기간시작, 그날] 구간을 조인해 병합한다.
+//
+// 기간마다 블록을 따로 만들면 격자가 기간 수만큼 재계산되어 CPU 한도에 걸린다
+// (실측 11,924초 / 한도 4,300). 그래서 가장 넓은 구간(ytd)으로 한 번만 조인하고
+// 좁은 기간은 IF 로 걸러낸다 — 집계 함수가 NULL 을 무시하는 성질을 쓴다.
+//
+// periods.js 는 누계를 좁은 것부터 선언해야 한다. 마지막 것이 조인 범위가 된다.
+function cumulativeSketch(name, m, dims, cd, types) {
+  const widest = PERIODS[types[types.length - 1]].trunc;
+  const key    = cd.join(", ");
+  const out    = dims.map((d) => (cd.includes(d) ? `g.${d}` : `'${ALL}'`)).join(", ");
+  const on     = cd.map((x) => `b.${x} = g.${x}`).join(" AND ");
+
+  const merges = types.map((p) =>
+    `       HLL_COUNT.MERGE_PARTIAL(IF(b.dt >= DATE_TRUNC(g.dt, ${PERIODS[p].trunc}), b.v, NULL)) AS ${p}`
+  ).join(",\n");
+  const structs = types.map((p) =>
+    `      STRUCT('${p}' AS period_type, DATE_TRUNC(w.dt, ${PERIODS[p].trunc}) AS period_start, w.${p} AS v)`
+  ).join(",\n");
+
+  return `
+SELECT s.period_type, s.period_start, w.dt, ${dims.map((d) => (cd.includes(d) ? `w.${d}` : `'${ALL}'`)).join(", ")}, s.v
+FROM (
+  SELECT g.dt, ${cd.map((c) => `g.${c}`).join(", ")},
+${merges}
+  FROM (${cumulativeGrid(name, m, cd)}
+  ) g
+  LEFT JOIN (
+    SELECT dt, ${key}, HLL_COUNT.MERGE_PARTIAL(${name}) AS v
+    FROM daily GROUP BY ${seq(cd.length + 1)}
+  ) b ON ${on} AND b.dt BETWEEN DATE_TRUNC(g.dt, ${widest}) AND g.dt
+  GROUP BY ${seq(cd.length + 1)}
+) w
+CROSS JOIN UNNEST([
+${structs}
+]) s`;
+}
+
+function cumulativeBlocks(name, m, dims, usable) {
+  const cd    = cumulativeDims(m.entity);
+  const types = usable.filter((p) => PERIODS[p].type === "cumulative");
+  if (types.length === 0 || cd.length === 0) return [];
+
+  return [m.additive.time === "sketch"
+    ? cumulativeSketch(name, m, dims, cd, types)
+    : cumulativeWindowed(name, m, dims, cd, types)];
 }
 
 // ── 2단계: period — 기간 확장 ────────────────────────────────
@@ -332,8 +374,7 @@ function periodSQL(ctx, name, m) {
     .filter((pName) => PERIODS[pName].type !== "cumulative")
     .map((pName) => rollupBlock(name, m, dims, pName));
 
-  const cum = cumulativeBlock(name, m, dims, usable);
-  const blocks = (cum ? [...plain, cum] : plain).join("\nUNION ALL");
+  const blocks = [...plain, ...cumulativeBlocks(name, m, dims, usable)].join("\nUNION ALL");
 
   return `
 WITH daily AS (

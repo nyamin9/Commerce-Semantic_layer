@@ -113,7 +113,14 @@ b.as_of_date = DATE_SUB(c.as_of_date, INTERVAL x)
 | `additive.time` | 방법 |
 |---|---|
 | `true` | 창 함수 — `SUM(v) OVER (PARTITION BY 조합, 기간 ORDER BY dt)` |
-| `"sketch"` | **구간 병합** — `HLL_COUNT.MERGE` 를 `[기간시작, 그날]` 범위 자기조인으로 |
+| `"sketch"` | **구간 병합** — `[기간시작, 그날]` 범위 조인 후 `HLL_COUNT.MERGE_PARTIAL` |
+
+둘 다 **3종을 한 번에** 만든다. 기간별로 블록을 나누면 격자가 그만큼 재계산되어
+CPU 한도에 걸린다 (실측 11,924초 / 한도 4,300).
+
+스케치는 가장 넓은 구간(ytd)으로 한 번만 조인하고 좁은 기간은 `IF` 로 걸러낸다 —
+집계 함수가 `NULL` 을 무시하는 성질을 쓴다. 그래서 `periods.js` 는 누계를
+**좁은 것부터** 선언해야 한다. 마지막 것이 조인 범위가 된다.
 
 `HLL_COUNT.MERGE_PARTIAL` 은 **analytic function 을 지원하지 않는다.** dry run 은 통과하고
 실행에서 `Analytic function MERGE_PARTIAL is not supported` 로 떨어진다 —
