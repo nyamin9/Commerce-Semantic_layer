@@ -15,6 +15,16 @@
 // pk는 반드시 surrogate key다 (P2). 이 DW의 자연키는 소스가 ID를 재사용해
 // 유일하지 않고, 자연키로 조인하면 에러 없이 조용히 fan-out 된다.
 //
+// cumulative_dims 는 누계(wtd·mtd·ytd)에 남길 축이다.
+//
+// 누계는 격자를 채워야 한다 — 그날 활동이 없어도 행이 있어야 걷었을 때 앞 구간이
+// 빠지지 않는다. 격자 크기는 (조합 수 × 날짜)로만 정해지고 원본 행 수와 무관하다.
+// 그래서 고유값이 적고 entity 를 가로지르는 conformed 축만 남긴다 (P4·P7).
+//   category(26) 하나만 넣어도 격자가 26배가 된다.
+//
+// 여기 없는 차원은 누계 행에서 '(all)' 이 된다. NULL 로 두면 "값이 없는
+// 버킷"(P6-1)과 뜻이 겹친다.
+//
 // refresh 는 daily_ 를 어떻게 갱신할지다. 상류가 정한다 — 상류가 전체 재생성하는
 // fact 위에 증분을 올리면 과거 구간의 변경을 놓친다.
 //   "incremental"  상류 raw 가 [ds-3, ds] 만 덮어쓴다. 그 구간만 다시 읽는다
@@ -36,6 +46,7 @@ const ENTITIES = {
     // (orders.created_at) 시각으로 잘리므로 ordered_date 축이 orders 와 같다
     refresh:  "incremental",
     source:   martName("fct_order_items"),
+    cumulative_dims: ["country", "age_group", "gender", "acquisition_channel"],
     pk:       "order_item_key",
     date_col: "ordered_date",
     grain:    "주문 라인 1건",
@@ -69,6 +80,7 @@ const ENTITIES = {
   order: {
     refresh:  "incremental",   // raw orders 가 [ds-3, ds] 덮어쓰기
     source:   martName("fct_orders"),
+    cumulative_dims: ["country", "age_group", "gender", "acquisition_channel"],
     pk:       "order_key",
     date_col: "ordered_date",
     grain:    "주문 1건",
@@ -91,6 +103,7 @@ const ENTITIES = {
     // 과거 구간이 바뀌지 않는다고 확인되면 incremental 로 바꾼다
     refresh:  "table",
     source:   martName("fct_sessions"),
+    cumulative_dims: ["country", "acquisition_channel"],
     pk:       "session_id",
     date_col: "session_date",
     grain:    "세션 1건",
@@ -110,6 +123,7 @@ const ENTITIES = {
   user_event: {
     refresh:  "incremental",   // dbt fct_user_events 가 [ds-3, ds] 증분
     source:   martName("fct_user_events"),
+    cumulative_dims: ["country"],
     pk:       "event_key",
     date_col: "event_date",
     grain:    "이벤트 1건",
@@ -132,7 +146,10 @@ const allDims = (entity) => Object.keys(ENTITIES[entity].dims);
 // 지표 수식이 참조할 수 있는 조인 이름. 선언되지 않은 이름은 build.js가 거부한다
 const allJoins = (entity) => Object.keys(ENTITIES[entity].joins || {});
 
+// 누계에 남길 축. 나머지는 '(all)' 이 된다
+const cumulativeDims = (entity) => ENTITIES[entity].cumulative_dims || [];
+
 // daily_ 갱신 방식. gen_daily.js 가 이 값으로 type 을 고른다
 const refreshOf = (entity) => ENTITIES[entity].refresh;
 
-module.exports = { ENTITIES, allDims, allJoins, refreshOf };
+module.exports = { ENTITIES, allDims, allJoins, refreshOf, cumulativeDims };

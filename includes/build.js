@@ -8,7 +8,7 @@
 //
 // 이 파일은 초기에 한 번 쓰고 거의 건드리지 않는다.
 
-const { ENTITIES, allDims, allJoins } = require("includes/entities");
+const { ENTITIES, allDims, allJoins, cumulativeDims } = require("includes/entities");
 const { PERIODS, COMPARE_LABELS } = require("includes/periods");
 const { dailyName, periodName, baseColumn } = require("includes/naming");
 
@@ -255,24 +255,59 @@ SELECT '${pName}' AS period_type, dt AS period_start, dt AS as_of_date, ${cols},
 FROM daily`;
   }
 
-  // 누계는 접지 않는다. 기간 시작부터 그날까지를 창 함수로 누적하므로 행 수가
-  // daily 와 같고, as_of_date 가 달력 끝이 아니라 그날이다 (P13).
-  //
-  // 롤업 함수를 그대로 창 함수로 쓴다 — SUM 도 HLL_COUNT.MERGE_PARTIAL 도
-  // BigQuery 에서 analytic function 으로 동작한다.
-  if (p.type === "cumulative") {
-    const part = [...dims, `DATE_TRUNC(dt, ${p.trunc})`].join(", ");
-    return `
-SELECT '${pName}', DATE_TRUNC(dt, ${p.trunc}), dt, ${cols},
-       ${rollupExpr(name, m.additive.time)} OVER (PARTITION BY ${part} ORDER BY dt)
-FROM daily`;
-  }
-
   return `
 SELECT '${pName}', DATE_TRUNC(dt, ${p.trunc}), LAST_DAY(dt, ${p.trunc}), ${cols},
        ${rollupExpr(name, m.additive.time)}
 FROM daily
 GROUP BY ${seq(dims.length + 3)}`;
+}
+
+// ── 누계 (cumulative) ────────────────────────────────────────
+// 활동한 날에만 만들면 걷는 순간 대부분이 사라진다. 그날 안 팔린 조합의 앞 구간
+// 매출이 통째로 빠지기 때문이다 — 실측으로 국가별 MTD 가 실제의 13% 였다.
+//
+// 그래서 (날짜 × 조합) 격자를 만들고 값이 없으면 0 으로 채운 뒤 누적한다.
+// 격자 크기는 조합 수 × 날짜로만 정해지므로 conformed 축만 남긴다
+// (entities.js 의 cumulative_dims). 빠진 축은 '(all)' 이다.
+const ALL = "(all)";
+
+// 3종을 한 번에 만든다. 기간별로 따로 블록을 만들면 격자 CTE 가 세 번 재계산된다
+function cumulativeBlock(name, m, dims, usable) {
+  const cd    = cumulativeDims(m.entity);
+  const types = usable.filter((p) => PERIODS[p].type === "cumulative");
+  if (types.length === 0) return null;
+
+  const key  = cd.join(", ");
+  const part = cd.length ? `${key}, ` : "";
+
+  // 출력 컬럼 순서는 다른 블록과 같아야 한다 (UNION ALL). 누계에 없는 축은 '(all)'
+  const out = dims.map((d) => (cd.includes(d) ? d : `'${ALL}'`)).join(", ");
+
+  const wins = types.map((p) =>
+    `         SUM(v) OVER (PARTITION BY ${part}DATE_TRUNC(dt, ${PERIODS[p].trunc}) ORDER BY dt) AS ${p}`
+  ).join(",\n");
+
+  const structs = types.map((p) =>
+    `      STRUCT('${p}' AS period_type, DATE_TRUNC(g.dt, ${PERIODS[p].trunc}) AS period_start, g.${p} AS v)`
+  ).join(",\n");
+
+  return `
+SELECT s.period_type, s.period_start, g.dt, ${out}, s.v
+FROM (
+  SELECT dt, ${key},
+${wins}
+  FROM (
+    SELECT d.dt, ${cd.map((c) => `c.${c}`).join(", ")}, COALESCE(SUM(a.${name}), 0) AS v
+    FROM (SELECT DISTINCT dt FROM daily) d
+    CROSS JOIN (SELECT DISTINCT ${key} FROM daily) c
+    LEFT JOIN daily a
+      ON a.dt = d.dt AND ${cd.map((x) => `a.${x} = c.${x}`).join(" AND ")}
+    GROUP BY ${seq(cd.length + 1)}
+  )
+) g
+CROSS JOIN UNNEST([
+${structs}
+]) s`;
 }
 
 // ── 2단계: period — 기간 확장 ────────────────────────────────
@@ -293,7 +328,12 @@ function periodSQL(ctx, name, m) {
     throw new Error(`[${name}] 생성 가능한 기간이 없다. additive.time을 확인한다`);
   }
 
-  const blocks = usable.map((pName) => rollupBlock(name, m, dims, pName)).join("\nUNION ALL");
+  const plain = usable
+    .filter((pName) => PERIODS[pName].type !== "cumulative")
+    .map((pName) => rollupBlock(name, m, dims, pName));
+
+  const cum = cumulativeBlock(name, m, dims, usable);
+  const blocks = (cum ? [...plain, cum] : plain).join("\nUNION ALL");
 
   return `
 WITH daily AS (
