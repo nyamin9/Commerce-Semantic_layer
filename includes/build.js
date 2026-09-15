@@ -16,10 +16,20 @@ const { dailyName, periodName, martName,
 // ── 공통 ──────────────────────────────────────────────────────
 const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 
-// 차원이 NULL이면 = 비교가 false가 되어 그 행이 통째로 사라진다 (P: 차원 NULL).
-// GoogleSQL의 IS NOT DISTINCT FROM 은 NULL = NULL 을 TRUE 로 본다.
-// COALESCE(CAST(...)) 로 감싸면 조인 키가 sargable 하지 않아 손해만 본다.
-const eqNullSafe = (l, r) => `${l} IS NOT DISTINCT FROM ${r}`;
+// 서빙 테이블의 차원에는 NULL 을 두지 않는다. daily_ 의 NULL 은 '(unknown)' 버킷이
+// 된다 — sem_dim_products 가 brand_name 에 쓰는 방식과 같다.
+//
+// 뜻은 그대로다 (P6-1). 바뀌는 것은 조인이다. NULL 을 남기면 조인을
+// IS NOT DISTINCT FROM 으로 써야 하는데, BigQuery 가 그것을 해시 조인 키로 쓰지
+// 못해 구간 자기조인이 중첩 루프로 떨어진다.
+//
+//   실측 2026-09-16. period_buyer_count 의 누계 단계.
+//   IS NOT DISTINCT FROM  CPU 88,022초 — 한도 5,100 초과로 실패
+//   =                     통과
+//
+// '(all)' 과도 겹치지 않는다. '(unknown)' 은 값이 없는 버킷이고 '(all)' 은 그 축을
+// 걷은 롤업 행이다
+const UNKNOWN = "(unknown)";
 
 // ── 선언 검증 — 런타임이 아니라 컴파일 타임에 잡는다 (P19) ────
 function resolveDims(name, m) {
@@ -298,12 +308,15 @@ const ALL = "(all)";
 // 기저 조합 — serving_dims 밖의 축을 접어 없앤다
 function baseCTE(name, m, axes) {
   const fold = foldExpr(name, dimFold(name, m, resolveDims(name, m).map((d) => d.name)));
-  const key  = [RECORD_DATE, ...axes];
+  const cols = [
+    RECORD_DATE,
+    ...axes.map((d) => `COALESCE(${d}, '${UNKNOWN}') AS ${d}`),
+  ];
 
   return `
-  SELECT ${key.join(", ")}, ${fold} AS v
+  SELECT ${cols.join(", ")}, ${fold} AS v
   FROM daily
-  GROUP BY ${seq(key.length)}`;
+  GROUP BY ${seq(cols.length)}`;
 }
 
 // 날짜 뼈대는 sem_dim_date 다. daily_ 의 날짜를 쓰면 전사적으로 거래가 0인 날이
@@ -329,7 +342,7 @@ function gridCTE(ctx, m, axes) {
   CROSS JOIN (SELECT DISTINCT ${axes.join(", ")} FROM base) c
   LEFT JOIN base a
     ON a.${RECORD_DATE} = d.${RECORD_DATE}
-${axes.map((x) => `   AND ${eqNullSafe(`a.${x}`, `c.${x}`)}`).join("\n")}`;
+${axes.map((x) => `   AND a.${x} = c.${x}`).join("\n")}`;
 }
 
 // 가산 — 창 함수. 격자를 한 번만 읽고 누계 3종을 동시에 만든다.
@@ -374,7 +387,7 @@ ${merges.join(",\n")}
   FROM grid g
   LEFT JOIN base b
     ON b.${RECORD_DATE} BETWEEN DATE_TRUNC(g.${RECORD_DATE}, ${widest}) AND g.${RECORD_DATE}
-${axes.map((x) => `   AND ${eqNullSafe(`b.${x}`, `g.${x}`)}`).join("\n")}
+${axes.map((x) => `   AND b.${x} = g.${x}`).join("\n")}
   GROUP BY ${seq(axes.length + 1)}`;
 }
 
@@ -480,7 +493,7 @@ function metricSQL(ctx, name, m) {
     const a = shiftAlias(interval);
     return `LEFT JOIN ${src} AS ${a}\n` +
            `  ON ${a}.${RECORD_DATE} = DATE_SUB(c.${RECORD_DATE}, INTERVAL ${interval})\n` +
-           axes.map((d) => ` AND ${eqNullSafe(`${a}.${d}`, `c.${d}`)}`).join("\n");
+           axes.map((d) => ` AND ${a}.${d} = c.${d}`).join("\n");
   });
 
   const bases = plan.map((c) =>
@@ -498,7 +511,7 @@ ${joins.join("\n")}`.trim();
 
 
 module.exports = {
-  seq, eqNullSafe, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
+  seq, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
   resolveDims, resolveJoins, servingAxes,
   usablePeriods, valueColumns, comparePlan, endFlagNames,
   dailySQL, periodSQL, metricSQL,
