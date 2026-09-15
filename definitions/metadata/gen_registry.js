@@ -16,8 +16,7 @@
 
 const { METRICS, RATIOS, EXCLUDED } = require("includes/metrics");
 const { ENTITIES, allDims }          = require("includes/entities");
-const { usablePeriods, applicableCompares, resolveDims } = require("includes/build");
-const { baseColumn }                 = require("includes/naming");
+const { valueColumns, comparePlan, servingAxes, resolveDims } = require("includes/build");
 
 // ── SQL 리터럴 ────────────────────────────────────────────────
 // expr 에 작은따옴표가 들어 있다 — COUNTIF({order_item_status} = 'returned').
@@ -50,8 +49,9 @@ const row = (o) => `  STRUCT(
     ${str(o.filter)} AS filter,
     ${arr(o.dimensions)} AS dimensions,
     ${str(o.additive_by_axis)} AS additive_by_axis,
-    ${arr(o.period_types)} AS period_types,
-    ${arr(o.compare_labels)} AS compare_labels,
+    ${arr(o.serving_dims)} AS serving_dims,
+    ${arr(o.value_columns)} AS value_columns,
+    ${arr(o.compare_columns)} AS compare_columns,
     ${str(o.numerator)} AS numerator,
     ${str(o.denominator)} AS denominator,
     ${bool(o.is_approximate)} AS is_approximate,
@@ -77,8 +77,9 @@ for (const [name, m] of Object.entries(METRICS)) {
     filter:           m.filter,
     dimensions:       resolveDims(name, m).map((d) => d.name),
     additive_by_axis: JSON.stringify(m.additive),
-    period_types:     usablePeriods(m),
-    compare_labels:   applicableCompares(m).map(([label]) => baseColumn(label)),
+    serving_dims:     servingAxes(name, m),
+    value_columns:    valueColumns(name, m),
+    compare_columns:  comparePlan(m).map((c) => c.column),
     is_approximate:   m.additive.time === "sketch",
     is_generated:     true,
     serving_table:    `semantic.metric_${name}`,
@@ -134,10 +135,11 @@ publish("metric_registry", {
     entity_grain:     "그 fact 의 grain",
     expression:       "집계식. metrics.js 선언 원문이라 {} 표기가 남아 있다 (P5-2)",
     filter:           "집계 전 행 필터",
-    dimensions:       "쓸 수 있는 차원. ratio 는 분자·분모의 교집합이다 (P12)",
+    dimensions:       "daily_ 가 가진 차원 전체. ratio 는 분자·분모의 교집합이다 (P12)",
     additive_by_axis: "축별 가산성 JSON. true · \"sketch\" · \"last\" (P9)",
-    period_types:     "만들어진 기간. additive.time 이 롤업 불가면 daily 만 남는다 (P10-3)",
-    compare_labels:   "붙은 비교 기준값 컬럼. 증감률이 아니다 (P14)",
+    serving_dims:     "metric_ 의 grain. CUBE 로 '(all)' 롤업까지 만들어져 있다 (P4)",
+    value_columns:    "metric_ 의 값 컬럼. 접두어가 없으면 daily 다 (P13). 누계 불가면 daily 하나뿐 (P10-3)",
+    compare_columns:  "붙은 비교 기준값 컬럼. 증감률이 아니다 (P14)",
     numerator:        "ratio 전용. 분자 지표 이름",
     denominator:      "ratio 전용. 분모 지표 이름",
     is_approximate:   "HLL 스케치를 쓰는가. 분모가 스케치인 비율도 포함",

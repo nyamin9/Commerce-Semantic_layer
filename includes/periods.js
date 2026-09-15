@@ -34,6 +34,7 @@
 const PERIODS = {
   daily: {
     type: "passthrough",
+    label: "하루",
     trunc: null,
     end_flag: null,
     compare: { dod: "1 DAY", wow: "1 WEEK", yoy: "1 YEAR" },
@@ -42,18 +43,21 @@ const PERIODS = {
   // 좁은 것부터. 마지막(ytd)이 스케치 구간 조인의 범위가 된다
   wtd: {
     type: "cumulative",
+    label: "주",
     trunc: "WEEK(MONDAY)",
     end_flag: "is_week_end",
     compare: { wow: "1 WEEK", yoy: "364 DAY" },
   },
   mtd: {
     type: "cumulative",
+    label: "월",
     trunc: "MONTH",
     end_flag: "is_month_end",
     compare: { mom: "1 MONTH", yoy: "1 YEAR" },
   },
   ytd: {
     type: "cumulative",
+    label: "연",
     trunc: "YEAR",
     end_flag: "is_year_end",
     compare: { yoy: "1 YEAR" },
