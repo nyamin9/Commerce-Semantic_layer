@@ -124,38 +124,45 @@ GROUP BY 1, 2, 3
 
 ### 단계 2 — `period_net_revenue`
 
-`daily_` 를 **4축 CUBE × 기간 컬럼**으로 편다. 한 행이 "그 `record_date` 의 모든 것" 이다 (P13).
+`daily_` 를 **`serving_dims` 롤업 × 기간 컬럼**으로 편다. 한 행이 "그 `record_date` 의 모든 것" 이다 (P13).
 
 세 겹이다.
 
 ```
-cube   daily_ 를 serving_dims 의 모든 부분집합으로 접는다. 활동한 날짜만
-grid   sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
-cum    그 위에 누적한다.                             daily 는 그대로 통과
+base    daily_ 를 serving_dims 로 접는다.              기저 조합만
+grid    sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
+cum     그 위에 누적한다.                              daily 는 그대로 통과
+rollup  각 축의 '(all)' 행을 만든다.                    마스크 CROSS JOIN
 ```
 
-`cube` 는 `category`·`department`·`order_item_status` 를 접어 없애고, 남은 4축에
-대해 각 축의 `'(all)'` 롤업 행까지 만든다.
+`base` 는 `category`·`department`·`order_item_status` 를 접어 없앤다. 롤업은 아직 없다.
 
 ```sql
-SELECT
-  record_date,
-  IF(GROUPING(country) = 1, '(all)', country) AS country,
-  ...
-  SUM(net_revenue) AS v                       -- 스케치면 HLL_COUNT.MERGE_PARTIAL
+SELECT record_date, country, age_group, gender, acquisition_channel,
+       SUM(net_revenue) AS v                  -- 스케치면 HLL_COUNT.MERGE_PARTIAL
 FROM semantic.daily_net_revenue
-GROUP BY GROUPING SETS (
-  (record_date, country, age_group, gender, acquisition_channel),
-  ...                                         -- 2^4 = 16개 집합
-  (record_date)
-)
+GROUP BY 1, 2, 3, 4, 5
 ```
 
-> BigQuery 는 `CUBE` 를 다른 grouping element 와 섞지 못해 부분집합을 직접 펼친다.
+`rollup` 이 마지막에 `'(all)'` 행을 만든다. 마스크를 `CROSS JOIN` 으로 붙여 입력을
+한 번만 읽고 행을 2ⁿ 배로 펼친다. 비트가 0인 축이 `'(all)'` 이 된다.
 
-> **`GROUPING()` 이 필요한 이유.** 롤업 행은 차원 컬럼이 `NULL` 로 채워져 나온다.
-> `IFNULL(country,'(all)')` 로 치환하면 원본의 진짜 `NULL` 까지 `'(all)'` 이 되어
-> 조용히 이중 계산된다 — 그 `NULL` 행은 롤업 행에 이미 포함돼 있다.
+```sql
+SELECT cum.record_date,
+       IF((axis_mask >> 0) & 1 = 1, cum.country, '(all)') AS country,
+       ...
+       SUM(cum.net_revenue_mtd) AS net_revenue_mtd
+FROM cum
+CROSS JOIN UNNEST(GENERATE_ARRAY(0, 15)) AS axis_mask
+GROUP BY 1, 2, 3, 4, 5
+```
+
+> **`CUBE` 도 `GROUPING SETS` 도 못 쓴다.** `CUBE` 는 다른 grouping element 와 섞이지
+> 않고, `GROUPING SETS` 는 집합마다 입력을 다시 읽는다 — 축이 4개면 16번이라
+> 스케치 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다.
+
+> **접기가 누적보다 나중인 이유.** 순서를 바꿔도 값은 같지만, 먼저 접으면 `'(all)'`
+> 행의 스케치가 조밀해지고 그것을 1년 구간 자기조인에서 하루당 180여 번씩 읽는다.
 
 `grid` 는 `sem_dim_date` 를 뼈대로 빈 날짜를 채운다 (P15-1). 활동한 날에만 누계를
 만들면 걷는 순간 대부분이 사라진다 — 실측으로 국가별 MTD 가 실제의 13% 였다.
@@ -208,7 +215,7 @@ LEFT JOIN period_net_revenue AS b_1_year
 **접기**는 여러 행을 한 행으로 만드는 집계다. 축이 둘이다.
 
 ```
-차원 축   category · department · order_item_status 를 없앤다     ← CUBE
+차원 축   category · department · order_item_status 를 없앤다     ← 마스크 CROSS JOIN
 시간 축   daily 여러 날을 기간 누계로 만든다                       ← 창 함수 / 구간 병합
 ```
 
@@ -216,8 +223,8 @@ LEFT JOIN period_net_revenue AS b_1_year
 
 | 축 | additive | 패턴 |
 |---|---|---|
-| 차원 | `true` | `SUM` + `GROUP BY GROUPING SETS` |
-| 차원 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + `GROUP BY GROUPING SETS` |
+| 차원 | `true` | `SUM` + 마스크 `CROSS JOIN` |
+| 차원 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + 마스크 `CROSS JOIN` |
 | 시간 | `true` | `SUM(v) OVER (PARTITION BY ... ORDER BY record_date)` |
 | 시간 | `"sketch"` | 구간 자기조인 + `HLL_COUNT.MERGE_PARTIAL` |
 | 시간 | 그 밖 | **누계 컬럼을 만들지 않는다.** `daily` 하나만 남는다 (P10-3) |
@@ -435,7 +442,7 @@ distinct 계열은 HLL 스케치(BYTES)로 남는다. 소비용이 아니라 `me
 
 ### `period_<metric>` — 기간 확장
 
-`daily_` 를 **`serving_dims` 4축 CUBE × 기간 컬럼**으로 편 것. 비교는 아직 없다.
+`daily_` 를 **`serving_dims` 롤업 × 기간 컬럼**으로 편 것. 비교는 아직 없다.
 
 차원이 접히므로 `category`·`department`·`order_item_status` 는 여기 없다. 그 축이
 필요하면 `daily_` 에서 걷는다 (P4). 대신 남은 4축의 `'(all)'` 롤업 행이 물화돼 있다.
@@ -646,7 +653,7 @@ GROUP BY 1, 2, 3, 4, 5
 
 ### 6단계 — `period_` · `metric_cancelled_units` (생성)
 
-`additive` 가 전 축 `true` 이므로 차원 접기는 `SUM` + `CUBE`, 시간 접기는 창 함수가
+`additive` 가 전 축 `true` 이므로 차원 접기는 `SUM`, 시간 접기는 창 함수가
 선택된다. 누계 3종이 컬럼으로 생기고, 비교 기준값 8개가 날짜 조인으로 붙는다 (P14).
 
 월 단위로 보려면 `is_month_end` 를 건다 — `monthly` 라는 기간을 따로 만들지 않는다 (P13).
@@ -674,7 +681,7 @@ GROUP BY 1, 2, 3, 4, 5
 | 테이블 | — | `daily_` 1 + `period_` 1 + `metric_` 1 |
 | 기간 | — | 값 컬럼 4개 자동 |
 | 비교 | — | 기준값 컬럼 8개 자동 |
-| 차원 롤업 | — | `CUBE` 의 `'(all)'` 행 자동 |
+| 차원 롤업 | — | 각 축의 `'(all)'` 행 자동 |
 | 카탈로그 | — | registry 1행 |
 
 **지표 추가 비용이 선언 한 항목으로 고정된다.** 이것이 이 구조의 이득 전부이고,

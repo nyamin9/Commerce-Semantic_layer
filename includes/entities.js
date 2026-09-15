@@ -16,7 +16,7 @@
 // 유일하지 않고, 자연키로 조인하면 에러 없이 조용히 fan-out 된다.
 //
 // serving_dims 는 서빙 테이블(period_·metric_)의 grain 이다. dims 전체가 아니라
-// 그 부분집합이고, CUBE 로 각 축의 '(all)' 롤업 행까지 물화된다.
+// 그 부분집합이고, 각 축의 '(all)' 롤업 행까지 물화된다.
 //
 // 전체 차원을 쓰지 않는 이유는 격자 때문이다. 누계는 그날 활동이 없어도 행이
 // 있어야 걷었을 때 앞 구간이 빠지지 않는다. 격자 크기는 (조합 수 × 날짜)로만
@@ -147,7 +147,7 @@ const allDims = (entity) => Object.keys(ENTITIES[entity].dims);
 // 지표 수식이 참조할 수 있는 조인 이름. 선언되지 않은 이름은 build.js가 거부한다
 const allJoins = (entity) => Object.keys(ENTITIES[entity].joins || {});
 
-// 서빙 테이블의 grain. CUBE 로 각 축의 '(all)' 롤업까지 만든다
+// 서빙 테이블의 grain. 각 축의 '(all)' 롤업 행까지 만든다
 const servingDims = (entity) => ENTITIES[entity].serving_dims || [];
 
 // daily_ 갱신 방식. gen_daily.js 가 이 값으로 type 을 고른다

@@ -137,7 +137,7 @@ publish("metric_registry", {
     filter:           "집계 전 행 필터",
     dimensions:       "daily_ 가 가진 차원 전체. ratio 는 분자·분모의 교집합이다 (P12)",
     additive_by_axis: "축별 가산성 JSON. true · \"sketch\" · \"last\" (P9)",
-    serving_dims:     "metric_ 의 grain. CUBE 로 '(all)' 롤업까지 만들어져 있다 (P4)",
+    serving_dims:     "metric_ 의 grain. 각 축의 '(all)' 롤업 행까지 만들어져 있다 (P4)",
     value_columns:    "metric_ 의 값 컬럼. 접두어가 없으면 daily 다 (P13). 누계 불가면 daily 하나뿐 (P10-3)",
     compare_columns:  "붙은 비교 기준값 컬럼. 증감률이 아니다 (P14)",
     numerator:        "ratio 전용. 분자 지표 이름",

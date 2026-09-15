@@ -605,7 +605,7 @@ module.exports = {
 ```
 
 내보내지 않은 것은 파일 안에서만 산다 — `entities.js`의 `self`, `metrics.js`의
-`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`cubeCTE`·`gridCTE`·`incrementalWhere`가 그렇다.
+`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`baseCTE`·`gridCTE`·`rollupSelect`가 그렇다.
 헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워진다.
 
 받는 쪽은 구조 분해로 필요한 것만 꺼낸다. `includes/build.js:11-13`:
@@ -827,8 +827,8 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
 | 4 | `foldExpr` · `dimFold` | `additive` → 함수 선택, 접기 가부 (14번) |
-| 5 | `cubeCTE` · `groupingSets` · `gridCTE` | 차원 접기와 격자 채우기 |
-| 6 | `periodSQL` · `cumWindowed` · `cumSketch` | 5 위에 누적. 가산/스케치 두 갈래 |
+| 5 | `baseCTE` · `gridCTE` | 차원 접기와 격자 채우기 |
+| 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만든다 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
 **6과 7이 나뉘어 있는 것이 핵심이다.** 예전에는 `metricSQL` 하나가 둘 다 했고
@@ -836,14 +836,14 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 비교 조인 4) 같은 집계가 다섯 번 돌았다. CTE 는 결과를 저장하지 않기 때문이다.
 
 ```
-periodSQL   daily_ → CUBE → 채운 격자 → 누적       → period_<metric> 테이블
+periodSQL   daily_ → 채운 격자 → 누적 → '(all)' 롤업  → period_<metric> 테이블
 metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metric> 테이블
 ```
 
 `periodSQL` 은 세 겹의 CTE 를 이어 붙이고 마지막에 갈래를 고른다.
 
 ```
-cube → grid → cumWindowed (가산) 또는 cumSketch (스케치)
+base → grid → cumWindowed (가산) 또는 cumSketch (스케치) → rollupSelect
 ```
 
 `metricSQL` 은 두 덩이다.

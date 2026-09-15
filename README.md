@@ -139,9 +139,9 @@ semantic_mart                우리 소유. 이름 정규화 · 자연키 제거
         ▼
 semantic.daily_<metric>      날짜 × 전체 차원 집계. 조인이 실행되는 유일한 곳
         │
-        │  includes/build.js  ← serving_dims 로 CUBE, 채운 격자 위에 누적
+        │  includes/build.js  ← 채운 격자 위에 누적하고 '(all)' 행을 만든다
         ▼
-semantic.period_<metric>     4축 CUBE × 기간 컬럼. metric_ 의 재료
+semantic.period_<metric>     serving_dims 롤업 × 기간 컬럼. metric_ 의 재료
         │
         │  includes/build.js  ← record_date 를 시프트한 self-join 5번
         ▼
@@ -335,11 +335,11 @@ PERIODS = {
 `via: null`이면 fact 자체 컬럼이라 조인이 없다(`self()`).
 
 **`serving_dims` 는 서빙 테이블의 grain 이다.** `dims` 전체가 아니라 그 부분집합이고,
-`CUBE` 로 각 축의 `'(all)'` 롤업 행까지 물화된다. 전체 차원을 쓰지 않는 이유는
+각 축의 `'(all)'` 롤업 행까지 물화된다. 전체 차원을 쓰지 않는 이유는
 격자 때문이다 — 크기가 (조합 수 × 날짜)로만 정해져서 `category`(26) 하나만 넣어도
 26배가 된다 (P4·P15).
 
-| entity | `serving_dims` | 조합 | CUBE |
+| entity | `serving_dims` | 기저 조합 | 롤업 포함 |
 |---|---|---|---|
 | `order_item` · `order` | country · age_group · gender · acquisition_channel | 720 | 1,708 |
 | `session` | country · acquisition_channel | 68 | 89 |
@@ -387,7 +387,7 @@ false     복원 불가                 → 생성 거부
 | `foldExpr(col, additive)` | `additive` → 접는 함수. `null`이면 생성 거부 |
 | `dimFold(name, m, dims)` | 차원 축을 접을 함수. 축마다 가산성이 다르면 예외 |
 | `servingAxes(name, m)` | 이 지표의 서빙 차원. `serving_dims` ∩ 선언된 `dims` |
-| `periodSQL(ctx, name, m)` | `CUBE` → 채운 격자 → 누적. 가산은 창 함수, 스케치는 구간 병합 |
+| `periodSQL(ctx, name, m)` | 채운 격자 → 누적 → `'(all)'` 롤업. 가산은 창 함수, 스케치는 구간 병합 |
 | `comparePlan(m)` | 비교 컬럼 8개와 각각의 기간·간격 |
 | `metricSQL(ctx, name, m)` | 간격별 self-join 5번 + 비교 기준값 |
 | `eqNullSafe(l, r)` | 차원 NULL 비교. `IS NOT DISTINCT FROM`으로 NULL = NULL을 맞춘다 |
