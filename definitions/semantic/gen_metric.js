@@ -1,7 +1,7 @@
 // metric_<metric> 생성. period_ 를 시프트해 자기 자신과 조인하고 비교 기준값을 붙인다.
 //
 // dimension 조인은 없다 (P5). period_ 하나만 읽으므로 atomic fact 와 dimension 을
-// 다시 읽지 않는다 (P11). 기간 확장도 CUBE 도 period_ 가 이미 해뒀다.
+// 다시 읽지 않는다 (P11). 기간 확장도 차원 롤업도 period_ 가 이미 해뒀다.
 //
 // 비교 컬럼 8개가 서로 다른 시프트 5개에서 나오므로 자기조인도 5번이다 —
 // 1 DAY · 1 WEEK · 1 MONTH · 1 YEAR · 364 DAY (근거는 build.js 의 metricSQL 주석).
@@ -51,7 +51,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
     type:        "table",
     schema:      "semantic",
     tags:        ["semantic", "metric"],
-    description: `${m.description} — 4축 CUBE × 기간 컬럼 + 비교 기준값. 서빙 표면`,
+    description: `${m.description} — ${axes.length}축 롤업 × 기간 컬럼 + 비교 기준값. 서빙 표면`,
     columns,
 
     bigquery: { partitionBy: RECORD_DATE },

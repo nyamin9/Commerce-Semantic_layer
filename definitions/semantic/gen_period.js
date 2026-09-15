@@ -1,10 +1,10 @@
-// period_<metric> 생성. daily_ 를 4축 CUBE × 기간 컬럼으로 편다.
+// period_<metric> 생성. daily_ 를 serving_dims 롤업 × 기간 컬럼으로 편다.
 //
 // 기간은 행이 아니라 컬럼이다 (P13). 한 행이 "그 record_date 의 모든 것" 이고
 // daily·wtd·mtd·ytd 가 나란히 놓인다. weekly·monthly·yearly 는 만들지 않는다 —
 // 완결 기간의 롤업이 누계와 같은 값이라 is_*_end 플래그로 고르면 된다.
 //
-// 차원은 serving_dims 로 접히고 CUBE 가 각 축의 '(all)' 롤업까지 만든다 (P4).
+// 차원은 serving_dims 로 접히고 각 축의 '(all)' 롤업 행까지 만들어진다 (P4).
 // 소비자가 차원을 걷을 필요가 없다. 스케치 지표는 걷을 때 SUM 이 아니라
 // HLL_COUNT.MERGE 여야 하는데, 미리 만들어 두면 그 지식이 필요 없어진다.
 //
@@ -46,7 +46,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
     type:        "table",
     schema:      "semantic",
     tags:        ["semantic", "period"],
-    description: `${m.description} — 4축 CUBE × 기간 컬럼. metric_ 의 재료`,
+    description: `${m.description} — ${axes.length}축 롤업 × 기간 컬럼. metric_ 의 재료`,
     columns,
 
     bigquery: { partitionBy: RECORD_DATE },

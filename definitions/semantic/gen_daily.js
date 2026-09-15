@@ -3,7 +3,7 @@
 // 조인이 실행되는 유일한 곳이다 (P5). period_ 는 여기서만 읽고 원자 fact 와
 // dimension 을 다시 읽지 않는다 (P11).
 //
-// 차원이 가장 넓은 테이블이다. period_·metric_ 은 serving_dims 4축으로 접히므로,
+// 차원이 가장 넓은 테이블이다. period_·metric_ 은 serving_dims 로 접히므로,
 // category·department 같은 축이 필요하면 여기서 걷는다 (P4).
 //
 // clusterBy 는 걸지 않는다. BigQuery 가 권장하는 기준이 64 MB 인데 daily_ 는
