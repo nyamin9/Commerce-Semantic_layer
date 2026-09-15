@@ -274,9 +274,11 @@ const ALL = "(all)";
 // ── 2단계: period — 기간을 가로로 편다 ───────────────────────
 //
 // 세 겹이다.
-//   cube   daily_ 를 CUBE(serving_dims) 로 접는다.       활동한 날짜만
-//   grid   sem_dim_date × 조합 을 전부 만들고 값을 붙인다. 없으면 0 / NULL
-//   cum    그 위에 누적한다.                             daily 는 그대로 통과
+//   folded  daily_ 를 serving_dims 의 모든 부분집합으로 접는다. 활동한 날짜만
+//   grid    sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
+//   cum     그 위에 누적한다.                              daily 는 그대로 통과
+//
+// CTE 이름이 folded 인 것은 cube 가 GoogleSQL 예약어이기 때문이다
 //
 // grid 가 핵심이다. 활동한 날에만 누계를 만들면 걷는 순간 대부분이 사라진다 —
 // 실측으로 국가별 MTD 가 실제의 13% 였다. 그날 안 팔린 조합의 앞 구간 매출이
@@ -287,7 +289,9 @@ const ALL = "(all)";
 // 이미 포함돼 있다. GROUPING() 이 둘을 가른다.
 //
 // 진짜 NULL 은 NULL 로 남긴다. "값이 없는 버킷"(P6-1)이라는 뜻을 유지한다
-const cubeAxis = (d) => `IF(GROUPING(${d}) = 1, '${ALL}', ${d}) AS ${d}`;
+// 소스 컬럼을 daily. 로 한정한다. 그러지 않으면 GROUP BY 가 이름을 SELECT 의
+// alias(집계를 품은 IF 식)로 풀어 "contains an aggregation function" 으로 거부된다
+const cubeAxis = (d) => `IF(GROUPING(daily.${d}) = 1, '${ALL}', daily.${d}) AS ${d}`;
 
 // BigQuery 는 CUBE 를 다른 grouping element 와 섞지 못한다 —
 // `GROUP BY record_date, CUBE(...)` 가 "only supports CUBE when there are no
@@ -297,21 +301,21 @@ function groupingSets(axes) {
   const sets = [];
   for (let mask = (1 << axes.length) - 1; mask >= 0; mask--) {
     const keep = axes.filter((_, i) => mask & (1 << i));
-    sets.push(`    (${[RECORD_DATE, ...keep].join(", ")})`);
+    sets.push(`    (${[RECORD_DATE, ...keep].map((c) => `daily.${c}`).join(", ")})`);
   }
   return `GROUP BY GROUPING SETS (\n${sets.join(",\n")}\n  )`;
 }
 
-function cubeCTE(name, m, axes) {
+function foldedCTE(name, m, axes) {
   const fold = foldExpr(name, dimFold(name, m, resolveDims(name, m).map((d) => d.name)));
 
   return `
   SELECT
-    ${RECORD_DATE},
+    daily.${RECORD_DATE},
     ${axes.map(cubeAxis).join(",\n    ")},
     ${fold} AS v
   FROM daily
-  ${axes.length ? groupingSets(axes) : `GROUP BY ${RECORD_DATE}`}`;
+  ${axes.length ? groupingSets(axes) : `GROUP BY daily.${RECORD_DATE}`}`;
 }
 
 // 날짜 뼈대는 sem_dim_date 다. daily_ 의 날짜를 쓰면 전사적으로 거래가 0인 날이
@@ -334,8 +338,8 @@ function gridCTE(ctx, m, axes) {
     WHERE date_day BETWEEN (SELECT MIN(${RECORD_DATE}) FROM daily)
                        AND (SELECT MAX(${RECORD_DATE}) FROM daily)
   ) d
-  CROSS JOIN (SELECT DISTINCT ${axes.join(", ")} FROM cube) c
-  LEFT JOIN cube a
+  CROSS JOIN (SELECT DISTINCT ${axes.join(", ")} FROM folded) c
+  LEFT JOIN folded a
     ON a.${RECORD_DATE} = d.${RECORD_DATE}
 ${axes.map((x) => `   AND ${eqNullSafe(`a.${x}`, `c.${x}`)}`).join("\n")}`;
 }
@@ -384,7 +388,7 @@ ${axes.length ? `  ${axes.map((x) => `g.${x}`).join(",\n  ")},\n` : ""}  ${endFl
   ANY_VALUE(g.v) AS ${name},
 ${merges.join(",\n")}
 FROM grid g
-LEFT JOIN cube b
+LEFT JOIN folded b
   ON b.${RECORD_DATE} BETWEEN DATE_TRUNC(g.${RECORD_DATE}, ${widest}) AND g.${RECORD_DATE}
 ${axes.map((x) => ` AND ${eqNullSafe(`b.${x}`, `g.${x}`)}`).join("\n")}
 GROUP BY ${seq(axes.length + 1)}`;
@@ -411,7 +415,7 @@ function periodSQL(ctx, name, m) {
 WITH daily AS (
   SELECT * FROM ${ctx.ref(dailyName(name))}
 ),
-cube AS (${cubeCTE(name, m, axes).trim()}
+folded AS (${foldedCTE(name, m, axes).trim()}
 ),
 grid AS (${gridCTE(ctx, m, axes).trim()}
 )
