@@ -1,0 +1,300 @@
+# 테이블 구조
+
+BigQuery 에 실제로 만들어지는 테이블 전부. 용어는 [glossary.md](glossary.md) 를 따른다.
+왜 이 모양인지는 [architecture.md](architecture.md) 에 있다.
+
+## 전체 목록
+
+| 데이터셋 | 테이블 | 개수 |
+|---|---|---|
+| `semantic_mart` | `sem_dim_*` 3 + `sem_fct_*` 4 | 7 |
+| `semantic` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` | 45 |
+| `semantic_metadata` | `metric_registry` | 1 |
+| `semantic_assertions` | assertion 결과. Dataform 이 만든다 | — |
+
+`semantic` 의 45개는 **지표 15개 × 3단계**다. 지표마다 컬럼 구성이 같고 dimension
+개수만 entity 에 따라 다르다.
+
+---
+
+## 1. `semantic_mart` — DW 를 정규화한 중간 테이블
+
+사람이 SQL 을 쓰는 유일한 곳이다. 이름 정규화 · 자연키 제거 · grain 보증을 한다.
+
+### dimension 3개
+
+| 테이블 | PK | 컬럼 |
+|---|---|---|
+| `sem_dim_users` | `user_id` | `email_domain` · `age` · **`age_group`** · `gender` · `city` · `state` · **`country`** · `postal_code` · **`acquisition_channel`** · `signed_up_at` · `signed_up_date` · `signup_cohort_month` |
+| `sem_dim_products` | `product_id` | `product_name` · **`brand`** · **`category`** · **`department`** · `sku` · `unit_cost` · `retail_price` · `list_margin_rate` · `distribution_center_id` · `distribution_center_name` |
+| `sem_dim_date` | `date_day` | `year` · `quarter` · `month` · `day_of_month` · `day_of_week` · `day_name` · `year_month` · `week_start_date` · `week_end_date` · `month_start_date` · `month_end_date` · `quarter_start_date` · `year_start_date` · `year_end_date` · `is_weekend` |
+
+**굵은 것이 `entities.js` 에서 dimension 으로 선언된 컬럼**이다. 나머지는 마트에만 있다.
+
+`sem_dim_date` 는 2018~2031 날짜를 담는다. `period_` 의 `grid` 가 이 테이블에서
+날짜를 가져온다. `daily_` 는 조인하지 않는다.
+
+### fact 4개
+
+| 테이블 | PK | 날짜 컬럼 | grain |
+|---|---|---|---|
+| `sem_fct_order_items` | `order_item_key` | `ordered_date` | 주문 라인 1건 |
+| `sem_fct_orders` | `order_key` | `ordered_date` | 주문 1건 |
+| `sem_fct_sessions` | `session_id` | `session_date` | 세션 1건 |
+| `sem_fct_user_events` | `event_key` | `event_date` | 이벤트 1건 |
+
+`sem_fct_order_items` 의 컬럼이다. 지표 수식이 쓰는 것을 굵게 표시했다.
+
+```
+order_item_key · order_key · user_id · product_id · distribution_center_id
+order_item_status · order_status · is_revenue_recognized
+sale_price · unit_cost · gross_profit · net_revenue · net_gross_profit · discount_rate
+ordered_at · ordered_date · shipped_at · delivered_at · returned_at
+days_to_ship · days_to_deliver
+```
+
+**PK 는 전부 surrogate key 다.** 원본의 `order_id` · `order_item_id` 는 ID 를 재사용해서
+유일하지 않다. 마트에서 아예 제거해 잘못된 조인을 구조적으로 막는다.
+
+**`measure` 를 다시 정의하지 않는다.** `net_revenue` 는 DW 가 `is_revenue_recognized` 로
+이미 정의했다. 마트는 그대로 들고 온다.
+
+---
+
+## 2. `daily_<metric>` — 1단계
+
+`record_date × dimension 전체` 집계. 조인이 실행되는 유일한 곳이다.
+
+```
+record_date  DATE      파티션
+<dimension>  STRING    entity 의 dims 전부
+<metric>     NUMERIC   가산 지표
+             BYTES     sketch 지표 (HLL)
+```
+
+`daily_net_revenue` 의 실제 컬럼이다.
+
+```
+record_date · category · department · country · age_group · gender ·
+acquisition_channel · order_item_status · net_revenue
+```
+
+| 항목 | 값 |
+|---|---|
+| 파티션 | `record_date` |
+| clustering | 없음. BigQuery 권장 기준 64 MB 인데 최대가 16.7 MB 다 |
+| assertion | `uniqueKey(record_date, ...dims)` · `nonNull(record_date)` |
+| 갱신 | entity 의 `refresh` 를 따른다 |
+
+**`NULL` 이 그대로 남는다.** 조인이 `LEFT JOIN` 이라 fact 키가 dimension 에 없으면
+dimension 이 `NULL` 이 되는데, 그것도 하나의 bucket 이다 (P6-1). `'(unknown)'` 으로
+바꾸는 것은 2단계다.
+
+---
+
+## 3. `period_<metric>` — 2단계
+
+`record_date × serving_dims` 에 rollup 행과 PTD 컬럼을 붙인 것.
+
+```
+record_date      DATE      파티션
+<serving_dims>   STRING    '(all)' rollup 행과 '(unknown)' bucket 을 포함한다
+is_week_end      BOOL
+is_month_end     BOOL
+is_year_end      BOOL
+<metric>         NUMERIC   그날 하루
+<metric>_wtd     / BYTES   주 시작 ~ record_date
+<metric>_mtd
+<metric>_ytd
+```
+
+`period_net_revenue` 의 실제 컬럼이다 (12개).
+
+```
+record_date · country · age_group · gender · acquisition_channel ·
+is_week_end · is_month_end · is_year_end ·
+net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd
+```
+
+| 항목 | 값 |
+|---|---|
+| 파티션 | `record_date` |
+| assertion | `uniqueKey(record_date, ...serving_dims)` · `nonNull(record_date, serving_dims, is_*_end)` |
+| 갱신 | `table`. 매번 전부 다시 만든다 |
+
+**`category` · `department` · `order_item_status` 가 여기 없다.** `serving_dims` 밖이라
+컬럼 자체가 생기지 않는다. 그 dimension 별 집계는 `daily_` 에서 직접 낸다.
+
+---
+
+## 4. `metric_<metric>` — 3단계 · 서빙 표면
+
+`period_` 의 모든 컬럼 + 비교 기준값 8개. **소비자는 이 테이블만 읽는다.**
+
+```
+                        (period_ 의 컬럼 전부)
+dod_base                daily 의 1일 전
+wow_base                daily 의 1주 전
+yoy_base                daily 의 1년 전
+wtd_wow_base            wtd  의 1주 전
+wtd_yoy_base            wtd  의 364일 전
+mtd_mom_base            mtd  의 1개월 전
+mtd_yoy_base            mtd  의 1년 전
+ytd_yoy_base            ytd  의 1년 전
+```
+
+`metric_net_revenue` 의 실제 컬럼이다 (20개).
+
+```
+record_date · country · age_group · gender · acquisition_channel ·
+is_week_end · is_month_end · is_year_end ·
+net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd ·
+dod_base · wow_base · yoy_base ·
+wtd_wow_base · wtd_yoy_base · mtd_mom_base · mtd_yoy_base · ytd_yoy_base
+```
+
+**컬럼 이름 규칙 — 기간 접두어가 없으면 `daily` 다.**
+
+**`_base` 는 증감률이 아니라 기준 시점의 값이다.** 나눗셈은 조회할 때 한다.
+
+```sql
+SAFE_DIVIDE(net_revenue_mtd - mtd_yoy_base, mtd_yoy_base)
+```
+
+`NULL` 은 0 이 아니라 **그 시점에 같은 dimension 조합이 없었다**는 뜻이다.
+
+---
+
+## 5. 지표별 크기
+
+dimension 개수가 entity 마다 달라서 행 수가 크게 차이 난다.
+
+| entity | 지표 | `dims` | `serving_dims` | `daily_` 행 | `period_`·`metric_` 행 |
+|---|---|---|---|---|---|
+| `order_item` | `gross_revenue` `net_revenue` `cogs` `gross_profit` `order_item_count` `units_sold` `units_returned` `buyer_count` | 7 | 4 | 200,206 | 4,804,604 |
+| `order` | `order_count` `returned_order_count` | 5 | 4 | 123,585 | 4,797,772 |
+| `session` | `session_count` `bounce_count` `visitor_count` | 4 | 2 | 157,493 | 249,467 |
+| `user_event` | `event_count` `active_user` | 3 | 1 | 268,611 | 44,848 |
+
+`period_`·`metric_` 의 행 수는 **rollup 포함 조합 수 × 날짜 수**로 정해진다.
+날짜 수는 그 entity 의 `daily_` 가 가진 구간이라 entity 마다 다르다.
+
+| entity | 조합 | rollup 포함 | 날짜 | 행 |
+|---|---|---|---|---|
+| `order_item` | 720 | 1,708 | 2,813 | 4,804,604 |
+| `order` | 720 | 1,708 | 2,809 | 4,797,772 |
+| `session` | 68 | 89 | 2,803 | 249,467 |
+| `user_event` | 15 | 16 | 2,803 | 44,848 |
+
+`order_item` 과 `order` 는 `serving_dims` 가 같아 조합이 1,708 로 같고, 날짜 범위만
+다르다 — `fct_orders` 의 적재가 이틀 늦다 (상류 결함 4).
+
+### 저장 크기
+
+sketch 지표가 가산 지표보다 크다. 값 컬럼 12개가 전부 `BYTES` 이기 때문이다.
+
+| 테이블 | 행 | 크기 |
+|---|---|---|
+| `daily_net_revenue` | 200,206 | 15.1 MB |
+| `period_net_revenue` | 4,804,604 | 470.8 MB |
+| `metric_net_revenue` | 4,804,604 | 1,018 MB |
+| `daily_buyer_count` | 200,206 | 16.6 MB |
+| `period_buyer_count` | 4,804,604 | 947.6 MB |
+| `metric_buyer_count` | 4,804,604 | 1,671 MB |
+| `daily_event_count` | 268,611 | 11.1 MB |
+| `period_event_count` | 44,848 | 2.2 MB |
+| `metric_event_count` | 44,848 | 4.8 MB |
+
+`semantic` 전체는 45개 테이블 · 1억 60만 행 · 13.77 GB 다.
+
+---
+
+## 6. `metric_registry` — 지표 카탈로그
+
+선언을 테이블로 만든 것. 27행이다 (base 15 · ratio 7 · excluded 5).
+
+| 컬럼 | 타입 | 내용 |
+|---|---|---|
+| `metric_name` | STRING | PK |
+| `metric_type` | STRING | `base` · `ratio` · `excluded` |
+| `description` | STRING | 설명문 |
+| `entity` | STRING | 산출 fact. `ratio`·`excluded` 는 `NULL` |
+| `entity_grain` | STRING | 그 fact 의 grain |
+| `expression` | STRING | 집계식. 선언 원문이라 `{}` 표기가 남아 있다 |
+| `filter` | STRING | 집계 전 행 필터 |
+| `dimensions` | ARRAY\<STRING\> | `daily_` 가 가진 dimension 전부 |
+| `additive_by_axis` | STRING | 축별 가산성 JSON |
+| `serving_dims` | ARRAY\<STRING\> | `metric_` 의 dimension |
+| `value_columns` | ARRAY\<STRING\> | `metric_` 의 값 컬럼 4개 |
+| `compare_columns` | ARRAY\<STRING\> | 비교 기준값 컬럼 8개 |
+| `numerator` · `denominator` | STRING | `ratio` 전용 |
+| `is_approximate` | BOOL | HLL sketch 를 쓰는가 |
+| `is_generated` | BOOL | 테이블이 생성되었는가 |
+| `serving_table` | STRING | 조회할 테이블 |
+| `exclusion_reason` | STRING | `excluded` 전용 |
+
+**"생성되지 않았다" 와 "존재하지 않는다" 는 다르다.** 비율 7개와 제외 5개는 registry 가
+유일한 거처다.
+
+```sql
+-- net_revenue 가 무엇인지 SQL 로 묻는다
+SELECT entity, entity_grain, expression, dimensions, serving_dims, value_columns
+FROM semantic_metadata.metric_registry
+WHERE metric_name = 'net_revenue'
+```
+
+---
+
+## 7. 테이블 간 의존
+
+`dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프다.
+
+```
+dim_products     → sem_dim_products  ─┐
+dim_users        → sem_dim_users     ─┤
+fct_order_items  → sem_fct_order_items┼→ daily_<metric> → period_<metric> → metric_<metric>
+fct_orders       → sem_fct_orders    ─┤
+fct_sessions     → sem_fct_sessions  ─┤
+fct_user_events  → sem_fct_user_events┘
+(없음)           → sem_dim_date ────────────────────→ period_<metric>
+
+(없음)           → metric_registry      선언만 읽는다. ref() 가 없다
+```
+
+**마트 테이블끼리는 서로 참조하지 않는다.** 전부 DW declaration 만 읽는다 — fact 간
+조인이 금지되어 있기 때문이다.
+
+---
+
+## 8. 조회 예시
+
+```sql
+-- 전사 이번 달 누계와 작년 같은 날까지
+SELECT net_revenue_mtd, mtd_yoy_base
+FROM semantic.metric_net_revenue
+WHERE record_date = CURRENT_DATE()
+  AND country='(all)' AND age_group='(all)'
+  AND gender='(all)' AND acquisition_channel='(all)'
+
+-- country 별 월별 추이 12개월
+SELECT record_date, country, net_revenue_mtd
+FROM semantic.metric_net_revenue
+WHERE is_month_end
+  AND age_group='(all)' AND gender='(all)' AND acquisition_channel='(all)'
+ORDER BY record_date DESC LIMIT 12
+
+-- sketch 지표는 EXTRACT 를 한 번 더 부른다
+SELECT HLL_COUNT.EXTRACT(buyer_count_mtd) AS buyers_mtd
+FROM semantic.metric_buyer_count
+WHERE record_date = CURRENT_DATE() AND country='KR'
+  AND age_group='(all)' AND gender='(all)' AND acquisition_channel='(all)'
+
+-- serving_dims 밖의 dimension 은 daily_ 에서 낸다
+SELECT category, SUM(net_revenue) AS mtd
+FROM semantic.daily_net_revenue
+WHERE record_date BETWEEN DATE_TRUNC(@d, MONTH) AND @d
+GROUP BY category
+```
+
+**`'(all)'` 조건을 빠뜨리면 rollup 행과 원본 행이 같이 나와 이중 계산된다.**
+`metric_` 을 조회할 때는 모든 dimension 에 조건을 건다.

@@ -71,9 +71,12 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 
 | entity | `serving_dims` | `period_` 행 수 |
 |---|---|---|
-| `order_item` · `order` | 4개 | 4,804,604 |
-| `session` | 2개 | 249,378 |
+| `order_item` | 4개 | 4,804,604 |
+| `order` | 4개 | 4,797,772 |
+| `session` | 2개 | 249,467 |
 | `user_event` | 1개 | 44,848 |
+
+자세한 스키마는 [tables.md](tables.md) 에 있다.
 
 ## 4. `rpt_*` 대조 결과
 

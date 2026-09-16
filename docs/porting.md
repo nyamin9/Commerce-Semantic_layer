@@ -288,4 +288,5 @@ CTE 재계산 문제도 같은 방식으로 나타난다.
 |---|---|
 | 왜 이 구조인가 | [architecture.md](architecture.md) |
 | 파일별 역할 | [code-map.md](code-map.md) |
+| 테이블 구조 | [tables.md](tables.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |

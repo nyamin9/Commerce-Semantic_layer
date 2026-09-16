@@ -352,6 +352,7 @@ sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metri
 | | |
 |---|---|
 | 왜 이 구조인가 | [architecture.md](architecture.md) |
+| 테이블 구조 | [tables.md](tables.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |
 | 지표 추가 절차 | [metrics.md](metrics.md) 7장 |
 | JS 문법 | [js-patterns.md](js-patterns.md) |

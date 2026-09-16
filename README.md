@@ -57,13 +57,14 @@ record_date  country  is_month_end   net_revenue  _wtd    _mtd     _ytd      mtd
 | [glossary.md](docs/glossary.md) | **용어집. 먼저 읽는다.** 여기 없는 단어는 문서에 쓰지 않는다 |
 | [architecture.md](docs/architecture.md) | 왜 이 구조인가. 3단계의 근거와 핵심 결정 여섯 가지 |
 | [code-map.md](docs/code-map.md) | 파일별 역할. 무엇을 고치면 무엇이 바뀌나 |
+| [tables.md](docs/tables.md) | 테이블 구조. 실제 컬럼 · 행 수 · 파티션 |
 | [porting.md](docs/porting.md) | 다른 프로젝트로 옮기기. 설계 / 선언 / 엔진 제약 |
 | [principles.md](docs/principles.md) | 판단 기준 P1~P22 |
 | [metrics.md](docs/metrics.md) | 지표 정의서와 지표 추가 절차 |
 | [operations.md](docs/operations.md) | 스케줄 · 실행 계정 · 상류 결함 · 현재 상태 |
 | [js-patterns.md](docs/js-patterns.md) | 코드를 읽기 전에 JS 가 낯설다면 |
 
-**처음 읽는다면** `glossary.md` → `architecture.md` → `code-map.md` 순서를 권한다.
+**처음 읽는다면** `glossary.md` → `architecture.md` → `tables.md` → `code-map.md` 순서를 권한다.
 
 **지표를 추가하려면** `metrics.md` 7장만 보면 된다.
 

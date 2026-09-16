@@ -329,6 +329,7 @@ dry run 으로도 못 잡는다.
 
 | | |
 |---|---|
+| 테이블 구조 | [tables.md](tables.md) |
 | 파일별 역할 | [code-map.md](code-map.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |
 | 지표 정의 | [metrics.md](metrics.md) |

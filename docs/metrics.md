@@ -429,6 +429,8 @@ generator 밖에서 별도 모델로 만들되 registry에는 `custom: true`로 
 
 ## 6. 산출물
 
+컬럼과 타입은 [tables.md](tables.md) 에 있다. 여기서는 각 테이블의 역할만 다룬다.
+
 ```
 semantic_mart      sem_dim_* 3개  +  sem_fct_* 4개                    7
 semantic           daily_<metric> 14  +  metric_<metric> 14          28
