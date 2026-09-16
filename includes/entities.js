@@ -1,30 +1,30 @@
 // entity 선언 — 지표를 산출하는 fact 테이블이 entity가 된다.
-// entity가 정해지면 grain과 쓸 수 있는 차원이 따라서 정해진다.
+// entity가 정해지면 grain과 쓸 수 있는 dimension이 따라서 정해진다.
 //
 // joins 와 dims 를 나눠 선언한다.
 //   joins  어느 테이블에 어느 키로 붙는가. 이름을 준다
-//   dims   그 조인에서 어느 컬럼을 차원으로 쓰는가
+//   dims   그 조인에서 어느 컬럼을 dimension으로 쓰는가
 //
 // 둘을 합쳐 쓰면 조인 슬롯에 부를 이름이 없어진다. 이름이 있어야 지표 수식이
 // dim 컬럼을 가리킬 수 있다 — {product.unit_cost} 처럼. builder 가 만든 이름이
 // 아니라 여기 적힌 이름이라 선언이 builder 내부를 모른다 (P5).
 //
-// 여기 없는 차원은 그 entity에서 쓸 수 없다 (P6).
+// 여기 없는 dimension은 그 entity에서 쓸 수 없다 (P6).
 // 가능한 조합을 이어주는 것보다 불가능한 조합을 막는 쪽이 중요하다.
 //
 // pk는 반드시 surrogate key다 (P2). 이 DW의 자연키는 소스가 ID를 재사용해
 // 유일하지 않고, 자연키로 조인하면 에러 없이 조용히 fan-out 된다.
 //
 // serving_dims 는 서빙 테이블(period_·metric_)의 grain 이다. dims 전체가 아니라
-// 그 부분집합이고, 각 축의 '(all)' 롤업 행까지 물화된다.
+// 그 부분집합이고, 각 축의 '(all)' rollup 행까지 테이블로 저장된다.
 //
-// 전체 차원을 쓰지 않는 이유는 격자 때문이다. 누계는 그날 활동이 없어도 행이
-// 있어야 걷었을 때 앞 구간이 빠지지 않는다. 격자 크기는 (조합 수 × 날짜)로만
+// 전체 dimension을 쓰지 않는 이유는 grid 때문이다. 누계는 그날 활동이 없어도 행이
+// 있어야 rollup 했을 때 앞 구간이 빠지지 않는다. grid 크기는 (조합 수 × 날짜)로만
 // 정해지고 원본 행 수와 무관하다 — category(26) 하나만 넣어도 26배가 된다.
 // 그래서 고유값이 적고 entity 를 가로지르는 conformed 축만 남긴다 (P4·P7).
 //
-// 여기 없는 차원은 서빙 테이블에 컬럼 자체가 없다. 그 축이 필요하면 daily_
-// (전체 차원)에서 걷는다.
+// 여기 없는 dimension은 서빙 테이블에 컬럼 자체가 없다. 그 축이 필요하면 daily_
+// (dimension 전체)에서 직접 집계한다.
 //
 // refresh 는 daily_ 를 어떻게 갱신할지다. 상류가 정한다 — 상류가 전체 재생성하는
 // fact 위에 증분을 올리면 과거 구간의 변경을 놓친다.
@@ -58,8 +58,8 @@ const ENTITIES = {
       user:    { to: USER,    key: "user_id"    },
     },
 
-    // brand 는 차원이 아니다 (P4). 고유값 2,753개라 격자를 2,753배 부풀리는데,
-    // 그러면 기간 롤업이 작동하지 않는다 — 2,754일을 8년으로 접어도 행이
+    // brand 는 dimension이 아니다 (P4). 고유값 2,753개라 grid를 2,753배 부풀리는데,
+    // 그러면 기간 집계가 의미가 없어진다 — 2,754일치를 연 단위로 집계해도 행이
     // 178,916 로 5% 밖에 안 줄었다. 빼면 83,320 이다 (2026-09-13 측정).
     // 브랜드별 집계가 필요하면 semantic_mart 에 직접 SQL 을 쓴다.
     dims: {
@@ -76,7 +76,7 @@ const ENTITIES = {
     },
   },
 
-  // 주문 grain에는 상품 차원이 없다. 한 주문이 여러 상품을 포함하므로
+  // 주문 grain에는 상품 dimension이 없다. 한 주문이 여러 상품을 포함하므로
   // 카테고리가 정의되지 않는다. 이 공백이 order_count를 여기 둔 근거다 (P10).
   order: {
     refresh:  "incremental",   // raw orders 가 [ds-3, ds] 덮어쓰기
@@ -141,13 +141,13 @@ const ENTITIES = {
   },
 };
 
-// 그 entity에서 쓸 수 있는 차원 전체. 지표가 dims를 생략하면 이것을 쓴다
+// 그 entity에서 쓸 수 있는 dimension 전체. 지표가 dims를 생략하면 이것을 쓴다
 const allDims = (entity) => Object.keys(ENTITIES[entity].dims);
 
 // 지표 수식이 참조할 수 있는 조인 이름. 선언되지 않은 이름은 build.js가 거부한다
 const allJoins = (entity) => Object.keys(ENTITIES[entity].joins || {});
 
-// 서빙 테이블의 grain. 각 축의 '(all)' 롤업 행까지 만든다
+// 서빙 테이블의 grain. 각 축의 '(all)' rollup 행까지 만든다
 const servingDims = (entity) => ENTITIES[entity].serving_dims || [];
 
 // daily_ 갱신 방식. gen_daily.js 가 이 값으로 type 을 고른다

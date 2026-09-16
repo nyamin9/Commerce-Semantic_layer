@@ -1,17 +1,19 @@
 # 지표 정의서
 
-`docs/principles.md`의 P8~P12를 이 프로젝트의 실제 지표에 적용한 것.
-`includes/metrics.js`는 이 문서의 기계 판독 가능한 형태이고, **이 문서가 정본이다.**
+[principles.md](principles.md) 의 P8~P12 를 이 프로젝트의 실제 지표에 적용한 것.
+`includes/metrics.js` 는 이 문서의 기계 판독 가능한 형태이고, **이 문서가 정본이다.**
+
+용어는 [glossary.md](glossary.md) 를 따른다.
 
 - **기본 지표 15개** — 직접 집계된다. `daily_` + `period_` + `metric_` 세 테이블을 갖는다
 - **비율 지표 7개** — 기본 지표의 나눗셈이다. registry에만 등록하고 테이블을 만들지 않는다 (P12)
 
 ---
 
-## 1. entity와 차원
+## 1. entity와 dimension
 
 **지표를 산출하는 fact 테이블이 entity가 된다.** entity가 정해지면 grain과
-사용 가능한 차원이 따라서 정해진다.
+사용 가능한 dimension이 따라서 정해진다.
 
 | entity | 소스 | grain | 날짜 컬럼 |
 |---|---|---|---|
@@ -20,12 +22,12 @@
 | `session` | `sem_fct_sessions` | 세션 1건 | `session_date` |
 | `user_event` | `sem_fct_user_events` | 이벤트 1건 | `event_date` |
 
-### 차원 도달 경로 (join graph)
+### dimension 도달 경로 (join graph)
 
-entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**를 선언한 것이 join graph다.
-표에 `●`가 없으면 그 entity에서 그 차원을 쓸 수 없다 (P6).
+entity마다 **어떤 키로 어떤 dim에 닿아 어떤 dimension을 얻는지**를 선언한 것이 join graph다.
+표에 `●`가 없으면 그 entity에서 그 dimension을 쓸 수 없다 (P6).
 
-| 차원 | 조인 이름 | 출처 | 조인 키 | `order_item` | `order` | `session` | `user_event` |
+| dimension | 조인 이름 | 출처 | 조인 키 | `order_item` | `order` | `session` | `user_event` |
 |---|---|---|---|:---:|:---:|:---:|:---:|
 | `category` | `product` | `sem_dim_products` | `product_id` | ● | | | |
 | `department` | `product` | `sem_dim_products` | `product_id` | ● | | | |
@@ -44,7 +46,7 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 차원을 얻는지**�
 dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축은 이것뿐이다 (P7).
 
 **`serving_dims` 는 이 표에서 뽑아낸 것이다.** `period_`·`metric_` 은 entity 별로
-아래 축만 갖고, 각 축의 `'(all)'` 롤업 행까지 물화한다 (P4·P15).
+아래 축만 갖고, 각 축의 `'(all)'` rollup 행까지 테이블로 저장한다 (P4·P15).
 
 | entity | `serving_dims` |
 |---|---|
@@ -53,9 +55,9 @@ dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축
 | `user_event` | `country` |
 
 나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
-있다. 격자가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없다.
+있다. grid가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없다.
 
-**`order`에 상품 차원이 비어 있는 것은 누락이 아니다.** 한 주문이 여러 상품을
+**`order`에 상품 dimension이 비어 있는 것은 누락이 아니다.** 한 주문이 여러 상품을
 포함하므로 주문 grain에서 카테고리는 정의되지 않는다. 이 공백이 P10의 근거다.
 
 ---
@@ -63,14 +65,14 @@ dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축
 ## 2. 집계 경로 — 선언에서 결과까지
 
 지표 하나가 선언에서 최종 숫자까지 가는 전 과정. `net_revenue`를 예로 든다.
-차원은 설명을 위해 `category` · `country` 둘만 쓴다.
+dimension은 설명을 위해 `category` · `country` 둘만 쓴다.
 
 ### 단계 0 — 선언
 
 사람이 쓰는 것은 이 두 조각뿐이다. SQL은 쓰지 않는다.
 
 ```js
-// includes/entities.js — 차원에 닿는 경로
+// includes/entities.js — dimension에 닿는 경로
 order_item: {
   source: "sem_fct_order_items", pk: "order_item_key", date_col: "ordered_date",
   joins: {
@@ -95,7 +97,7 @@ net_revenue: {
 ### 단계 1 — `daily_net_revenue`
 
 builder가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
-`date_col` + 차원으로 `GROUP BY` 한다. **조인이 실행되는 곳은 여기 한 번뿐이다** (P5).
+`date_col` + dimension으로 `GROUP BY` 한다. **조인이 실행되는 곳은 여기 한 번뿐이다** (P5).
 
 ```sql
 SELECT
@@ -109,7 +111,7 @@ LEFT JOIN semantic_mart.sem_dim_users    AS user    ON base.user_id    = user.us
 GROUP BY 1, 2, 3
 ```
 
-결과 — 차원이 평범한 컬럼으로 물화된다. **이 시점부터 조인은 더 필요 없다.**
+결과 — dimension이 평범한 컬럼으로 테이블로 저장된다. **이 시점부터 조인은 더 필요 없다.**
 
 | record_date | category | country | net_revenue |
 |---|---|---|---|
@@ -117,29 +119,29 @@ GROUP BY 1, 2, 3
 | 2026-03-03 | Jeans | China | 97.99 |
 | 2026-03-04 | Jeans | China | 0.00 |
 
-> **테이블은 지표당 하나다. 차원 조합마다 생기지 않는다.**
-> 선언한 차원 전부가 한 테이블의 컬럼으로 들어가고, 행은 `날짜 × 실제로 존재하는 차원 조합`이다.
-> 차원을 덜 쓰고 싶으면 그 컬럼을 `SUM`으로 걷어낸다 — **단 가산 축만** 걷을 수 있고,
+> **테이블은 지표당 하나다. dimension 조합마다 생기지 않는다.**
+> 선언한 dimension 전부가 한 테이블의 컬럼으로 들어가고, 행은 `날짜 × 실제로 존재하는 dimension 조합`이다.
+> dimension 을 덜 쓰고 싶으면 그 컬럼을 `SUM` 으로 rollup 한다 — **단 가산 축만** 가능하고,
 > 그래서 `additive`가 축별로 필요하다 (P9).
 
 ### 단계 2 — `period_net_revenue`
 
-`daily_` 를 **`serving_dims` 롤업 × 기간 컬럼**으로 편다. 한 행이 "그 `record_date` 의 모든 것" 이다 (P13).
+`daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 편다. 한 행이 "그 `record_date` 의 모든 것" 이다 (P13).
 
-세 겹이다.
+세 단계다.
 
 ```
-base    daily_ 를 serving_dims 로 접는다.              기저 조합만
+base    daily_ 를 serving_dims 로 집계한다.           rollup 행은 아직 없다
 grid    sem_dim_date × 조합 을 전부 만들고 값을 붙인다.  없으면 0 / NULL
 cum     그 위에 누적한다.                              daily 는 그대로 통과
 rollup  각 축의 '(all)' 행을 만든다.                    마스크 CROSS JOIN
 ```
 
-`base` 는 `category`·`department`·`order_item_status` 를 접어 없앤다. 롤업은 아직 없다.
+`base` 는 `category`·`department`·`order_item_status` 를 없앤다. rollup 행은 아직 없다.
 
 ```sql
 SELECT record_date, country, age_group, gender, acquisition_channel,
-       SUM(net_revenue) AS v                  -- 스케치면 HLL_COUNT.MERGE_PARTIAL
+       SUM(net_revenue) AS v                  -- sketch면 HLL_COUNT.MERGE_PARTIAL
 FROM semantic.daily_net_revenue
 GROUP BY 1, 2, 3, 4, 5
 ```
@@ -159,21 +161,21 @@ GROUP BY 1, 2, 3, 4, 5
 
 > **`CUBE` 도 `GROUPING SETS` 도 못 쓴다.** `CUBE` 는 다른 grouping element 와 섞이지
 > 않고, `GROUPING SETS` 는 집합마다 입력을 다시 읽는다 — 축이 4개면 16번이라
-> 스케치 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다.
+> sketch 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다.
 
-> **접기가 누적보다 나중인 이유.** 순서를 바꿔도 값은 같지만, 먼저 접으면 `'(all)'`
-> 행의 스케치가 조밀해지고 그것을 1년 구간 자기조인에서 하루당 180여 번씩 읽는다.
+> **rollup 이 PTD 보다 나중인 이유.** 순서를 바꿔도 값은 같지만, 먼저 rollup 하면 `'(all)'`
+> 행의 sketch가 조밀해지고 그것을 1년 구간 자기조인에서 하루당 180여 번씩 읽는다.
 
-`grid` 는 `sem_dim_date` 를 뼈대로 빈 날짜를 채운다 (P15-1). 활동한 날에만 누계를
-만들면 걷는 순간 대부분이 사라진다 — 실측으로 국가별 MTD 가 실제의 13% 였다.
+`grid` 는 `sem_dim_date` 를 기준 날짜 목록로 빈 날짜를 채운다 (P15-1). 활동한 날에만 누계를
+만들면 rollup 하는 순간 대부분이 사라진다 — 실측으로 country 별 MTD 가 실제의 13% 였다.
 
-`cum` 은 가산이면 창 함수, 스케치면 구간 자기조인이다. **출력 컬럼은 양쪽이 같다.**
+`cum` 은 가산이면 창 함수, sketch면 구간 자기조인이다. **출력 컬럼은 양쪽이 같다.**
 
 ```sql
 -- 가산
 SUM(v) OVER (PARTITION BY <dims>, DATE_TRUNC(record_date, MONTH) ORDER BY record_date) AS net_revenue_mtd
 
--- 스케치. MERGE_PARTIAL 은 analytic function 을 지원하지 않는다
+-- sketch. MERGE_PARTIAL 은 analytic function 을 지원하지 않는다
 HLL_COUNT.MERGE_PARTIAL(IF(b.record_date >= DATE_TRUNC(g.record_date, MONTH), b.v, NULL)) AS buyer_count_mtd
 ```
 
@@ -185,7 +187,7 @@ HLL_COUNT.MERGE_PARTIAL(IF(b.record_date >= DATE_TRUNC(g.record_date, MONTH), b.
 ```sql
 LEFT JOIN period_net_revenue AS b_1_year
   ON b_1_year.record_date = DATE_SUB(c.record_date, INTERVAL 1 YEAR)
- AND <차원 NULL-safe 비교>
+ AND <dimension NULL-safe 비교>
 → b_1_year.net_revenue     AS yoy_base
   b_1_year.net_revenue_mtd AS mtd_yoy_base
   b_1_year.net_revenue_ytd AS ytd_yoy_base
@@ -205,17 +207,17 @@ LEFT JOIN period_net_revenue AS b_1_year
 > **`DATE_SUB` 이 월말을 보정한다.** `2026-03-31 - 1 MONTH = 2026-02-28` 이라 월말
 > `mtd` 끼리 맞물린다.
 
-> **증감률을 저장하면 안 되는 이유.** 차원을 걷어낼 때 저장된 비율은 `AVG` 로도
+> **증감률을 저장하면 안 되는 이유.** dimension 을 rollup 할 때 저장된 비율은 `AVG` 로도
 > `SUM` 으로도 틀린 값이 나온다. `SAFE_DIVIDE(SUM(v) - SUM(base), SUM(base))` 가
-> 정답이고, 그래서 기준값만 저장한다. 걷어야 한다면 `'(all)'` 행을 읽는 쪽이
+> 정답이고, 그래서 기준값만 저장한다. rollup 해야 한다면 `'(all)'` 행을 읽는 쪽이
 > 더 정확하다 (P14-1).
 
-### 접는 방법 — `additive`가 함수를 고른다
+### 합치는 함수는 `additive` 가 고른다
 
-**접기**는 여러 행을 한 행으로 만드는 집계다. 축이 둘이다.
+여러 행을 한 행으로 만드는 집계다. 축이 둘이다.
 
 ```
-차원 축   category · department · order_item_status 를 없앤다     ← 마스크 CROSS JOIN
+dimension 축   category · department · order_item_status 를 없앤다     ← 마스크 CROSS JOIN
 시간 축   daily 여러 날을 기간 누계로 만든다                       ← 창 함수 / 구간 병합
 ```
 
@@ -223,16 +225,16 @@ LEFT JOIN period_net_revenue AS b_1_year
 
 | 축 | additive | 패턴 |
 |---|---|---|
-| 차원 | `true` | `SUM` + 마스크 `CROSS JOIN` |
-| 차원 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + 마스크 `CROSS JOIN` |
+| dimension | `true` | `SUM` + 마스크 `CROSS JOIN` |
+| dimension | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + 마스크 `CROSS JOIN` |
 | 시간 | `true` | `SUM(v) OVER (PARTITION BY ... ORDER BY record_date)` |
 | 시간 | `"sketch"` | 구간 자기조인 + `HLL_COUNT.MERGE_PARTIAL` |
 | 시간 | 그 밖 | **누계 컬럼을 만들지 않는다.** `daily` 하나만 남는다 (P10-3) |
 | 어느 축이든 | `false` | **생성 거부** (P18) |
 
-스케치는 접어도 스케치로 남는다. `MERGE`로 정수를 만들면 더 접을 수 없다 (P11).
+sketch 는 합쳐도 sketch 로 남는다. `MERGE` 로 정수를 만들면 더 합칠 수 없다 (P11).
 
-> **`'(all)'` 행도 같은 규칙을 따른다.** 스케치 지표의 전사 값은 `SUM` 이 아니라
+> **`'(all)'` 행도 같은 규칙을 따른다.** sketch 지표의 전사 값은 `SUM` 이 아니라
 > `HLL_COUNT.MERGE` 다. 실측으로 2026-08 `buyer_count` 가 국가별 합 10,268 /
 > 병합 10,264 였는데, 이 4 차이는 겹침이 아니라 HLL 오차다 — conformed 축이 전부
 > user 속성이라 사용자를 분할하기 때문이다. 겹치는 축이 들어오면 `SUM` 은 깨진다.
@@ -249,17 +251,17 @@ LEFT JOIN period_net_revenue AS b_1_year
         │                 period.type × additive.time  →  위 표에서 SQL 템플릿 선택
         │                 false면 그 기간 테이블을 아예 만들지 않는다 (P18)
         │
-        └── 차원 축 ────→ 【builder는 쓰지 않는다】
-                          차원 축 롤업은 소비 시점에 Dataform 밖에서 일어난다
+        └── dimension 축 ────→ 【builder는 쓰지 않는다】
+                          dimension 축 rollup은 소비 시점에 Dataform 밖에서 일어난다
                           ① metric_registry 컬럼으로 나가 소비 측이 읽는다
                           ② 설계 시점의 신호 — false면 entity가 틀린 것이다 (P10)
 ```
 
-차원 축에 `false`를 쓰게 되면 기록하고 넘어갈 사실이 아니라 **고쳐야 할 신호**다.
+dimension 축에 `false`를 쓰게 되면 기록하고 넘어갈 사실이 아니라 **고쳐야 할 신호**다.
 현재 기본 지표 15개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
 옮기면서 마지막 하나가 사라졌다.
 
-`metrics.js`의 `dims`에 있는 차원이 `additive`에 없으면 `dataform compile`이 실패한다 (P19).
+`metrics.js`의 `dims`에 있는 dimension이 `additive`에 없으면 `dataform compile`이 실패한다 (P19).
 
 ```js
 dims:     ["category", "brand", "country"]
@@ -267,7 +269,7 @@ additive: { time: true, category: true, country: true }
                                   ↑ brand 누락 → 컴파일 실패
 ```
 
-이 검증이 없으면 `brand` 축으로 걷어내도 되는지 아무도 모르는 채로 테이블이 만들어진다.
+이 검증이 없으면 `brand` 축으로 rollup 해도 되는지 아무도 모르는 채로 테이블이 만들어진다.
 선언 누락이 조용히 틀린 숫자로 나타나는 것을 막는 마지막 장치다.
 
 ### 잘못 선언하면 무슨 일이 생기는가
@@ -282,7 +284,7 @@ additive: { time: true, category: true, country: true }
 | 2026-03-04 | 155 | 609 | **528** | **528** |
 | 2026-03-05 | 188 | 797 | **679** | **679** |
 
-스케치 경로는 atomic fact를 직접 센 값과 일치하고, `SUM`은 5일 만에 **17.4% 부푼다.**
+sketch 경로는 atomic fact를 직접 센 값과 일치하고, `SUM`은 5일 만에 **17.4% 부푼다.**
 여러 날 활동한 사용자를 중복으로 세기 때문이다.
 
 **에러가 나지 않는다는 점이 중요하다.** 쿼리는 성공하고 숫자만 틀린다.
@@ -294,10 +296,10 @@ additive: { time: true, category: true, country: true }
 선언 (JS)              생성 (Dataform)                  결과 (BigQuery)
 ─────────────────────  ──────────────────────────────  ───────────────────────
 entities.js  ─┐
-              ├──→  조인 + 날짜×차원 GROUP BY  ──→  daily_<metric>    중간 상태
+              ├──→  조인 + 날짜×dimension GROUP BY  ──→  daily_<metric>    중간 상태
 metrics.js   ─┘                                          │
                                                          ▼
-periods.js   ────→  기간 롤업 + 비교 기준값 조인  ──→  metric_<metric>  서빙 표면
+periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→  metric_<metric>  서빙 표면
 ```
 
 이 구조가 주는 것은 순서대로 이렇다.
@@ -305,7 +307,7 @@ periods.js   ────→  기간 롤업 + 비교 기준값 조인  ──→
 1. **정의가 하나다.** `net_revenue`가 무엇인지가 `metrics.js` 한 줄에만 있다.
    이것이 semantic layer의 존재 이유이고 나머지는 부수 효과다
 2. **daily 이후 조인이 없다.** 소비 경로가 단순해지고 빨라진다
-3. **대가 — 선언한 차원으로만 자를 수 있다.** 새 차원은 선언 추가와 재생성이 필요하다
+3. **대가 — 선언한 dimension으로만 자를 수 있다.** 새 dimension은 선언 추가와 재생성이 필요하다
 
 속도만 목적이라면 집계 캐시로 충분하다. 이 구조는 1번을 위한 것이다.
 
@@ -317,9 +319,9 @@ periods.js   ────→  기간 롤업 + 비교 기준값 조인  ──→
 ## 3. 기본 지표
 
 직접 집계되는 지표. 각각 `daily_<metric>`과 `metric_<metric>` 두 테이블을 갖는다.
-차원은 별도 표기가 없으면 **그 entity에서 쓸 수 있는 차원 전체**를 쓴다 (1장 표).
+dimension은 별도 표기가 없으면 **그 entity에서 쓸 수 있는 dimension 전체**를 쓴다 (1장 표).
 
-가산성 — `●` 가산 / `○` 스케치
+가산성 — `●` 가산 / `○` sketch
 
 | 지표 | entity | 집계식 | 필터 | 가산성 |
 |---|---|---|---|:---:|
@@ -364,8 +366,8 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 
 ### HLL 지표
 
-`buyer_count` · `visitor_count` · `active_user` 셋은 스케치로 저장한다.
-precision은 **15 고정**이며 나중에 바꾸면 과거 스케치와 병합할 수 없다.
+`buyer_count` · `visitor_count` · `active_user` 셋은 sketch로 저장한다.
+precision은 **15 고정**이며 나중에 바꾸면 과거 sketch와 병합할 수 없다.
 기대 오차 약 1.6%이므로 정산·과금 용도로 쓰지 않는다.
 
 ---
@@ -374,7 +376,7 @@ precision은 **15 고정**이며 나중에 바꾸면 과거 스케치와 병합�
 
 테이블을 만들지 않는다. 분자와 분모가 각각 기본 지표이고, 나눗셈은 소비 시점에 한다 (P12).
 
-| 지표 | 분자 | 분모 | 유효 차원 |
+| 지표 | 분자 | 분모 | 유효 dimension |
 |---|---|---|---|
 | `gross_margin_rate` | `gross_profit` | `net_revenue` | order_item 전 축 |
 | `return_rate` | `units_returned` | `units_sold` | order_item 전 축 |
@@ -386,7 +388,7 @@ precision은 **15 고정**이며 나중에 바꾸면 과거 스케치와 병합�
 
 ### 교집합 규칙
 
-비율은 **분자와 분모가 공유하는 차원에서만 유효하다.**
+비율은 **분자와 분모가 공유하는 dimension에서만 유효하다.**
 
 ```
 net_revenue   order_item entity   category  brand  department  country  age_group  gender  channel
@@ -417,7 +419,7 @@ order_count   order      entity                                country  age_grou
 | 코호트 리텐션 | daily 집계로 복원 불가능. 사용자 단위 식별자가 필요하므로 atomic fact 위의 별도 모델 |
 | LTV | 위와 같음. 다일 상태(multi-day state) |
 | 재구매율 | 사용자의 전체 이력이 필요 |
-| 중앙값·분위수 계열 | 스케치로도 병합 불가. daily만 만들고 롤업 거부 대상 (P10-3) |
+| 중앙값·분위수 계열 | sketch로도 병합 불가. daily만 만들고 rollup 거부 대상 (P10-3) |
 | 주문 시점 상품 속성 | 상류 결함 5. SCD 이력 커버리지 4.46% |
 
 앞의 넷은 **daily의 상위 집계가 아니라 atomic fact에 대한 다른 질문**이다.
@@ -437,15 +439,15 @@ semantic_metadata  metric_registry                                    1
 
 ### `daily_<metric>` — 중간 상태
 
-`sem_fct_*`에 `sem_dim_*`을 조인해 `날짜 × 차원`으로 집계한 결과.
-distinct 계열은 HLL 스케치(BYTES)로 남는다. 소비용이 아니라 `metric_`의 재료다.
+`sem_fct_*`에 `sem_dim_*`을 조인해 `날짜 × dimension`으로 집계한 결과.
+distinct 계열은 HLL sketch(BYTES)로 남는다. 소비용이 아니라 `metric_`의 재료다.
 
 ### `period_<metric>` — 기간 확장
 
-`daily_` 를 **`serving_dims` 롤업 × 기간 컬럼**으로 편 것. 비교는 아직 없다.
+`daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 편 것. 비교는 아직 없다.
 
-차원이 접히므로 `category`·`department`·`order_item_status` 는 여기 없다. 그 축이
-필요하면 `daily_` 에서 걷는다 (P4). 대신 남은 4축의 `'(all)'` 롤업 행이 물화돼 있다.
+dimension 이 `serving_dims` 로 좁혀지므로 `category`·`department`·`order_item_status` 는 여기 없다. 그것이
+필요하면 `daily_` 에서 직접 집계한다 (P4). 대신 남은 4개 dimension 의 `'(all)'` rollup 행이 테이블로 저장돼 있다.
 
 `metric_` 이 이 테이블을 다섯 번 자기조인하므로 CTE 가 아니라 테이블이어야 한다.
 비교 없이 기간별 집계만 필요한 소비자는 여기서 끝난다.
@@ -454,15 +456,15 @@ distinct 계열은 HLL 스케치(BYTES)로 남는다. 소비용이 아니라 `me
 
 `period_` 에 비교 기준값 8컬럼을 붙인 것.
 
-**`daily_`와 같은 저장 원칙을 따른다** (P11) — 스케치는 BYTES로 남고 증감률은 저장하지 않는다.
+**`daily_`와 같은 저장 원칙을 따른다** (P11) — sketch는 BYTES로 남고 증감률은 저장하지 않는다.
 확정은 소비 시점에 한다.
 
 | 컬럼 | 내용 |
 |---|---|
 | `record_date` | 기준일. `daily` 는 그날, 누계는 기간 시작부터 이 날까지 (P13) |
 | `is_week_end` · `is_month_end` · `is_year_end` | 이 날이 그 기간의 마지막 날인가 |
-| *(차원 4축)* | `'(all)'` 은 그 축을 걷은 롤업 행. `NULL` 은 값이 없는 버킷 (P6-1) |
-| `<m>` · `<m>_wtd` · `<m>_mtd` · `<m>_ytd` | 가산 지표는 값, distinct 계열은 스케치(BYTES) |
+| *(dimension 4축)* | `'(all)'` 은 그 dimension 을 rollup 한 행. `NULL` 은 값이 없는 bucket (P6-1) |
+| `<m>` · `<m>_wtd` · `<m>_mtd` · `<m>_ytd` | 가산 지표는 값, distinct 계열은 sketch(BYTES) |
 | `*_base` 8개 | 시프트한 시점의 값. 접두어가 없으면 `daily` 기준 (P13-1) |
 
 소비 시점에 하는 일은 둘뿐이다.
@@ -477,15 +479,15 @@ WHERE is_month_end
   AND age_group = '(all)' AND gender = '(all)' AND acquisition_channel = '(all)'
 ORDER BY record_date DESC LIMIT 12
 
--- 스케치 지표는 EXTRACT 를 한 번 더 부른다
+-- sketch 지표는 EXTRACT 를 한 번 더 부른다
 SELECT country, HLL_COUNT.EXTRACT(active_user_mtd) AS active_user_mtd
 FROM semantic.metric_active_user
 WHERE record_date = CURRENT_DATE()
 ```
 
-**차원을 걷어내며 `SUM` 하지 않는다.** `'(all)'` 행을 읽는다 — 이미 물화돼 있고,
-스케치 지표는 `SUM` 이 아니라 `HLL_COUNT.MERGE` 여야 하는데 그 지식이 필요 없어진다.
-비교 기준값은 걷으면 특히 위험하다 (P14-1).
+**dimension 을 rollup 하며 `SUM` 하지 않는다.** `'(all)'` 행을 읽는다 — 이미 테이블로 저장돼 있고,
+sketch 지표는 `SUM` 이 아니라 `HLL_COUNT.MERGE` 여야 하는데 그 지식이 필요 없어진다.
+비교 기준값은 rollup 하면 특히 위험하다 (P14-1).
 
 ### 기간 누계 — 테이블에 있다
 
@@ -515,7 +517,7 @@ GROUP BY category
 
 ### `metric_registry` — 지표 카탈로그
 
-**`includes/metrics.js`의 선언을 BigQuery 테이블로 물화한 것.** 행 하나가 지표 하나다.
+**`includes/metrics.js`의 선언을 BigQuery 테이블로 테이블로 저장한 것.** 행 하나가 지표 하나다.
 
 선언이 JS 파일에만 있으면 어떤 쿼리로도 읽을 수 없다.
 registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있다.
@@ -527,7 +529,7 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 | `description` | 설명문 |
 | `entity` · `entity_grain` | 산출 fact와 그 grain |
 | `expression` · `filter` | 집계식과 필터 |
-| `dimensions` | 사용 차원 배열 |
+| `dimensions` | 사용 dimension 배열 |
 | `additive_by_axis` | 축별 가산성 JSON |
 | `numerator` · `denominator` | 비율 지표 전용 |
 | `is_generated` | 테이블이 생성되었는가 (P17) |
@@ -548,9 +550,9 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 쓰이는 곳은 셋이다.
 
 1. **지표 카탈로그** — BI에 그대로 붙이면 지표 목록 화면이 된다
-2. **소비 측 판단 근거** — `additive_by_axis`를 읽고 그 축으로 걷어내도 되는지 결정한다
+2. **소비 측 판단 근거** — `additive_by_axis` 를 읽고 그 축으로 rollup 해도 되는지 결정한다
 3. **서빙 레이어의 경로 선택** — 나중에 서빙을 만들면 `additive`를 보고
-   daily 롤업을 쓸지 atomic fact로 내려갈지 고른다 (aggregate awareness)
+   daily rollup을 쓸지 atomic fact로 내려갈지 고른다 (aggregate awareness)
 
 ---
 
@@ -577,22 +579,22 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 | 세션 | `session` | `semantic_mart.sem_fct_sessions` |
 | 이벤트 | `user_event` | `semantic_mart.sem_fct_user_events` |
 
-entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 표](#차원-도달-경로-join-graph)로
+entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경로 표](#dimension-도달-경로-join-graph)로
 결정된다. 고를 여지가 없다. `order_item`의 경우 이렇다.
 
-| 쓸 수 있는 차원 | 가져오는 곳 | 조인 키 |
+| 쓸 수 있는 dimension | 가져오는 곳 | 조인 키 |
 |---|---|---|
 | `category` · `brand` · `department` | `semantic_mart.sem_dim_products` | `product_id` |
 | `country` · `age_group` · `gender` · `acquisition_channel` | `semantic_mart.sem_dim_users` | `user_id` |
 | `order_item_status` | `sem_fct_order_items` 자체 컬럼 | 조인 없음 |
 
-이 중 필요한 것만 `dims`에 적으면, builder가 그 차원에 닿는 조인만 골라서 붙인다.
+이 중 필요한 것만 `dims`에 적으면, builder가 그 dimension에 닿는 조인만 골라서 붙인다.
 
 ### 3단계 — 축별 가산성을 판단한다 (P9)
 
 각 축마다 한 문장으로 자문한다.
 
-> **"세는 대상 하나가 이 축의 두 버킷에 동시에 속할 수 있는가?"**
+> **"세는 대상 하나가 이 축의 두 bucket에 동시에 속할 수 있는가?"**
 
 | 축 | 자문 | 답 | 가산성 |
 |---|---|---|---|
@@ -610,7 +612,7 @@ entity가 정해지면 쓸 수 있는 차원이 [1장의 차원 도달 경로 �
 > 2단계로 돌아가 고객 하나가 한 행인 fact로 옮기려 했지만 그런 테이블이 없다.
 > 주문도 세션도 고객을 한 행으로 담지 않는다. **옮길 곳이 없을 때가 P10-2다.**
 >
-> 값 대신 병합 가능한 스케치를 저장하면 날짜축으로도 합칠 수 있다.
+> 값 대신 병합 가능한 sketch를 저장하면 날짜축으로도 합칠 수 있다.
 > `HLL_COUNT.INIT({user_id})`가 그래서 선택되었고, 가산성은 전 축 `"sketch"`가 되었다.
 
 ### 4단계 — 선언을 쓴다
@@ -632,7 +634,7 @@ cancelled_units: {
 
 ### 5단계 — `daily_cancelled_units` (생성)
 
-`entity.source`를 base로, `joins` 선언만큼 `LEFT JOIN`, `date_col` + 차원으로 `GROUP BY`.
+`entity.source`를 base로, `joins` 선언만큼 `LEFT JOIN`, `date_col` + dimension으로 `GROUP BY`.
 
 ```sql
 SELECT
@@ -653,7 +655,7 @@ GROUP BY 1, 2, 3, 4, 5
 
 ### 6단계 — `period_` · `metric_cancelled_units` (생성)
 
-`additive` 가 전 축 `true` 이므로 차원 접기는 `SUM`, 시간 접기는 창 함수가
+`additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가
 선택된다. 누계 3종이 컬럼으로 생기고, 비교 기준값 8개가 날짜 조인으로 붙는다 (P14).
 
 월 단위로 보려면 `is_month_end` 를 건다 — `monthly` 라는 기간을 따로 만들지 않는다 (P13).
@@ -681,7 +683,7 @@ GROUP BY 1, 2, 3, 4, 5
 | 테이블 | — | `daily_` 1 + `period_` 1 + `metric_` 1 |
 | 기간 | — | 값 컬럼 4개 자동 |
 | 비교 | — | 기준값 컬럼 8개 자동 |
-| 차원 롤업 | — | 각 축의 `'(all)'` 행 자동 |
+| dimension rollup | — | 각 축의 `'(all)'` 행 자동 |
 | 카탈로그 | — | registry 1행 |
 
 **지표 추가 비용이 선언 한 항목으로 고정된다.** 이것이 이 구조의 이득 전부이고,

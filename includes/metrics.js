@@ -4,10 +4,10 @@
 //   true      그 축으로 가산            → SUM
 //   "sketch"  병합 가능한 중간 상태      → HLL_COUNT.MERGE_PARTIAL
 //   "last"    스냅샷 (재고·잔액)         → 마지막 값
-//   false     복원 불가                 → 롤업 생성을 거부한다 (P18)
+//   false     복원 불가                 → rollup 생성을 거부한다 (P18)
 //
 // 축에 false가 나오면 기록할 사실이 아니라 고칠 신호다 — entity가 틀렸다 (P10).
-// dims를 생략하면 그 entity의 차원 전체를 쓴다.
+// dims를 생략하면 그 entity의 dimension 전체를 쓴다.
 //
 // expr·filter 의 컬럼은 중괄호로 표시한다 (P5).
 //   {sale_price}         fact 컬럼
@@ -24,7 +24,7 @@ const uniform = (entity, value) => {
   return acc;
 };
 
-const HLL_PRECISION = 15;   // 고정. 바꾸면 과거 스케치와 병합할 수 없다
+const HLL_PRECISION = 15;   // 고정. 바꾸면 과거 sketch와 병합할 수 없다
 const hll = (col) => `HLL_COUNT.INIT({${col}}, ${HLL_PRECISION})`;
 
 const METRICS = {
@@ -69,9 +69,9 @@ const METRICS = {
   },
   buyer_count: {
     // 고객 하나가 여러 날에 걸치므로 날짜축 비가산이다. 고객 grain fact가
-    // 없어 entity를 옮길 수 없으므로 스케치로 저장한다 (P10-2).
+    // 없어 entity를 옮길 수 없으므로 sketch로 저장한다 (P10-2).
     //
-    // 매출 인식 필터를 걸지 않는다. order_item_status 가 차원이라 소비 시점에
+    // 매출 인식 필터를 걸지 않는다. order_item_status 가 dimension이라 소비 시점에
     // 거를 수 있고, 필터를 박으면 전체 구매자를 낼 방법이 없어진다 (P4).
     entity: "order_item", expr: hll("user_id"),
     additive: uniform("order_item", "sketch"),
@@ -123,7 +123,7 @@ const METRICS = {
 };
 
 // 비율 지표 — 테이블을 만들지 않고 registry 행으로만 존재한다 (P12).
-// 유효 차원은 분자·분모의 교집합이다. 교집합이 비면 그 조합은 정의되지 않는다.
+// 유효 dimension은 분자·분모의 교집합이다. 교집합이 비면 그 조합은 정의되지 않는다.
 const RATIOS = {
   gross_margin_rate: { numerator: "gross_profit",         denominator: "net_revenue",   description: "순매출 대비 매출총이익률" },
   return_rate:       { numerator: "units_returned",       denominator: "units_sold",    description: "판매 수량 대비 반품률" },
@@ -141,7 +141,7 @@ const EXCLUDED = {
   cohort_retention:    { reason: "daily 집계로 복원 불가. 사용자 단위 식별자가 필요한 별도 모델" },
   ltv:                 { reason: "다일 상태(multi-day state). atomic fact 위의 별도 모델" },
   repurchase_rate:     { reason: "사용자의 전체 이력이 필요" },
-  delivery_days_p50:   { reason: "중앙값은 스케치로도 병합 불가 (P10-3)" },
+  delivery_days_p50:   { reason: "중앙값은 sketch로도 병합 불가 (P10-3)" },
 };
 
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };

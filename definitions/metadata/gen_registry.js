@@ -1,4 +1,4 @@
-// metric_registry — 지표 카탈로그. 선언을 BigQuery 테이블로 물화한 것이다.
+// metric_registry — 지표 카탈로그. 선언을 BigQuery 테이블로 테이블로 저장한 것이다.
 //
 // 선언이 JS 파일에만 있으면 어떤 쿼리로도 읽을 수 없다. registry 가 있으면
 // "net_revenue 가 무엇인가" 를 SQL 로 답할 수 있다.
@@ -87,7 +87,7 @@ for (const [name, m] of Object.entries(METRICS)) {
 }
 
 // 비율 지표 — 테이블을 만들지 않는다. 나눗셈은 소비 시점에 (P12).
-// 유효 차원은 분자·분모의 교집합이다. 교집합이 비면 그 조합은 정의되지 않는다
+// 유효 dimension은 분자·분모의 교집합이다. 교집합이 비면 그 조합은 정의되지 않는다
 for (const [name, r] of Object.entries(RATIOS)) {
   claim(name, "RATIOS");
   const n = METRICS[r.numerator];
@@ -135,14 +135,14 @@ publish("metric_registry", {
     entity_grain:     "그 fact 의 grain",
     expression:       "집계식. metrics.js 선언 원문이라 {} 표기가 남아 있다 (P5-2)",
     filter:           "집계 전 행 필터",
-    dimensions:       "daily_ 가 가진 차원 전체. ratio 는 분자·분모의 교집합이다 (P12)",
+    dimensions:       "daily_ 가 가진 dimension 전체. ratio 는 분자·분모의 교집합이다 (P12)",
     additive_by_axis: "축별 가산성 JSON. true · \"sketch\" · \"last\" (P9)",
-    serving_dims:     "metric_ 의 grain. 각 축의 '(all)' 롤업 행까지 만들어져 있다 (P4)",
+    serving_dims:     "metric_ 의 grain. 각 축의 '(all)' rollup 행까지 만들어져 있다 (P4)",
     value_columns:    "metric_ 의 값 컬럼. 접두어가 없으면 daily 다 (P13). 누계 불가면 daily 하나뿐 (P10-3)",
     compare_columns:  "붙은 비교 기준값 컬럼. 증감률이 아니다 (P14)",
     numerator:        "ratio 전용. 분자 지표 이름",
     denominator:      "ratio 전용. 분모 지표 이름",
-    is_approximate:   "HLL 스케치를 쓰는가. 분모가 스케치인 비율도 포함",
+    is_approximate:   "HLL sketch를 쓰는가. 분모가 sketch인 비율도 포함",
     is_generated:     "테이블이 생성되었는가. false 여도 존재는 한다 (P17)",
     serving_table:    "조회할 테이블. is_generated 가 false 면 NULL",
     exclusion_reason: "excluded 전용. 만들지 않기로 한 사유 (P21)",

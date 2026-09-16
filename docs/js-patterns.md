@@ -1,7 +1,9 @@
 # 코드에 쓰인 JS 패턴
 
-`includes/`와 `definitions/`의 JS가 객체를 다루는 방식 정리.
+`includes/` 와 `definitions/` 의 JS 가 객체를 다루는 방식 정리.
 문법 자체보다 **왜 그렇게 썼는지**에 무게를 둔다. 예시 값은 실제 코드를 실행한 결과다.
+
+코드가 무엇을 하는지는 [code-map.md](code-map.md), 용어는 [glossary.md](glossary.md) 를 따른다.
 
 ---
 
@@ -27,7 +29,7 @@ Object.entries({ daily: {...}, wtd: {...} })
 // → [ ["daily", {...}], ["wtd", {...}] ]
 ```
 
-`includes/periods.js` 의 `SHIFTS` — 실제로 쓰인 곳. 중첩 두 겹이다.
+`includes/periods.js` 의 `SHIFTS` — 실제로 쓰인 곳. 중첩 두 단계다.
 
 ```js
   for (const [pName, p] of Object.entries(PERIODS)) {
@@ -162,7 +164,7 @@ acc[label][pName] = interval;
 
 ```js
 const dims = m.dims || allDims(m.entity);
-// 지표가 dims 를 생략하면 그 entity 의 차원 전체를 쓴다
+// 지표가 dims 를 생략하면 그 entity 의 dimension 전체를 쓴다
 // → allDims("session") = ["country", "acquisition_channel",
 //                         "entry_traffic_source", "browser"]
 ```
@@ -209,7 +211,7 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 데이터셋 이름이 설정에서 오므로 키가 변수여야 한다.
 
 마지막 세 줄이 실제로 Dataform에 등록하는 부분이다 — 데이터셋 하나에 테이블 여러 개이므로
-`forEach` 두 겹으로 펼쳐 `declare()`를 9번 호출한다.
+`forEach` 를 두 번 중첩해 `declare()` 를 9번 호출한다.
 
 ---
 
@@ -266,7 +268,7 @@ const uniform = (entity, value) => {
 ```
 
 `uniform("session", true)`가 `{ time: true, country: true, acquisition_channel: true,
-entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 쓰면 차원이 늘 때
+entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 쓰면 dimension이 늘 때
 지표 15개를 다 고쳐야 하므로, 선언은 짧게 두고 펼치는 일은 코드가 한다.
 
 ---
@@ -283,7 +285,7 @@ entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 �
   });
 ```
 
-선언에 없던 `name`을 붙여서 나중 단계가 차원 이름을 알 수 있게 한다.
+선언에 없던 `name`을 붙여서 나중 단계가 dimension 이름을 알 수 있게 한다.
 
 ```
 def            { via: "product", col: "category" }
@@ -316,14 +318,14 @@ function resolveJoins(name, m, dims) {
 
 **두 곳에서 모아 한 곳에서 순서를 준다.**
 
-조인이 필요한 이유는 둘이다 — 차원이 그 조인을 거치거나(`via`), 지표 수식이
+조인이 필요한 이유는 둘이다 — dimension이 그 조인을 거치거나(`via`), 지표 수식이
 그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 모아 중복을 없앤다.
 
 `Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않는다.** 그래서 마지막에
 `Object.keys(e.joins)`로 다시 훑는다. `LEFT JOIN` 순서가 선언 순서와 같아지고,
 지표가 달라져도 같은 조인은 같은 자리에 온다. diff 가 읽기 쉬워진다.
 
-`order_item`의 차원 8개 중 7개가 조인이 필요한데, 실제 조인은 **2번**이다.
+`order_item`의 dimension 8개 중 7개가 조인이 필요한데, 실제 조인은 **2번**이다.
 
 ```
 category · brand · department              → product
@@ -334,7 +336,7 @@ order_status                               → 조인 없음 (via: null)
 **예전에는 `dims`를 훑어 `(테이블, 키)` 조합으로 조인 슬롯을 되짚어 찾았다.**
 조인에 이름이 생기면서 그 계산이 없어졌고, 이제 `entities.js`의 `joins`를 읽기만 하면 된다.
 
-역할 차원(같은 dim을 두 키로 참조)도 되짚을 필요가 없다. 이름이 다르면 다른 조인이다.
+역할 dimension(같은 dim을 두 키로 참조)도 되짚을 필요가 없다. 이름이 다르면 다른 조인이다.
 
 ```js
 joins: {
@@ -435,7 +437,7 @@ const joinClause = (ctx, j) =>
   `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 ```
 
-`dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 차원이면 조인 이름을 붙이고,
+`dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 dimension이면 조인 이름을 붙이고,
 fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
 
 **조인 이름이 그대로 SQL alias 가 된다.** `entities.js`에 `product`라고 적으면
@@ -459,16 +461,16 @@ function resolveDims(name, m) {
     const def = e.dims[d];
     if (!def) {
       throw new Error(
-        `[${name}] entity '${m.entity}'의 join graph에 차원 '${d}'가 없다. ` +
+        `[${name}] entity '${m.entity}'의 join graph에 dimension '${d}'가 없다. ` +
         `사용 가능: ${allDims(m.entity).join(", ")}`
       );
     }
     if (!(d in m.additive)) {
-      throw new Error(`[${name}] 차원 '${d}'의 가산성이 선언되지 않았다 (P9)`);
+      throw new Error(`[${name}] dimension '${d}'의 가산성이 선언되지 않았다 (P9)`);
     }
     if (m.additive[d] === false) {
       throw new Error(
-        `[${name}] 차원 '${d}'가 비가산이다. entity를 옮기거나 스케치로 바꾼다 (P10)`
+        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch로 바꾼다 (P10)`
       );
     }
     return { name: d, ...def };
@@ -686,11 +688,11 @@ function foldExpr(col, additive) {
 
 ```js
     if (!(d in m.additive)) {
-      throw new Error(`[${name}] 차원 '${d}'의 가산성이 선언되지 않았다 (P9)`);
+      throw new Error(`[${name}] dimension '${d}'의 가산성이 선언되지 않았다 (P9)`);
     }
     if (m.additive[d] === false) {
       throw new Error(
-        `[${name}] 차원 '${d}'가 비가산이다. entity를 옮기거나 스케치로 바꾼다 (P10)`
+        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch로 바꾼다 (P10)`
       );
     }
 ```
@@ -710,7 +712,7 @@ additive.category          // false  ← 값이 falsy
 `in`은 **키의 존재**만 본다. 값이 `false`든 `0`이든 상관없다.
 
 두 오류는 고치는 방법이 다르다 — 앞은 선언을 추가하는 것이고,
-뒤는 entity를 옮기거나 스케치로 바꾸는 것이다. 그래서 메시지도 다르다.
+뒤는 entity를 옮기거나 sketch로 바꾸는 것이다. 그래서 메시지도 다르다.
 
 ---
 
@@ -736,7 +738,7 @@ function exprJoins(name, m, sql, where) {
 `{sale_price}` 처럼 점이 없는 참조는 fact 컬럼이라 조인이 필요 없으므로 넘긴다.
 점이 있는 `{product.unit_cost}` 만 조인 이름을 검사한다.
 
-같은 뜻을 `if (tail) { ... }`로 감쌀 수도 있지만, **들여쓰기가 한 겹 줄어서**
+같은 뜻을 `if (tail) { ... }`로 감쌀 수도 있지만, **들여쓰기가 한 단계 줄어서**
 `continue` 쪽이 읽기 쉽다. 뒤따르는 검사가 길수록 차이가 커진다.
 
 **초기 반환(guard clause)과 같은 발상이다** — 처리할 게 아닌 것을 위에서 걸러내고
@@ -754,7 +756,7 @@ const UNKNOWN = "(unknown)";
 `COALESCE(${d}, '${UNKNOWN}') AS ${d}`
 ```
 
-차원이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고, `ON` 절에서
+dimension이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고, `ON` 절에서
 그 행은 매칭되지 않는다. 그래서 한동안 `IS NOT DISTINCT FROM` 을 썼다 —
 GoogleSQL 에 있는 연산자이고 `NULL = NULL` 을 `TRUE` 로 본다.
 
@@ -763,7 +765,7 @@ GoogleSQL 에 있는 연산자이고 `NULL = NULL` 을 `TRUE` 로 본다.
 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌다.
 
 ```
-period_buyer_count 의 누계 단계 — 격자 2,023,920 행 × 1년 구간
+period_buyer_count 의 누계 단계 — grid 2,023,920 행 × 1년 구간
 IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
 =                      통과
 ```
@@ -776,11 +778,11 @@ IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
 | **값에서 `NULL` 을 없앤다** | 한 단계에서 `'(unknown)'` 으로 바꾸면 이후 조인이 전부 `=` 다 |
 
 뒤쪽을 골랐다. `NULL` 이 사라지는 것이 아니라 **이름을 얻는다** — 뜻은 그대로
-"값이 없는 버킷"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
+"값이 없는 bucket"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
 소비자도 `IS NULL` 대신 `= '(unknown)'` 을 쓴다.
 
-`'(all)'` 과는 겹치지 않는다. `'(unknown)'` 은 값이 없는 버킷이고 `'(all)'` 은 그 축을
-걷은 롤업 행이다.
+`'(all)'` 과는 겹치지 않는다. `'(unknown)'` 은 값이 없는 bucket이고 `'(all)'` 은 그 축을
+rollup 한 행이다.
 
 **상수를 파일 맨 위에 둔 이유**도 여기 있다. 문자열이 여러 곳에 흩어지면 하나를
 고쳤을 때 나머지가 조용히 어긋난다 — `'(all)'` 과 `'(unknown)'` 둘 다 그렇다.
@@ -842,8 +844,8 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 | 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (11번) |
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
-| 4 | `foldExpr` · `dimFold` | `additive` → 함수 선택, 접기 가부 (14번) |
-| 5 | `baseCTE` · `gridCTE` | 차원 접기와 격자 채우기 |
+| 4 | `foldExpr` · `dimFold` | `additive` → 합치는 함수 선택 (14번) |
+| 5 | `baseCTE` · `gridCTE` | dimension 좁히기와 grid 채우기 |
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만든다 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
@@ -852,14 +854,14 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 비교 조인 4) 같은 집계가 다섯 번 돌았다. CTE 는 결과를 저장하지 않기 때문이다.
 
 ```
-periodSQL   daily_ → 채운 격자 → 누적 → '(all)' 롤업  → period_<metric> 테이블
+periodSQL   daily_ → 채운 grid → 누적 → '(all)' rollup  → period_<metric> 테이블
 metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metric> 테이블
 ```
 
-`periodSQL` 은 세 겹의 CTE 를 이어 붙이고 마지막에 갈래를 고른다.
+`periodSQL` 은 CTE 세 개를 이어 붙이고 마지막에 rollup 단계를 붙인다.
 
 ```
-base → grid → cumWindowed (가산) 또는 cumSketch (스케치) → rollupSelect
+base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelect
 ```
 
 `metricSQL` 은 두 덩이다.
@@ -914,12 +916,12 @@ ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
 ```js
 const columns = {
   dt: `집계 기준일. ${e.source}.${e.date_col}`,
-  [name]: sketch ? `${m.description} — HLL 스케치(BYTES)` : m.description,
+  [name]: sketch ? `${m.description} — HLL sketch(BYTES)` : m.description,
 };
-for (const d of dims) columns[d] = `차원. ${e.dims[d].via || "fact 자체 컬럼"}`;
+for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 컬럼"}`;
 ```
 
-컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(3번). 차원은 개수가 달라서
+컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(3번). dimension은 개수가 달라서
 루프로 붙인다. 이렇게 만든 설명이 **BigQuery 콘솔의 컬럼 설명으로 그대로 간다.**
 
 ### 넷의 차이
