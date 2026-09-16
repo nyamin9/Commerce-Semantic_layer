@@ -23,7 +23,109 @@ DW 는 dbt-airflow 가 만든다. `fct_order_items` · `fct_orders` · `fct_sess
 **하지 못하는 것도 분명하다.** Dataform 은 컴파일 타임 도구라 런타임에 요청을 받아
 SQL 을 조립하지 않는다. 선언한 지표 × 선언한 dimension 안에서만 움직인다.
 
-## 2. 테이블 3단계
+## 2. 기성 semantic layer 와 무엇이 다른가
+
+Looker · Cube · dbt MetricFlow 와 비교하면 **다른 지점은 하나뿐이다.**
+
+### 같은 것
+
+| | |
+|---|---|
+| 선언한 dimension 만 쓸 수 있다 | 기성 도구도 같다. view · cube · semantic model 에 없으면 못 쓴다 |
+| 표준화된 지표를 서빙한다 | semantic layer 의 정의 그 자체 |
+| 사전 집계를 만든다 | Cube `pre-aggregations` · Looker aggregate awareness 전부 한다 |
+| rollup 과 직접 `GROUP BY` | 가산 지표면 결과가 같다. 덧셈의 결합법칙 |
+| entity · dimension · metric 분리 선언 | 같다 |
+| grain 선언 · 가산성 분류 · conformed dimension | Kimball, 1996 |
+
+### 다른 것 — fallback 경로가 없다
+
+```
+기성 도구   선언 → 런타임이 판단 → 사전 집계로 답할 수 있으면 거기서
+                               → 없으면 atomic fact 로 fallback
+이 레포     선언 → 컴파일 타임에 테이블 생성 → 그 테이블이 답할 수 있는 것만
+```
+
+**fallback 이 넓히는 것은 "무엇을 물어볼 수 있나" 가 아니라 "어느 테이블이 답하나" 다.**
+
+```
+선언된 dimension   category · brand · country · retail_price
+사전 집계          record_date × category × country 로만
+
+"brand 별 매출"          → 사전 집계에 brand 없음 → atomic fact 로 fallback → 답함
+"retail_price > 100"     → retail_price 는 선언됨  → atomic fact 로 fallback → 답함
+"product_name 에 blue"   → 선언 안 됨              → 기성 도구도 거부
+```
+
+핵심은 **선언된 dimension 을 조건으로 쓸 수 있느냐**다. 기성 도구는 선언된 dimension
+이면 `GROUP BY` 에 없어도 필터로 쓸 수 있다 — atomic fact 로 fallback 하면 되기
+때문이다. 사전 집계만 있으면 `GROUP BY` 에 넣은 dimension 으로만 거를 수 있다.
+
+그래서 고유값이 많은 컬럼(`retail_price` 4,212개 · `product_name` 27,309개)은 이
+구조에서 dimension 이 될 수 없고, `price_tier` 같은 **bucket 으로 만들어야** 한다.
+
+Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불가능하기 때문이다. 기능
+부족이 아니라 도구의 층위이고, dbt Core 도 같은 이유로 못 한다.
+
+### 서빙 레이어가 생기면
+
+`semantic_mart` 와 선언은 그대로 두고 그 위에 Cube 를 올리는 것이 표준 경로다.
+`entities.js` 와 `metrics.js` 가 Cube 의 `cubes`·`dimensions`·`measures` 와 거의
+1:1 로 대응한다.
+
+그때 `daily_*` · `metric_*` 은 **없어지는 것이 아니라 캐시가 된다.** 코드는 고치지 않는다.
+
+## 3. 이 구조가 버는 것
+
+효율은 **쿼리 속도가 아니라 변경 비용**에서 온다.
+
+| | 값 |
+|---|---|
+| `daily_` 행 수 ÷ atomic fact 행 수 | 98.68% (200,206 / 202,877) — 거의 줄지 않는다 |
+| atomic fact 전 기간 + dimension 조인 + 임의 필터 | 8.5 MB |
+
+이 규모에서 사전 집계는 성능 이득이 거의 없다. 이득은 이쪽이다.
+
+```
+지표 15 × 기간 컬럼 4 × 비교 컬럼 8
+
+손으로 만들면    지표당 모델 5개 × 15 = 75개 SQL 파일 + 비교 로직 반복
+선언으로 만들면  metrics.js 15항목 + 고정 파일 5개
+```
+
+- 기간 하나 추가 → `periods.js` 한 항목 → 15개 지표에 전부 적용
+- 지표 하나 추가 → `metrics.js` 한 항목 → 기간 컬럼 4 · 비교 컬럼 8 · `'(all)'` 행 자동
+
+`wtd` 의 전년 비교를 364일로 고친 것이 실제 사례다. 한 줄로 15개 지표의 주 단위
+비교가 전부 맞아졌다. 손으로 만들었다면 15곳을 고쳐야 했고 하나는 빠뜨렸을 것이다.
+
+## 4. 어디까지 답하는가
+
+어떤 구조로도 임의 요청을 전부 처리할 수는 없다. 서빙 레이어가 있어도 마찬가지다.
+**어디까지 책임지고 어디부터 놓을지**를 정하는 문제가 된다.
+
+| 층 | 답할 수 있는 것 | 지표 정의 보장 |
+|---|---|---|
+| `metric_` 조회 | 선언한 dimension 조합 | 보장 |
+| 서빙 레이어 (없음) | 선언한 dimension 의 임의 조합 · 필터 | 보장 |
+| **`semantic_mart` 직접 SQL** | **임의 필터 · 조인 · 표현식** | 보장 안 됨 |
+| DW · raw 직접 | 무엇이든 | 보장 안 됨 |
+
+세 번째 줄이 현실의 탈출구이고, `semantic_mart` 를 따로 만들어 둔 이유가 여기서
+드러난다. 자유롭게 SQL 을 써도 자연키가 없어 잘못된 조인이 불가능하고, dimension PK
+유일성이 assertion 으로 보장되어 fan-out 이 생기지 않는다. **지표를 틀린 수식으로
+계산하는 것은 막지 못하지만, 조인 때문에 숫자가 부푸는 것은 구조적으로 막힌다.**
+
+| 상황 | 처리 |
+|---|---|
+| 한 번뿐인 질문 | 마트에 직접 SQL. 지표로 만들지 않는다 |
+| 같은 필터가 반복 | dimension 으로 만든다 |
+| 같은 지표가 반복 | `metrics.js` 에 선언 추가 |
+| 선언으로 표현 불가 | 별도 모델 + registry 에 등록 |
+
+첫 줄이 핵심이다. **같은 것을 세 번 물어보면 그때 지표이거나 dimension 이다.**
+
+## 5. 테이블 3단계
 
 지표 하나가 테이블 3개가 된다. 15개 지표 × 3 = 45개다.
 
@@ -68,9 +170,9 @@ metric_<metric>    + 비교 기준값 8컬럼              4,804,604행
 `daily_` 를 따로 두는 이유는 다르다. **조인을 한 번만 실행하기 위해서**다. `period_`
 이후는 `daily_` 만 읽으므로 atomic fact 와 dimension 을 다시 읽지 않는다.
 
-## 3. 핵심 결정 여섯 가지
+## 6. 핵심 결정 여섯 가지
 
-### 3-1. 기간은 행이 아니라 컬럼이다
+### 6-1. 기간은 행이 아니라 컬럼이다
 
 한 행이 그 `record_date` 의 모든 것이다.
 
@@ -94,14 +196,14 @@ monthly  =  mtd  where is_month_end
 그 행의 비교 기준값이 4일치를 지난주 7일 전체와 맞댔다. PTD 에는 그 문제가 없다 —
 `record_date` 는 항상 실제로 지난 날이다.
 
-### 3-2. dimension 을 두 단계로 나눠 갖는다
+### 6-2. dimension 을 두 단계로 나눠 갖는다
 
 ```
 daily_    dims 전체        order_item 기준 7개
 period_   serving_dims     4개 + 각 dimension 의 '(all)' rollup 행
 ```
 
-`period_` 가 `dims` 전부를 쓰지 못하는 이유는 3-3 의 `grid` 때문이다. 행 수가
+`period_` 가 `dims` 전부를 쓰지 못하는 이유는 6-3 의 `grid` 때문이다. 행 수가
 (조합 수 × 날짜 수)로만 정해지므로 조합이 늘면 그대로 곱해진다.
 
 ```
@@ -113,7 +215,7 @@ serving_dims 4개   조합    720 × 2,811일 =  202만 행   → rollup 행까�
 필요가 없어지고, 특히 sketch 지표에서 `SUM` 이 아니라 `HLL_COUNT.MERGE` 를 써야 한다는
 지식이 필요 없어진다.
 
-### 3-3. `grid` 로 빈 날을 채운다
+### 6-3. `grid` 로 빈 날을 채운다
 
 PTD 를 활동이 있는 날에만 만들면 rollup 했을 때 대부분이 사라진다.
 
@@ -130,7 +232,7 @@ PTD 를 활동이 있는 날에만 만들면 rollup 했을 때 대부분이 사�
 범위는 `daily_` 가 가진 구간으로 자른다. 그러지 않으면 2018~2031 날짜 전체가 조합 수만큼
 곱해지고, 데이터가 없는 미래 날짜에 행이 생긴다.
 
-### 3-4. rollup 보다 PTD 를 먼저 계산한다
+### 6-4. rollup 보다 PTD 를 먼저 계산한다
 
 순서를 바꿔도 값은 같다. `SUM` 은 결합법칙이 성립하고, HLL 병합은 합집합이라 조합별
 `wtd` sketch 를 합친 것이 전체 `wtd` sketch 와 같다.
@@ -143,7 +245,7 @@ rollup 먼저   CPU 1,748,227초   한도 5,100 초과
 PTD 먼저      통과
 ```
 
-### 3-5. 비교는 기준값만 저장한다
+### 6-5. 비교는 기준값만 저장한다
 
 `yoy` 같은 증감률을 컬럼으로 저장하지 않는다. 비율은 rollup 하면 깨지기 때문이다.
 `AVG` 도 `SUM` 도 틀린 값을 낸다. 대신 시프트한 시점의 **값**을 복사해 둔다.
@@ -159,7 +261,7 @@ net_revenue_mtd   768,676      mtd_yoy_base   94,971
 **주간 비교만 364일이다.** `1 YEAR` 로 시프트하면 요일이 어긋난다 — 2026-03-02(월)의
 1년 전은 일요일이다.
 
-### 3-6. 증분은 `MERGE` 가 아니라 구간을 지우고 다시 넣는다
+### 6-6. 증분은 `MERGE` 가 아니라 구간을 지우고 다시 넣는다
 
 `MERGE` 는 지우지 않는다. dimension 값이 바뀌면 `(record_date, dimension)` 키가 달라져
 옛 행이 매칭되지 않고 그대로 남는다. `uniqueKey` assertion 도 못 잡는다. 키는 여전히
@@ -168,7 +270,7 @@ net_revenue_mtd   768,676      mtd_yoy_base   94,971
 > 2026-09-13 실측. 마트를 12일치 최신화하고 증분을 돌렸더니 남은 옛 행 3,933개가
 > `net_revenue` 를 188,992.92 부풀렸다.
 
-## 4. sketch 지표는 구조가 같고 함수만 다르다
+## 7. sketch 지표는 구조가 같고 함수만 다르다
 
 `buyer_count` · `visitor_count` · `active_user` 는 distinct count 라 합산할 수 없다.
 HLL sketch 로 저장해서 병합 가능한 상태를 유지한다.
@@ -192,24 +294,24 @@ dry run 으로도 못 잡는다.
 '(all)' 행                sketch 10,264 / country 별 행을 MERGE 10,264   일치
 ```
 
-## 5. 실측 수치 모음
+## 8. 실측 수치 모음
 
 구조를 바꿀 때 근거가 된 숫자들이다.
 
 | 항목 | 값 | 무엇의 근거인가 |
 |---|---|---|
 | `daily_` 행 수 ÷ atomic fact 행 수 | 98.68% (200,206 / 202,877) | 사전 집계는 성능 이득이 거의 없다. 이득은 정의 표준화 쪽이다 |
-| 빈 날 안 채운 `mtd` rollup | 실제의 13% | `grid` (3-3) |
-| 완결 주 `weekly` vs `wtd` | 10,080 조합 일치 | `weekly` 를 안 만든다 (3-1) |
+| 빈 날 안 채운 `mtd` rollup | 실제의 13% | `grid` (6-3) |
+| 완결 주 `weekly` vs `wtd` | 10,080 조합 일치 | `weekly` 를 안 만든다 (6-1) |
 | `brand`(2,753값)를 dimension 에 넣었을 때 | 연 단위 집계가 5%만 줄어듦 | 고유값이 많은 컬럼은 dimension 이 될 수 없다 |
-| CTE 다섯 번 참조 | CPU 3,600초 / 한도 4,300 | 3단계 분리 (2절) |
-| rollup 먼저 + sketch | CPU 1,748,227초 | PTD 를 먼저 (3-4) |
+| CTE 다섯 번 참조 | CPU 3,600초 / 한도 4,300 | 3단계 분리 (5절) |
+| rollup 먼저 + sketch | CPU 1,748,227초 | PTD 를 먼저 (6-4) |
 | `GROUPING SETS` 16집합 | CPU 357,307초 | `axis_mask` CROSS JOIN 으로 교체 |
 | `IS NOT DISTINCT FROM` 조인 | CPU 88,022초 | `'(unknown)'` bucket + `=` 조인 |
-| 증분에 `MERGE` | 남은 옛 행 3,933개 | insert_overwrite (3-6) |
+| 증분에 `MERGE` | 남은 옛 행 3,933개 | insert_overwrite (6-6) |
 | 전체 파이프라인 | 4분 · 액션 159건 | 현재 상태 |
 
-## 6. 검증 결과
+## 9. 검증 결과
 
 2026-09-16 전체 재생성 후 실측이다.
 
