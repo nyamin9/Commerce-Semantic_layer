@@ -3,13 +3,14 @@
 이 레포의 무엇이 어디서나 통하고 무엇이 이 데이터셋에만 해당하는지.
 용어는 [glossary.md](glossary.md) 를 따른다.
 
-세 갈래로 나뉜다.
+네 갈래로 나뉜다.
 
 | | |
 |---|---|
 | **A. 설계** | 엔진과 데이터가 달라도 그대로 통한다. 옮길 가치가 있는 것은 이쪽이다 |
 | **B. 선언** | 갈아끼운다. 새 프로젝트의 fact 와 지표를 적으면 된다 |
 | **C. 엔진** | BigQuery·Dataform 에 묶여 있다. 다른 엔진이면 다시 재야 한다 |
+| **D. 서빙 레이어** | Cube·Looker 위로 옮길 때 `serving_dims` 가 무엇이 되는가 |
 
 ---
 
@@ -89,6 +90,18 @@ entity 에 둘 것인가" 의 답이 된다.
 
 > 실측. 고유값 2,753개인 `brand` 를 dimension 에 넣으면 연 단위로 집계해도 행이
 > 5%밖에 줄지 않는다. 빼면 절반 이하가 된다.
+> 값이 2개인 `purchase_type` 은 조합을 1,708 → 5,054 로 2.96배 만든다.
+
+**넣기 전에 셋을 확인한다.**
+
+| | 기준 |
+|---|---|
+| dimension 고유값 | 10개 이하 |
+| 조합 수 | 1,500 내외 |
+| distinct 근사 지표의 누계를 **실제로 돌려본다** | dry run 으로는 안 잡힌다 |
+
+세 번째가 핵심이다. 이 프로젝트에서 가장 아팠던 것이 전부 거기였고, 컴파일로도
+dry run 으로도 미리 잡히지 않았다.
 
 ### A-6. PTD 는 빈 날을 채운 위에서 계산한다
 
@@ -263,10 +276,70 @@ distinct 근사 자료구조의 이름과 정밀도   → HLL 대신 무엇이 �
 | **release / workflow configuration 은 git 에 없다** | GCP 리소스다. 선언 파일을 따로 두고 스크립트로 맞춘다 |
 
 **dbt 로 옮긴다면** — 3단계 분리는 모델 3개로, `additive` 선언은 매크로로, generator 는
-`dbt_utils` 스타일의 코드 생성이나 Jinja 루프로 바뀐다. 설계(A)는 그대로 통하고,
-CTE 재계산 문제도 같은 방식으로 나타난다.
+Jinja 루프로 바뀐다. 설계(A)는 그대로 통하고, CTE 재계산 문제도 같은 방식으로 나타난다.
+dbt 역시 컴파일 타임 도구라 자동 라우팅은 없다.
 
 ---
+
+## D. 서빙 레이어가 있는 환경으로 옮긴다면
+
+`entities.js` 와 `metrics.js` 는 거의 그대로 옮겨간다. **`serving_dims` 만 성격이 바뀐다.**
+
+```
+entities.js   →  Cube 의 cubes · joins · dimensions
+metrics.js    →  Cube 의 measures
+periods.js    →  granularity · 시간 비교 설정
+serving_dims  →  대응 개념이 없다. preAggregations 선언이 된다
+```
+
+### 사전 집계는 자동으로 만들어지지 않는다
+
+Cube 든 Looker 든 **어떤 사전 집계를 만들지는 손으로 선언한다.** 자동인 것은 선택이다 —
+쿼리가 들어오면 맞는 것을 고르고, 없으면 원본으로 간다.
+
+```js
+// Cube. a×b 와 a×c 가 필요하면 두 블록을 직접 쓴다
+preAggregations: {
+  byCountryAndType: { measures: [...], dimensions: [CUBE.country, CUBE.purchaseType], ... },
+  byCategory:       { measures: [...], dimensions: [CUBE.category], ... },
+}
+```
+
+`a × b × c × d` 의 모든 부분집합이 알아서 생기지는 않는다. 조합 폭발이라 어떤 도구도
+그렇게 하지 않는다. 다만 실제 쿼리 로그를 보고 후보를 **추천**하는 기능은 있다 —
+Cube 의 Rollup Designer, Looker 의 Aggregate Awareness Recommendations.
+
+### 그래서 여러 개를 두는 것이 싸진다
+
+```
+큐브 하나        a × b × c × d       모든 조합. 이 레포의 방식
+rollup 여러 개   a×b · a×c · b×d     실제로 쓰는 것만. 나머지는 원본으로 간다
+```
+
+**fallback 이 있어서 다 안 만들어도 되는 것이다.** 이 레포는 자동 라우팅이 없어서
+안 만든 조합에 답이 없고, 그래서 전부 만들어야 한다. dimension 하나가 행 수를
+곱하는 이유가 여기에 있다.
+
+### 이 레포에서 쪼개려면
+
+기술적으로는 가능하다. `metrics.js` 에 지표별 `serving_dims` 를 적으면 그 지표의
+큐브만 좁아진다. 한 지표에 rollup 을 여럿 두려면 generator 를 손봐야 한다.
+
+**다만 소비자가 어느 테이블을 읽을지 알아야 한다.** 쿼리를 보고 골라주는 계층이
+없어서 view 로도 못 가린다 — view 는 들어온 쿼리에 따라 대상을 바꾸지 못하고,
+`UNION` 으로 묶으면 전부 스캔해 쪼갠 의미가 없다.
+
+그래서 순서가 중요하다. **소비자에게 열기 전에 쪼개면 마이그레이션 비용이 0이다.**
+
+```
+1. 넓게 만든다
+2. 분석가 몇 명에게 먼저 연다          ← 쿼리 로그가 여기서 생긴다
+3. INFORMATION_SCHEMA.JOBS 로 실제 조합을 센다
+4. 그 근거로 쪼갠다
+5. 전사에 연다
+```
+
+2번을 건너뛰면 4번을 감으로 하게 된다.
 
 ## 옮길 때 처음에 정할 것 세 가지
 

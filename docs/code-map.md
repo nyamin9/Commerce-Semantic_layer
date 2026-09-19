@@ -56,6 +56,8 @@ net_revenue: { entity: "order_item", expr: "SUM({net_revenue})", ... }
 buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"], ... }
 ```
 
+큐브가 커졌을 때 쪼개는 길이기도 하다. 자세한 내용은 [porting.md](porting.md) D절.
+
 ---
 
 ## `includes/` — 선언 계층
