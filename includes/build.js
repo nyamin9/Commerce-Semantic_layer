@@ -260,11 +260,31 @@ function comparePlan(m) {
   return acc;
 }
 
-// 서빙 테이블의 dimension. 선언된 serving_dims 중 이 지표가 실제로 가진 것만 (P4).
-// 여기 없는 축은 컬럼 자체가 생기지 않는다 — 값이 '(all)' 하나뿐이라 자리만 찬다
+// 서빙 테이블의 dimension. 여기 없는 축은 컬럼 자체가 생기지 않는다 —
+// 값이 '(all)' 하나뿐이라 자리만 찬다 (P4).
+//
+// 지표가 serving_dims 를 선언하면 그것을, 생략하면 entity 것을 쓴다. m.dims 와 같은
+// 규칙이다. 큐브만 좁히고 daily_ 는 넓게 두고 싶을 때 쓴다 — dimension 하나가 행 수를
+// 곱하는 곳은 period_ 이고 daily_ 는 거의 안 커진다.
+//
+//   metrics.js   buyer_count: { serving_dims: ["country", "purchase_type"] }
+//   → daily_ 는 dimension 전체, period_·metric_ 은 2개
+//
+// dims 에 없는 것을 serving_dims 에 적으면 교집합에서 조용히 빠진다. 거부한다 (P18)
 function servingAxes(name, m) {
   const have = new Set(resolveDims(name, m).map((d) => d.name));
-  return servingDims(m.entity).filter((d) => have.has(d));
+
+  if (m.serving_dims) {
+    const missing = m.serving_dims.filter((d) => !have.has(d));
+    if (missing.length) {
+      throw new Error(
+        `[${name}] serving_dims 의 '${missing.join(", ")}' 가 이 지표의 dimension 에 없다. ` +
+        `사용 가능: ${[...have].join(", ")}`
+      );
+    }
+  }
+
+  return (m.serving_dims || servingDims(m.entity)).filter((d) => have.has(d));
 }
 
 // 완결 플래그. record_date 에서 결정론적으로 나오므로 저장 비용만 든다.

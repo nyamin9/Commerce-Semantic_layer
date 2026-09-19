@@ -79,6 +79,27 @@ const METRICS = {
   },
 
   // ── order ───────────────────────────────────────────────────
+  // 구매자를 매출 인식 여부로 나눈다. dimension 이 아니라 지표로 나누는 이유는
+  // distinct count 라 뺄셈이 안 되기 때문이다 — 한 사람이 완료 주문과 취소 주문을
+  // 둘 다 가질 수 있어서 buyer_count ≠ paying + void 다.
+  //
+  //   실측 2026-09-20. 전체 81,797 · paying 69,045 · void 30,328
+  //   겹치는 사람 17,576 명. 전체 − void 를 하면 그 사람들이 통째로 빠진다
+  //
+  // 매출은 라인마다 한 버킷이라 gross_revenue − net_revenue 로 나온다. 구매자만 다르다.
+  paying_buyer_count: {
+    entity: "order_item", expr: hll("user_id"),
+    filter: "{is_revenue_recognized}",
+    additive: uniform("order_item", "sketch"),
+    description: "매출 인식된 주문이 있는 고객 수 (HLL 근사)",
+  },
+  void_buyer_count: {
+    entity: "order_item", expr: hll("user_id"),
+    filter: "NOT {is_revenue_recognized}",
+    additive: uniform("order_item", "sketch"),
+    description: "취소·반품된 주문이 있는 고객 수 (HLL 근사)",
+  },
+
   order_count: {
     // order_item 에 두면 COUNT(DISTINCT order_key) 라 카테고리축 비가산이다.
     // 주문 grain 에는 카테고리 축이 없으므로 여기서는 COUNT(*) 로 전 축 가산이 된다.

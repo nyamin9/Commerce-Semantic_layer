@@ -38,24 +38,32 @@ const { martName } = require("includes/naming");
 const PRODUCT = martName("dim_products");
 const USER    = martName("dim_users");
 
+// 주문 헤더. order_item 이 purchase_type 을 여기서 가져온다.
+// order_key 가 유일하므로(uniqueKey assertion) fan-out 이 생기지 않는다.
+// 조인 이름을 order 로 못 쓴다 — GoogleSQL 예약어다 (P5-1)
+const ORDER   = martName("fct_orders");
+
 // via 가 null 이면 fact 자체 컬럼이라 조인이 필요 없다
 const self = (col) => ({ via: null, col });
 
 const ENTITIES = {
   order_item: {
-    // raw orders · order_items 가 [ds-3, ds] 덮어쓰기. order_items 는 부모
-    // (orders.created_at) 시각으로 잘리므로 ordered_date 축이 orders 와 같다
-    refresh:  "incremental",
+    // 상류 raw 는 [ds-3, ds] 만 덮어쓰지만 전체 재생성으로 둔다.
+    // 반품·취소는 과거 날짜의 net_revenue 를 0 으로 바꾸는데, 증분 구간이 3일이라
+    // 그보다 오래된 행이 안 고쳐진다 — 실측으로 daily_ 가 마트와 어긋난 적이 있다.
+    // daily_ 가 20만 행이라 전체 재생성 비용이 사실상 없다.
+    refresh:  "table",
     source:   martName("fct_order_items"),
-    serving_dims: ["country", "age_group", "gender", "acquisition_channel"],
+    serving_dims: ["country", "age_group", "gender", "acquisition_channel", "purchase_type"],
     pk:       "order_item_key",
     date_col: "ordered_date",
     grain:    "주문 라인 1건",
 
     // key 는 fact 쪽 컬럼명. dim 쪽 PK 이름이 다르면 ref_key 를 덧붙인다
     joins: {
-      product: { to: PRODUCT, key: "product_id" },
-      user:    { to: USER,    key: "user_id"    },
+      product:      { to: PRODUCT, key: "product_id" },
+      user:         { to: USER,    key: "user_id"    },
+      order_header: { to: ORDER,   key: "order_key"  },
     },
 
     // brand 는 dimension이 아니다 (P4). 고유값 2,753개라 grid를 2,753배 부풀리는데,
@@ -73,15 +81,17 @@ const ENTITIES = {
       // 한 주문에 배송분과 반품분이 섞일 때 갈라진다. DW 의 is_revenue_recognized
       // 도 라인 상태에서 나온다 — order_item_status NOT IN ('cancelled','returned')
       order_item_status:   self("order_item_status"),
+      // 주문 헤더에서 온다. 라인이 아니라 주문의 속성이라 헤더가 원천이다
+      purchase_type:       { via: "order_header", col: "purchase_type" },
     },
   },
 
   // 주문 grain에는 상품 dimension이 없다. 한 주문이 여러 상품을 포함하므로
   // 카테고리가 정의되지 않는다. 이 공백이 order_count를 여기 둔 근거다 (P10).
   order: {
-    refresh:  "incremental",   // raw orders 가 [ds-3, ds] 덮어쓰기
+    refresh:  "table",   // order_item 과 같은 이유. 반품이 과거 매출을 바꾼다
     source:   martName("fct_orders"),
-    serving_dims: ["country", "age_group", "gender", "acquisition_channel"],
+    serving_dims: ["country", "age_group", "gender", "acquisition_channel", "purchase_type"],
     pk:       "order_key",
     date_col: "ordered_date",
     grain:    "주문 1건",
@@ -96,6 +106,7 @@ const ENTITIES = {
       gender:              { via: "user", col: "gender"              },
       acquisition_channel: { via: "user", col: "acquisition_channel" },
       order_status:        self("order_status"),
+      purchase_type:       self("purchase_type"),
     },
   },
 

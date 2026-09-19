@@ -12,8 +12,9 @@ config {
     clusterBy:   ["user_id"],
   },
   columns: {
-    order_key:  "주문 식별자. PK. surrogate key",
-    order_status: "주문 상태",
+    order_key:     "주문 식별자. PK. surrogate key",
+    order_status:  "주문 상태",
+    purchase_type: "그 사용자의 첫 주문이면 first, 아니면 repeat. 주문 상태와 무관하다",
   },
 }
 
@@ -22,10 +23,31 @@ config {
 -- net_revenue_per_item 제거 — 행 단위 비율.
 -- user_gender_at_order 제거 — sem_dim_users.gender 와 경로가 둘로 갈리면
 --   같은 이름의 축이 두 뜻을 갖게 된다. conformed dimension 을 지킨다.
+--
+-- purchase_type 추가 — 사용자별 주문 순번에서 나온다. degenerate dimension 이라
+-- fact 에 둔다 (sem_dim_users 에 두면 틀린다. 사용자가 영영 first 인 것이 아니라
+-- 그 사용자의 첫 주문 하나만 first 다).
+--
+-- 주문 상태를 보지 않는다. 취소된 주문도 그 사용자의 첫 주문이면 first 다.
+-- 매출이 난 주문만 세는 정의도 가능하지만 두 가지가 나쁘다.
+--   1. 취소·반품 주문에 붙일 라벨이 없다. 순번 자체가 없으니 first 도 repeat 도 아니다
+--   2. 반품 하나가 그 사용자의 과거 분류를 전부 밀어낸다
+-- 지금 정의는 모든 주문에 자리가 있고 과거가 바뀌지 않는다.
+--
+-- 매출 인식 여부로 나눠 보고 싶으면 purchase_type 과 직교하는 축을 쓴다.
+--   첫 주문 총 판매액        gross_revenue where purchase_type='first'
+--   첫 주문 인식 매출        net_revenue   where purchase_type='first'
+--   첫 주문 취소·반품분      둘의 차이
+--   첫 주문 고객 중 매출 낸 사람  paying_buyer_count
+--
+-- ordered_at 이 같으면 order_key 로 순서를 정한다. 그러지 않으면 재생성할 때마다
+-- 순번이 달라질 수 있다.
 SELECT
   order_key,
   user_id,
   order_status,
+  IF(ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY ordered_at, order_key) = 1,
+     'first', 'repeat') AS purchase_type,
 
   source_item_count,
   line_item_count,
