@@ -78,7 +78,6 @@ const METRICS = {
     description: "구매 고객 수 (HLL 근사). 취소·반품 포함",
   },
 
-  // ── order ───────────────────────────────────────────────────
   // 구매자를 매출 인식 여부로 나눈다. dimension 이 아니라 지표로 나누는 이유는
   // distinct count 라 뺄셈이 안 되기 때문이다 — 한 사람이 완료 주문과 취소 주문을
   // 둘 다 가질 수 있어서 buyer_count ≠ paying + void 다.
@@ -100,6 +99,7 @@ const METRICS = {
     description: "취소·반품된 주문이 있는 고객 수 (HLL 근사)",
   },
 
+  // ── order ───────────────────────────────────────────────────
   order_count: {
     // order_item 에 두면 COUNT(DISTINCT order_key) 라 카테고리축 비가산이다.
     // 주문 grain 에는 카테고리 축이 없으므로 여기서는 COUNT(*) 로 전 축 가산이 된다.
@@ -161,7 +161,10 @@ const EXCLUDED = {
   session_funnel_rate: { reason: "상류 결함 7 — purchased 플래그가 이름대로 동작하지 않는다. 세션 구매율 77.1%" },
   cohort_retention:    { reason: "daily 집계로 복원 불가. 사용자 단위 식별자가 필요한 별도 모델" },
   ltv:                 { reason: "다일 상태(multi-day state). atomic fact 위의 별도 모델" },
-  repurchase_rate:     { reason: "사용자의 전체 이력이 필요" },
+  // purchase_type 이 생겨 재구매 고객 수는 metric_buyer_count 에서 바로 나온다.
+  // RATIOS 로 못 넣는 이유는 분자·분모가 지표가 아니라 같은 지표의 다른 dimension
+  // 값이기 때문이다 — buyer_count where repeat / buyer_count where '(all)'
+  repurchase_rate:     { reason: "purchase_type 으로 조회 가능. 분자·분모가 지표가 아니라 dimension 값이라 RATIOS 에 못 넣는다" },
   delivery_days_p50:   { reason: "중앙값은 sketch로도 병합 불가 (P10-3)" },
 };
 
