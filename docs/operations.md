@@ -35,7 +35,11 @@ node infra/apply.js             # 적용
 | `upstream-monitoring` | `0 5 * * *` | `monitoring` | 상류 감시. 실패해도 본 파이프라인은 돈다 |
 
 상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작한다. 1시간 30분 여유를 뒀고
-`semantic-daily` 는 실측 4분(159 액션) 걸린다.
+`semantic-daily` 는 실측 **3분 53초**(테이블 59 · assertion 118) 걸린다.
+
+`order_item`·`order` 를 `table` 로 바꿔 매일 전 기간을 다시 만드는데도 시간이 늘지
+않았다. `daily_` 가 20만 행이라 전체 재생성이 증분보다 싸다 — 증분은 구간을 계산하고
+`DELETE` 한 뒤 `INSERT` 하는 단계가 더 있다.
 
 ### 실행 계정
 
@@ -173,5 +177,6 @@ npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
 | | |
 |---|---|
 | 고객 grain entity | 재구매율 · LTV · 코호트를 열려면 사용자 1명 = 1행인 fact 가 필요하다 |
+| 큐브 쪼개기 | 분석가에게 먼저 열고 `INFORMATION_SCHEMA.JOBS` 로 실제 조합을 센 뒤 판단한다 ([porting.md](porting.md) D절) |
 | 퍼널 · 코호트 지표 | 상류 결함 7 이 해소되어야 한다 |
 | SCD point-in-time | 이력 커버리지 4.46%. 이력이 쌓이면 재검토 |
