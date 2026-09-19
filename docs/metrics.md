@@ -5,7 +5,7 @@
 
 용어는 [glossary.md](glossary.md) 를 따른다.
 
-- **기본 지표 15개** — 직접 집계된다. `daily_` + `period_` + `metric_` 세 테이블을 갖는다
+- **기본 지표 17개** — 직접 집계된다. `daily_` + `period_` + `metric_` 세 테이블을 갖는다
 - **비율 지표 7개** — 기본 지표의 나눗셈이다. registry에만 등록하고 테이블을 만들지 않는다 (P12)
 
 ---
@@ -37,6 +37,7 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 dimension을 얻는지*
 | `acquisition_channel` | `user` | `sem_dim_users` | `user_id` | ● | ● | ● | |
 | `order_item_status` | — | fact 자체 | 조인 없음 | ● | | | |
 | `order_status` | — | fact 자체 | 조인 없음 | | ● | | |
+| `purchase_type` | `order_header` | `sem_fct_orders` | `order_key` | ● | ●&nbsp;(fact 자체) | | |
 | `entry_traffic_source` | — | fact 자체 | 조인 없음 | | | ● | |
 | `browser` | — | fact 자체 | 조인 없음 | | | ● | |
 | `event_type` | — | fact 자체 | 조인 없음 | | | | ● |
@@ -45,14 +46,22 @@ entity마다 **어떤 키로 어떤 dim에 닿아 어떤 dimension을 얻는지*
 **`country`와 `acquisition_channel`만 네 entity를 가로지른다.** 이 둘이 conformed
 dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축은 이것뿐이다 (P7).
 
+`purchase_type` 만 fact 를 조인해서 온다. `sem_fct_orders` 에서 한 번 계산하고
+`order_item` 은 `order_header` 라는 이름으로 가져온다 — `order` 는 GoogleSQL 예약어라
+조인 이름으로 못 쓴다 (P5-1). `order_key` 가 유일해서 fan-out 이 생기지 않는다.
+
 **`serving_dims` 는 이 표에서 뽑아낸 것이다.** `period_`·`metric_` 은 entity 별로
 아래 축만 갖고, 각 축의 `'(all)'` rollup 행까지 테이블로 저장한다 (P4·P15).
 
 | entity | `serving_dims` |
 |---|---|
-| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` |
+| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` · `purchase_type` |
 | `session` | `country` · `acquisition_channel` |
 | `user_event` | `country` |
+
+지표별로 덮어쓸 수도 있다. `metrics.js` 에 `serving_dims` 를 적으면 그 지표의 큐브만
+좁아지고 `daily_` 는 넓게 남는다 — dimension 하나가 행 수를 곱하는 곳은 `period_` 이고
+`daily_` 는 거의 안 커지기 때문이다.
 
 나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
 있다. grid가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없다.
@@ -258,7 +267,7 @@ sketch 는 합쳐도 sketch 로 남는다. `MERGE` 로 정수를 만들면 더 �
 ```
 
 dimension 축에 `false`를 쓰게 되면 기록하고 넘어갈 사실이 아니라 **고쳐야 할 신호**다.
-현재 기본 지표 15개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
+현재 기본 지표 17개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
 옮기면서 마지막 하나가 사라졌다.
 
 `metrics.js`의 `dims`에 있는 dimension이 `additive`에 없으면 `dataform compile`이 실패한다 (P19).
@@ -318,7 +327,7 @@ periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→
 
 ## 3. 기본 지표
 
-직접 집계되는 지표. 각각 `daily_<metric>`과 `metric_<metric>` 두 테이블을 갖는다.
+직접 집계되는 지표. 각각 `daily_` · `period_` · `metric_` 세 테이블을 갖는다.
 dimension은 별도 표기가 없으면 **그 entity에서 쓸 수 있는 dimension 전체**를 쓴다 (1장 표).
 
 가산성 — `●` 가산 / `○` sketch
@@ -333,6 +342,8 @@ dimension은 별도 표기가 없으면 **그 entity에서 쓸 수 있는 dimens
 | `units_sold` | `order_item` | `COUNTIF({is_revenue_recognized})` | — | ● |
 | `units_returned` | `order_item` | `COUNTIF({order_item_status} = 'returned')` | — | ● |
 | `buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | — | ○ |
+| `paying_buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | `{is_revenue_recognized}` | ○ |
+| `void_buyer_count` | `order_item` | `HLL_COUNT.INIT({user_id})` | `NOT {is_revenue_recognized}` | ○ |
 | `order_count` | `order` | `COUNT(*)` | — | ● |
 | `returned_order_count` | `order` | `COUNTIF({order_status} = 'returned')` | — | ● |
 | `session_count` | `session` | `COUNT(*)` | — | ● |
@@ -363,6 +374,29 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 비가산 축은 잘못된 entity 선언의 증상이다.
 
 대가는 4장에 있다 — 카테고리별 AOV를 낼 수 없게 된다.
+
+### 구매자를 세 지표로 나눈 이유
+
+매출은 `gross_revenue − net_revenue` 로 취소·반품분이 나온다. 라인마다 한 bucket 에만
+들어가기 때문이다. **구매자는 그 뺄셈이 안 된다.**
+
+```
+전체 구매자                         81,797
+  ├ 매출만 낸 사람                  51,469
+  ├ 매출도 내고 취소도 겪은 사람     17,576   ← 뺄셈하면 이 사람들이 사라진다
+  └ 취소만 한 사람                  12,752
+
+buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
+```
+
+한 사람이 완료 주문과 취소 주문을 둘 다 가질 수 있어서 bucket 이 겹친다. 그래서
+`buyer_count` · `paying_buyer_count` · `void_buyer_count` 를 따로 만든다.
+
+**세 값을 더해도 전체가 되지 않는다.** HLL 근사 때문이 아니라 distinct count 의
+성질이라, 정확히 세도 마찬가지다.
+
+`buyer_count − paying_buyer_count` 만 성립한다. `paying` 이 `buyer` 의 부분집합이라
+그 차이가 "매출을 한 번도 내지 못한 고객" 이 된다 (12,752명).
 
 ### HLL 지표
 

@@ -18,7 +18,7 @@ BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 
 ## 구조
 
-지표 하나가 테이블 3개가 된다. 지표 15개 × 3 = 45개다.
+지표 하나가 테이블 3개가 된다. 지표 17개 × 3 = 51개다.
 
 ```
 dbt_dev_marts_core           DW. 소유하지 않는다. declaration 으로 읽기만
@@ -43,8 +43,10 @@ semantic_metadata.metric_registry                        지표 카탈로그
 `metric_net_revenue` 한 행이 이렇게 생겼다.
 
 ```
-record_date  country  is_month_end   net_revenue  _wtd    _mtd     _ytd      mtd_yoy_base
-2026-08-31   China    TRUE              14,815   14,815  260,673  918,314       62,020
+record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yoy_base
+2026-08-31   China    first          TRUE                8,210   152,400        41,300
+2026-08-31   China    repeat         TRUE                6,605   108,273        20,720
+2026-08-31   China    (all)          TRUE               14,815   260,673        62,020
 ```
 
 `weekly` · `monthly` · `yearly` 는 만들지 않는다. 완결된 기간의 집계는 PTD 와 값이

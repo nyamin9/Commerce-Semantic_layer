@@ -50,6 +50,7 @@
 | **축** | 합산 방향. **시간 축**(`time`)과 **dimension 축**이 있다. dimension 의 동의어로 쓰지 않는다 |
 | **additive** | 그 축으로 합산해도 값이 맞는가. 축마다 `true` · `"sketch"` · `"last"` · `false` 중 하나로 선언한다 |
 | **bucket** | dimension 값 하나가 만드는 그룹. `country = 'KR'` 인 행들이 한 bucket 이다 |
+| **degenerate dimension** | dimension 테이블 없이 fact 에 직접 있는 dimension. `order_item_status` · `purchase_type` 이 그렇다 |
 
 ### rollup 이 정확히 무엇인가
 
@@ -87,18 +88,19 @@ Brasil   (all)            4,970.90   ├→ country 를 rollup (나머지 13개�
 상관없다.
 
 ```
-dims 7개 전부      조합 27,749 × 2,811일 = 7,800만 행
-serving_dims 4개   조합    720 × 2,811일 =  202만 행   → rollup 행까지 480만
+dims 8개 전부      조합 55,498 × 2,813일 = 1억 5,600만 행
+serving_dims 5개   조합  1,406 × 2,813일 =     395만 행   → rollup 행까지 1,422만
 ```
 
-`category` 하나(값 26개)만 넣어도 26배가 된다.
+`category` 하나(값 26개)만 넣어도 26배가 된다. 반대로 `purchase_type`(값 2개)은
+조합을 2배로만 만든다 — **고유값이 적은 dimension 만 들어갈 수 있는 이유다.**
 
 그래서 entity 를 가로지르는 conformed dimension 을 남긴다. 서로 다른 fact 의 지표를
 나란히 놓을 수 있는 dimension 이기 때문이다.
 
 | entity | `serving_dims` | 조합 | rollup 포함 |
 |---|---|---|---|
-| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` | 720 | 1,708 |
+| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` · `purchase_type` | 1,406 | 5,054 |
 | `session` | `country` · `acquisition_channel` | 68 | 89 |
 | `user_event` | `country` | 15 | 16 |
 
@@ -110,6 +112,46 @@ FROM semantic.daily_net_revenue
 WHERE record_date BETWEEN DATE_TRUNC(@d, MONTH) AND @d
 GROUP BY category
 ```
+
+### purchase_type 을 왜 주문 상태와 무관하게 정의했나
+
+매출이 난 주문만 세는 정의도 가능하다. 두 가지가 나쁘다.
+
+1. **취소·반품 주문에 붙일 라벨이 없다.** 순번 자체가 없으니 `first` 도 `repeat` 도 아니다
+2. **반품 하나가 그 사용자의 과거 분류를 전부 밀어낸다**
+
+지금 정의는 모든 주문에 자리가 있고 과거가 바뀌지 않는다.
+
+**대신 "첫구매 매출" 은 "그 고객의 최초 매출" 이 아니다.** 첫 주문이 취소된 고객의
+다음 주문은 `repeat` 이다. 실측으로 사용자의 25% 가 첫 주문이 취소·반품이고,
+그들이 이후에 만든 매출 957,475원(전체의 10.4%)이 `repeat` 으로 간다.
+
+매출 인식 여부는 `purchase_type` 과 직교하는 축으로 본다.
+
+```
+첫 주문 총 판매액        gross_revenue        where purchase_type='first'
+첫 주문 인식 매출        net_revenue          where purchase_type='first'
+첫 주문 취소·반품분      둘의 차이
+첫 주문 고객             buyer_count          where purchase_type='first'
+그중 매출 낸 고객        paying_buyer_count   where purchase_type='first'
+```
+
+### 구매자는 왜 지표를 셋으로 나누나
+
+매출은 라인마다 한 bucket 에만 들어가서 `gross_revenue − net_revenue` 로 취소분이
+나온다. **구매자는 한 사람이 여러 bucket 에 걸쳐서 뺄셈이 안 된다.**
+
+```
+전체 구매자                         81,797
+  ├ 매출만 낸 사람                  51,469
+  ├ 매출도 내고 취소도 겪은 사람     17,576   ← 뺄셈하면 이 사람들이 사라진다
+  └ 취소만 한 사람                  12,752
+
+buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
+```
+
+그래서 `buyer_count` · `paying_buyer_count` · `void_buyer_count` 셋을 따로 만든다.
+셋을 더해도 전체가 되지 않는다. distinct count 의 성질이라 정확히 세도 마찬가지다.
 
 ## 3. 지표 테이블 3단계
 
@@ -125,9 +167,10 @@ GROUP BY category
 | 용어 | 뜻 |
 |---|---|
 | **`record_date`** | 세 단계가 공유하는 날짜 컬럼. `daily` 값에서는 그날, 누계에서는 기간의 마지막 날 |
-| **`serving_dims`** | `period_`·`metric_` 이 갖는 dimension 목록. `dims` 의 부분집합이고 `entities.js` 에 entity 별로 선언한다. 여기 없는 dimension 은 컬럼 자체가 생기지 않는다 |
+| **`serving_dims`** | `period_`·`metric_` 이 갖는 dimension 목록. `dims` 의 부분집합이다. `entities.js` 에 entity 별로 선언하고, `metrics.js` 에서 지표별로 덮어쓸 수 있다. 여기 없는 dimension 은 컬럼 자체가 생기지 않는다 |
 | **`'(all)'`** | 그 dimension 을 rollup 한 행임을 나타내는 특수값 |
 | **`'(unknown)'`** | 그 dimension 의 값이 없는 bucket. `daily_` 의 `NULL` 이 여기로 온다 |
+| **`purchase_type`** | `first` = 그 사용자의 첫 주문, `repeat` = 그 이후. **주문 상태와 무관하다** — 첫 주문이 취소돼도 `first` 다 |
 | **PTD** | period-to-date. 기간 시작부터 `record_date` 까지의 누계. 본문에서 약어로 쓴다 |
 | **`wtd` · `mtd` · `ytd`** | 주·월·연 PTD. 값 컬럼은 `<metric>_wtd` 처럼 접미어가 붙는다 |
 | **`is_week_end` · `is_month_end` · `is_year_end`** | 이 날이 그 기간의 마지막 날인가. 완결된 기간만 보고 싶을 때 건다 |
@@ -158,6 +201,7 @@ wow_base           wtd_wow_base
 | **builder** | `includes/build.js`. 선언을 읽어 SQL 문자열을 만든다 |
 | **generator** | `definitions/**/gen_*.js`. builder 를 불러 Dataform action 을 만든다 |
 | **join graph** | `entities.js` 의 `joins` + `dims`. 어느 dimension 에 어떤 경로로 닿는지의 선언 |
+| **`order_header`** | `order_item` 이 `sem_fct_orders` 를 부르는 조인 이름. `order` 는 GoogleSQL 예약어라 못 쓴다 |
 | **`reprocess_from`** | 증분 갱신이 다시 만들 구간의 시작일. `preOps` 의 `DECLARE` 로 고정한다 |
 | **`LOOKBACK_DAYS`** | 증분 갱신이 거슬러 올라가는 일수. 현재 3 |
 

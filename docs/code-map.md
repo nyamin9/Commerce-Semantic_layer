@@ -36,7 +36,8 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 | 지표 추가 | `metrics.js` 한 항목 | 테이블 3개 + registry 1행 |
 | 새 fact 위의 지표 | `entities.js` + `metrics.js` | 위와 같고 entity 항목이 하나 는다 |
 | dimension 추가 | `entities.js` 의 `dims` | 그 entity 의 모든 지표 |
-| 서빙 dimension 변경 | `entities.js` 의 `serving_dims` | `period_`·`metric_` 의 컬럼과 행 수 |
+| 서빙 dimension 변경 | `entities.js` 의 `serving_dims` | 그 entity 의 모든 지표의 큐브 |
+| 한 지표만 큐브를 좁힘 | `metrics.js` 의 `serving_dims` | 그 지표의 `period_`·`metric_` 만 |
 | 기간 추가 | `periods.js` 한 항목 | 전 지표에 값 컬럼 1개 + 비교 컬럼 n개 |
 | 비교 간격 변경 | `periods.js` 의 `compare` | 그 기간의 비교 컬럼 |
 | 갱신 방식 변경 | `entities.js` 의 `refresh` | 그 entity 의 `daily_` |
@@ -44,6 +45,16 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 | 구조 변경 | `build.js` | 전부. 거의 열지 않는다 |
 
 **지표 하나를 추가할 때 만지는 파일은 `metrics.js` 하나다.** 나머지는 고정이다.
+
+`dims` 와 `serving_dims` 는 entity 가 기본값을 주고 지표가 덮어쓸 수 있다. 같은 규칙이다.
+
+```js
+// entity 기본값을 쓴다 — 지금 17개 지표 전부 이렇다
+net_revenue: { entity: "order_item", expr: "SUM({net_revenue})", ... }
+
+// 이 지표만 큐브를 좁힌다. daily_ 는 dimension 전체를 그대로 갖는다
+buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"], ... }
+```
 
 ---
 
@@ -102,7 +113,7 @@ dimension 이 따라서 정해진다.
 | `date_col` | `record_date` 가 될 컬럼 | 모든 지표의 날짜 축 |
 | `joins` | 어느 테이블에 어느 키로 붙는가. **이름을 준다** | 지표 수식이 쓰는 이름 |
 | `dims` | 그 조인에서 어느 컬럼을 dimension 으로 쓰는가 | `daily_` 의 컬럼 |
-| `serving_dims` | `dims` 중 `period_`·`metric_` 이 가질 것 | 서빙 테이블의 컬럼과 행 수 |
+| `serving_dims` | `dims` 중 `period_`·`metric_` 이 가질 것. 지표가 덮어쓸 수 있다 | 서빙 테이블의 컬럼과 행 수 |
 | `refresh` | `"incremental"` 또는 `"table"` | `daily_` 의 갱신 방식 |
 
 **`joins` 와 `dims` 를 나눠 선언한다.** 둘을 합치면 조인에 부를 이름이 없어진다.
@@ -119,12 +130,12 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 
 현재 4개 entity 가 있다.
 
-| entity | source | grain | `dims` | `serving_dims` |
-|---|---|---|---|---|
-| `order_item` | `sem_fct_order_items` | 주문 라인 1건 | 7 | 4 |
-| `order` | `sem_fct_orders` | 주문 1건 | 5 | 4 |
-| `session` | `sem_fct_sessions` | 세션 1건 | 4 | 2 |
-| `user_event` | `sem_fct_user_events` | 이벤트 1건 | 3 | 1 |
+| entity | source | grain | `dims` | `serving_dims` | `refresh` |
+|---|---|---|---|---|---|
+| `order_item` | `sem_fct_order_items` | 주문 라인 1건 | 8 | 5 | `table` |
+| `order` | `sem_fct_orders` | 주문 1건 | 6 | 5 | `table` |
+| `session` | `sem_fct_sessions` | 세션 1건 | 4 | 2 | `table` |
+| `user_event` | `sem_fct_user_events` | 이벤트 1건 | 3 | 1 | `incremental` |
 
 **`order` 에 상품 dimension 이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을
 포함하므로 주문 grain 에서 category 가 정의되지 않는다.
@@ -133,7 +144,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 
 | export | 내용 |
 |---|---|
-| `METRICS` | 지표 15개. `entity` · `expr` · `filter` · `dims` · `additive` · `description` |
+| `METRICS` | 지표 17개. `entity` · `expr` · `filter` · `dims` · `serving_dims` · `additive` · `description` |
 | `RATIOS` | 비율 지표 7개. 테이블을 만들지 않고 registry 행으로만 존재한다 |
 | `EXCLUDED` | 만들지 않기로 한 5개와 그 사유 |
 | `HLL_PRECISION` | 15 고정 |
@@ -148,7 +159,7 @@ false     복원 불가                 생성 거부
 ```
 
 dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 신호**다 — entity 가 틀렸다.
-현재 15개 지표에 `false` 는 하나도 없다.
+현재 17개 지표에 `false` 는 하나도 없다.
 
 **지표 수식의 컬럼은 중괄호로 표시한다.** 중괄호 밖은 builder 가 건드리지 않으므로
 어떤 SQL 이든 그대로 쓸 수 있다.
@@ -172,7 +183,7 @@ fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` �
 | `renderExpr(name, m, sql, where)` | `{col}` → `base.col`, `{join.col}` → `join.col` |
 | `exprJoins(name, m, sql, where)` | 수식이 참조한 조인 이름. 선언 안 된 이름이면 예외 |
 | `resolveJoins(name, m, dims)` | 실제로 쓰이는 조인만 선언 순서로. 예약어·`base` 이름이면 예외 |
-| `servingAxes(name, m)` | `serving_dims` ∩ 그 지표가 선언한 `dims` |
+| `servingAxes(name, m)` | `m.serving_dims` 또는 entity 의 것 ∩ 지표의 `dims`. `dims` 에 없는 값이면 예외 |
 | `dailySQL(ctx, name, m)` | 조인 + `record_date × dims GROUP BY` |
 | `foldExpr(col, additive)` | `additive` → 합치는 함수. `null` 이면 생성 거부 |
 | `dimFold(name, m, dims)` | dimension 축을 합칠 함수. 축마다 가산성이 다르면 예외 |

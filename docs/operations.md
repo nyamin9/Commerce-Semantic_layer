@@ -63,18 +63,18 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블. 게이트 assertion 14개 |
-| `semantic` | `daily_*` · `period_*` · `metric_*` 15개씩 **45개.** 13.77 GB · 1억 60만 행 |
-| `semantic_metadata` | `metric_registry` 27행 (base 15 · ratio 7 · excluded 5) |
+| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 47.42 GB · 3억 4,394만 행 |
+| `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
 
 지표별 테이블 크기는 `serving_dims` 개수에 따라 다르다.
 
 | entity | `serving_dims` | `period_` 행 수 |
 |---|---|---|
-| `order_item` | 4개 | 4,804,604 |
-| `order` | 4개 | 4,797,772 |
-| `session` | 2개 | 249,467 |
-| `user_event` | 1개 | 44,848 |
+| `order_item` | 5개 | 14,227,010 |
+| `order` | 5개 | 14,211,848 |
+| `session` | 2개 | 249,734 |
+| `user_event` | 1개 | 44,896 |
 
 자세한 스키마는 [tables.md](tables.md) 에 있다.
 
@@ -172,6 +172,6 @@ npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
 
 | | |
 |---|---|
-| `LOOKBACK_DAYS = 3` 재검토 | 상류 지연으로 `daily_` 가 어긋난 적이 있다. 폭을 넓힐지 판단 필요 |
+| 고객 grain entity | 재구매율 · LTV · 코호트를 열려면 사용자 1명 = 1행인 fact 가 필요하다 |
 | 퍼널 · 코호트 지표 | 상류 결함 7 이 해소되어야 한다 |
 | SCD point-in-time | 이력 커버리지 4.46%. 이력이 쌓이면 재검토 |

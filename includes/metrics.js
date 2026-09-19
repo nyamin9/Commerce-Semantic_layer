@@ -86,7 +86,7 @@ const METRICS = {
   //   실측 2026-09-20. 전체 81,797 · paying 69,045 · void 30,328
   //   겹치는 사람 17,576 명. 전체 − void 를 하면 그 사람들이 통째로 빠진다
   //
-  // 매출은 라인마다 한 버킷이라 gross_revenue − net_revenue 로 나온다. 구매자만 다르다.
+  // 매출은 라인마다 한 bucket 이라 gross_revenue − net_revenue 로 나온다. 구매자만 다르다.
   paying_buyer_count: {
     entity: "order_item", expr: hll("user_id"),
     filter: "{is_revenue_recognized}",

@@ -8,11 +8,11 @@ BigQuery 에 실제로 만들어지는 테이블 전부. 용어는 [glossary.md]
 | 데이터셋 | 테이블 | 개수 |
 |---|---|---|
 | `semantic_mart` | `sem_dim_*` 3 + `sem_fct_*` 4 | 7 |
-| `semantic` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` | 45 |
+| `semantic` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` | 51 |
 | `semantic_metadata` | `metric_registry` | 1 |
 | `semantic_assertions` | assertion 결과. Dataform 이 만든다 | — |
 
-`semantic` 의 45개는 **지표 15개 × 3단계**다. 지표마다 컬럼 구성이 같고 dimension
+`semantic` 의 51개는 **지표 17개 × 3단계**다. 지표마다 컬럼 구성이 같고 dimension
 개수만 entity 에 따라 다르다.
 
 ---
@@ -76,7 +76,7 @@ record_date  DATE      파티션
 
 ```
 record_date · category · department · country · age_group · gender ·
-acquisition_channel · order_item_status · net_revenue
+acquisition_channel · order_item_status · purchase_type · net_revenue
 ```
 
 | 항목 | 값 |
@@ -108,10 +108,10 @@ is_year_end      BOOL
 <metric>_ytd
 ```
 
-`period_net_revenue` 의 실제 컬럼이다 (12개).
+`period_net_revenue` 의 실제 컬럼이다 (13개).
 
 ```
-record_date · country · age_group · gender · acquisition_channel ·
+record_date · country · age_group · gender · acquisition_channel · purchase_type ·
 is_week_end · is_month_end · is_year_end ·
 net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd
 ```
@@ -143,10 +143,10 @@ mtd_yoy_base            mtd  의 1년 전
 ytd_yoy_base            ytd  의 1년 전
 ```
 
-`metric_net_revenue` 의 실제 컬럼이다 (20개).
+`metric_net_revenue` 의 실제 컬럼이다 (21개).
 
 ```
-record_date · country · age_group · gender · acquisition_channel ·
+record_date · country · age_group · gender · acquisition_channel · purchase_type ·
 is_week_end · is_month_end · is_year_end ·
 net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd ·
 dod_base · wow_base · yoy_base ·
@@ -171,23 +171,26 @@ dimension 개수가 entity 마다 달라서 행 수가 크게 차이 난다.
 
 | entity | 지표 | `dims` | `serving_dims` | `daily_` 행 | `period_`·`metric_` 행 |
 |---|---|---|---|---|---|
-| `order_item` | `gross_revenue` `net_revenue` `cogs` `gross_profit` `order_item_count` `units_sold` `units_returned` `buyer_count` | 7 | 4 | 200,206 | 4,804,604 |
-| `order` | `order_count` `returned_order_count` | 5 | 4 | 123,585 | 4,797,772 |
-| `session` | `session_count` `bounce_count` `visitor_count` | 4 | 2 | 157,493 | 249,467 |
-| `user_event` | `event_count` `active_user` | 3 | 1 | 268,611 | 44,848 |
+| `order_item` | `gross_revenue` `net_revenue` `cogs` `gross_profit` `order_item_count` `units_sold` `units_returned` `buyer_count` `paying_buyer_count` `void_buyer_count` | 8 | 5 | 203,168 | 14,227,010 |
+| `order` | `order_count` `returned_order_count` | 6 | 5 | 123,585 | 14,211,848 |
+| `session` | `session_count` `bounce_count` `visitor_count` | 4 | 2 | 157,493 | 249,734 |
+| `user_event` | `event_count` `active_user` | 3 | 1 | 268,611 | 44,896 |
 
 `period_`·`metric_` 의 행 수는 **rollup 포함 조합 수 × 날짜 수**로 정해진다.
 날짜 수는 그 entity 의 `daily_` 가 가진 구간이라 entity 마다 다르다.
 
 | entity | 조합 | rollup 포함 | 날짜 | 행 |
 |---|---|---|---|---|
-| `order_item` | 720 | 1,708 | 2,813 | 4,804,604 |
-| `order` | 720 | 1,708 | 2,809 | 4,797,772 |
-| `session` | 68 | 89 | 2,803 | 249,467 |
-| `user_event` | 15 | 16 | 2,803 | 44,848 |
+| `order_item` | 1,406 | 5,054 | 2,815 | 14,227,010 |
+| `order` | 1,406 | 5,054 | 2,812 | 14,211,848 |
+| `session` | 68 | 89 | 2,806 | 249,734 |
+| `user_event` | 15 | 16 | 2,806 | 44,896 |
 
-`order_item` 과 `order` 는 `serving_dims` 가 같아 조합이 1,708 로 같고, 날짜 범위만
-다르다 — `fct_orders` 의 적재가 이틀 늦다 (상류 결함 4).
+`order_item` 과 `order` 는 `serving_dims` 가 같아 조합이 5,054 로 같고, 날짜 범위만
+다르다 — `fct_orders` 의 적재가 늦다 (상류 결함 4).
+
+`purchase_type`(값 2개)을 넣으면서 조합이 1,708 → 5,054 로 2.96배가 됐다. 값이 2개인
+dimension 이 3배를 만드는 것은 rollup 행 때문이다 — `first` · `repeat` · `'(all)'`.
 
 ### 저장 크기
 
@@ -195,23 +198,21 @@ sketch 지표가 가산 지표보다 크다. 값 컬럼 12개가 전부 `BYTES` 
 
 | 테이블 | 행 | 크기 |
 |---|---|---|
-| `daily_net_revenue` | 200,206 | 15.1 MB |
-| `period_net_revenue` | 4,804,604 | 470.8 MB |
-| `metric_net_revenue` | 4,804,604 | 1,018 MB |
-| `daily_buyer_count` | 200,206 | 16.6 MB |
-| `period_buyer_count` | 4,804,604 | 947.6 MB |
-| `metric_buyer_count` | 4,804,604 | 1,671 MB |
-| `daily_event_count` | 268,611 | 11.1 MB |
-| `period_event_count` | 44,848 | 2.2 MB |
-| `metric_event_count` | 44,848 | 4.8 MB |
+| `daily_net_revenue` | 203,168 | 16.8 MB |
+| `period_net_revenue` | 14,227,010 | 1,494 MB |
+| `metric_net_revenue` | 14,227,010 | 3,114 MB |
+| `daily_buyer_count` | 203,168 | 18.3 MB |
+| `period_buyer_count` | 14,227,010 | 2,323 MB |
+| `metric_buyer_count` | 14,227,010 | 3,917 MB |
+| `period_event_count` | 44,896 | 2.3 MB |
 
-`semantic` 전체는 45개 테이블 · 1억 60만 행 · 13.77 GB 다.
+`semantic` 전체는 51개 테이블 · 3억 4,394만 행 · 47.42 GB 다.
 
 ---
 
 ## 6. `metric_registry` — 지표 카탈로그
 
-선언을 테이블로 만든 것. 27행이다 (base 15 · ratio 7 · excluded 5).
+선언을 테이블로 만든 것. 29행이다 (base 17 · ratio 7 · excluded 5).
 
 | 컬럼 | 타입 | 내용 |
 |---|---|---|
