@@ -17,6 +17,7 @@ definitions/         Dataform action — 선언을 테이블로 만드는 곳
   sources/declarations.js        28   DW 읽기 전용 참조
   mart/*.sqlx                     7개  semantic_mart
   assertions/upstream_contract.js 86   DW 감시
+  assertions/partition_contract.js     파티션 컬럼 계약
   semantic/gen_daily.js           54   daily_<metric>
   semantic/gen_period.js          61   period_<metric>
   semantic/gen_metric.js          64   metric_<metric>
@@ -78,6 +79,8 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 
 | export | 산출 |
 |---|---|
+| `DATASETS` | `semantic_mart` · `semantic` · `semantic_metadata`. 각 파일은 `schema` 를 명시하고 값만 여기 둔다 |
+| `TAGS` | `mart` · `semantic` · `monitoring`. `infra/apply.js` 도 이것을 읽어 `workflows.json` 을 검증한다 |
 | `martName(base)` | `sem_` 접두사. DW 와 이름이 겹치면 `ref()` 가 충돌한다 |
 | `dailyName` · `periodName` · `metricName` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` |
 | `RECORD_DATE` | `record_date`. 세 단계가 같은 날짜 컬럼 이름을 쓴다 |
@@ -271,6 +274,27 @@ DW 를 `semantic_mart` 로 정규화한다. **사람이 SQL 을 쓰는 유일한
 
 각 파일에 게이트 assertion 이 붙는다. 깨지면 파이프라인이 멈춘다.
 
+### `assertions/partition_contract.js`
+
+마트의 파티션 컬럼이 `entities.js` 의 `date_col` 과 같은지 본다. **게이트다** —
+우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춘다.
+
+두 선언은 서로를 읽지 않는다.
+
+```
+entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축과
+                                            증분 WHERE·경계에 쓴다
+*.sqlx        partitionBy: "ordered_date"   물리 저장 설정
+```
+
+어긋나면 증분이 파티션을 걸러내지 못해 매번 전체를 읽는다. **결과는 맞고 비용만 는다** —
+실측으로 프루닝 여부에 따라 15,896 B 대 3,000,288 B 였다 (189배).
+
+구조로 묶지 않고 감시하는 이유는 방향 때문이다. 마트가 `entities.js` 를 참조하게 만들면
+**상류가 하류를 읽게 되고**, 마트를 다른 팀이 소유하면 결합이 조직 경계를 넘는다.
+
+`sem_dim_*` 3개는 entity 가 아니라 검사 대상이 아니다.
+
 ### `assertions/upstream_contract.js` (86줄)
 
 DW 가 계약을 어겼는지 감시한다. **게이트가 아니라 감시다** — 깨져도 파이프라인은 돈다.
@@ -361,6 +385,36 @@ Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스�
 |---|---|
 | `workflows.json` | 그 설정의 원천. 태그 · 스케줄 · 실행 계정 |
 | `apply.js` | 선언과 실제 상태를 비교해 맞춘다. `node infra/apply.js --dry-run` 으로 차이를 본다 |
+
+#### 태그 오타가 조용히 지나가지 못하게 한다
+
+`workflows.json` 은 JSON 이라 `naming.js` 의 `TAGS` 를 못 읽는다. 문자열을 손으로 다시
+치므로 오타가 난다. **오타의 결과가 나쁘다.**
+
+```
+$ dataform run --tags semantik
+Compiled successfully.
+No actions to run.
+```
+
+매칭되는 액션이 없으면 아무것도 안 만들고 `SUCCEEDED` 로 끝난다. 스케줄이 매일 돌면서
+0개를 실행하고 알림도 없다 — 데이터가 며칠 멈춰야 알아챈다.
+
+그래서 `apply.js` 가 적용 전에 둘을 본다.
+
+| 검사 | 잡는 것 |
+|---|---|
+| `naming.js` 의 `TAGS` 에 있는 이름인가 | 오타 |
+| 컴파일 그래프에 그 태그를 가진 액션이 있는가 | 상수엔 있는데 아무도 안 붙인 태그 |
+
+```
+실패: workflowConfig/semantic-daily: 'semantik' 는 naming.js 의 TAGS 에 없다
+실패: workflowConfig/upstream-monitoring: 'cohort' 를 가진 액션이 하나도 없다.
+      이대로 적용하면 매일 0개를 실행하고 성공으로 끝난다
+```
+
+`naming.js` 가 아무것도 `require` 하지 않아서 Dataform 밖의 평범한 node 스크립트에서도
+읽힌다. `dataformCoreVersion` 도 `workflow_settings.yaml` 에서 읽는다.
 
 ---
 

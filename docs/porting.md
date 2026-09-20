@@ -189,6 +189,28 @@ dimension 축이 false          예외
 우리가 고칠 수 없는 것은 파이프라인을 멈추게 하지 않는다. 별도 워크플로로 돌려
 보고만 한다. 알려진 결함은 우회하지 말고 기록한다 — 조용한 우회는 문제를 숨긴다.
 
+### A-13. 나란히 적힌 선언은 구조로 묶지 말고 감시한다
+
+같은 값이 두 곳에 적히는데 한쪽이 다른 쪽을 읽을 수 없는 경우가 있다. 이 레포에는
+둘 있다.
+
+| 두 곳 | 어긋나면 |
+|---|---|
+| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 189배 느려진다. 값은 맞다 |
+| 액션의 `tags` ↔ 실행 설정의 `includedTags` | 0개 액션으로 성공한다. 알림도 없다 |
+
+**구조로 묶고 싶어지지만 방향을 보면 안 된다.** 마트가 `entities.js` 를 참조하게 만들면
+상류가 하류를 읽게 되고, 마트를 다른 팀이 소유하면 결합이 조직 경계를 넘는다.
+
+대신 **양쪽을 다 읽을 수 있는 제3자가 대조한다.**
+
+```
+파티션   assertion 이 INFORMATION_SCHEMA 와 entities.js 를 대조    게이트
+태그     apply.js 가 컴파일 그래프와 workflows.json 을 대조        적용 전 거부
+```
+
+옮길 때도 같은 원칙을 쓴다 — 선언을 합치기 전에 **누가 누구를 읽어야 하는지**를 먼저 본다.
+
 ---
 
 ## B. 선언 — 갈아끼우는 것
@@ -197,7 +219,9 @@ dimension 축이 false          예외
 
 | 파일 | 무엇을 적나 |
 |---|---|
-| `workflow_settings.yaml` | 프로젝트 ID · 리전 · 데이터셋 이름 |
+| `workflow_settings.yaml` | 프로젝트 ID · 리전 · `dataformCoreVersion` · 상류 데이터셋 |
+| `includes/naming.js` 의 `DATASETS` | 우리가 만드는 데이터셋 3개. 각 파일은 `schema` 를 명시하고 값은 여기 |
+| `includes/naming.js` 의 `TAGS` | 태그 이름. `infra/apply.js` 가 이것으로 `workflows.json` 을 검증한다 |
 | `definitions/sources/declarations.js` | 읽을 상류 테이블 목록 |
 | `definitions/mart/*.sqlx` | 상류를 정규화한 중간 테이블. **사람이 SQL 을 쓰는 유일한 곳** |
 | `includes/entities.js` | fact 마다 `source` · `pk` · `date_col` · `grain` · `joins` · `dims` · `serving_dims` · `refresh` |
@@ -209,7 +233,7 @@ dimension 축이 false          예외
 
 | 파일 | 손볼 곳 |
 |---|---|
-| `includes/naming.js` | 접두사만 |
+| `includes/naming.js` | `DATASETS` · `TAGS` · 접두사 |
 | `includes/periods.js` | 기간이 다르면. 대개 그대로 |
 | `includes/build.js` | 없음 |
 | `definitions/semantic/gen_*.js` | 없음 |
