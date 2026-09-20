@@ -3,22 +3,22 @@
 BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 
 변환(transformation)은 **dbt-airflow** 가 담당하고, 이 레포는 **semantic layer 만**
-담당한다. DW 테이블은 만들지 않고 `declaration` 으로 읽기만 한다.
+담당함. DW 테이블은 만들지 않고 `declaration` 으로 읽기만 함.
 
 ## 무엇을 만드나
 
-1. **지표 정의가 한 곳에 있다.** `net_revenue` 가 무엇인지가 `includes/metrics.js`
-   한 곳에만 있다
-2. **집계 테이블이 선언에서 생성된다.** 사람이 쓰는 집계 SQL 은 0개다.
-   지표 하나를 추가하는 비용이 선언 한 항목으로 고정된다
-3. **틀린 집계가 막힌다.** `additive` · join graph · assertion 이 막는 것은 전부
-   *에러가 나지 않고 숫자만 틀리는* 종류의 사고다
-4. **일자 · 누계 · 비교가 한 행에 있다.** `record_date` 하나로 그날 값과
-   WTD·MTD·YTD, 그리고 각각의 비교 기준값을 전부 읽는다
+1. **지표 정의가 한 곳에 있음.** `net_revenue` 가 무엇인지가 `includes/metrics.js`
+   한 곳에만 있음
+2. **집계 테이블이 선언에서 생성됨.** 사람이 쓰는 집계 SQL 은 0개임.
+   지표 하나를 추가하는 비용이 선언 한 항목으로 고정됨
+3. **틀린 집계가 막힘.** `additive` · join graph · assertion 이 막는 것은 전부
+   *에러가 나지 않고 숫자만 틀리는* 종류의 사고임
+4. **일자 · 누계 · 비교가 한 행에 있음.** `record_date` 하나로 그날 값과
+   WTD·MTD·YTD, 그리고 각각의 비교 기준값을 전부 읽음
 
 ## 구조
 
-지표 하나가 테이블 3개가 된다. 지표 17개 × 3 = 51개다.
+지표 하나가 테이블 3개가 됨. 지표 17개 × 3 = 51개임.
 
 ```
 dbt_dev_marts_core           DW. 소유하지 않는다. declaration 으로 읽기만
@@ -40,7 +40,7 @@ semantic.metric_<metric>     + 비교 기준값 8컬럼          ← 소비자�
 semantic_metadata.metric_registry                        지표 카탈로그
 ```
 
-`metric_net_revenue` 한 행이 이렇게 생겼다.
+`metric_net_revenue` 한 행이 이렇게 생겼음.
 
 ```
 record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yoy_base
@@ -49,14 +49,14 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 2026-08-31   China    (all)          TRUE               14,815   260,673        62,020
 ```
 
-`weekly` · `monthly` · `yearly` 는 만들지 않는다. 완결된 기간의 집계는 PTD 와 값이
-같아서 `is_month_end` 같은 플래그로 고른다.
+`weekly` · `monthly` · `yearly` 는 만들지 않음. 완결된 기간의 집계는 PTD 와 값이
+같아서 `is_month_end` 같은 플래그로 고름.
 
 ## 문서
 
 | | |
 |---|---|
-| [glossary.md](docs/glossary.md) | **용어집. 먼저 읽는다.** 여기 없는 단어는 문서에 쓰지 않는다 |
+| [glossary.md](docs/glossary.md) | **용어집. 먼저 읽음.** 여기 없는 단어는 문서에 쓰지 않음 |
 | [architecture.md](docs/architecture.md) | 왜 이 구조인가. 3단계의 근거와 핵심 결정 여섯 가지 |
 | [code-map.md](docs/code-map.md) | 파일별 역할. 무엇을 고치면 무엇이 바뀌나 |
 | [tables.md](docs/tables.md) | 테이블 구조. 실제 컬럼 · 행 수 · 파티션 |
@@ -66,9 +66,9 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 | [operations.md](docs/operations.md) | 스케줄 · 실행 계정 · 상류 결함 · 현재 상태 |
 | [js-patterns.md](docs/js-patterns.md) | 코드를 읽기 전에 JS 가 낯설다면 |
 
-**처음 읽는다면** `glossary.md` → `architecture.md` → `tables.md` → `code-map.md` 순서를 권한다.
+**처음 읽는다면** `glossary.md` → `architecture.md` → `tables.md` → `code-map.md` 순서를 권함.
 
-**지표를 추가하려면** `metrics.md` 7장만 보면 된다.
+**지표를 추가하려면** `metrics.md` 7장만 보면 됨.
 
 ## 디렉터리
 
@@ -96,12 +96,12 @@ infra/                              실행 계획 — GCP 리소스 선언
 workflow_settings.yaml              프로젝트 · 리전 · 데이터셋
 ```
 
-문서에 나오는 두 말은 이렇게 나뉜다.
+문서에 나오는 두 말은 이렇게 나뉨.
 
 | | 파일 | 하는 일 |
 |---|---|---|
-| **builder** | `includes/build.js` | 선언을 읽어 SQL 문자열을 만든다 |
-| **generator** | `definitions/**/gen_*.js` | builder 를 불러 Dataform action 을 만든다 |
+| **builder** | `includes/build.js` | 선언을 읽어 SQL 문자열을 만듦 |
+| **generator** | `definitions/**/gen_*.js` | builder 를 불러 Dataform action 을 만듦 |
 
 ## 실행
 
@@ -113,7 +113,7 @@ npx @dataform/cli@3.0.65 compile
 npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 ```
 
-운영 스케줄과 실행 계정은 [operations.md](docs/operations.md) 에 있다.
+운영 스케줄과 실행 계정은 [operations.md](docs/operations.md) 에 있음.
 
 ## 조회 예시
 
@@ -139,7 +139,7 @@ WHERE record_date = CURRENT_DATE() AND country='KR'
   AND age_group='(all)' AND gender='(all)' AND acquisition_channel='(all)'
 ```
 
-`'(all)'` 은 그 dimension 을 rollup 한 행이고, `'(unknown)'` 은 값이 없는 bucket 이다.
+`'(all)'` 은 그 dimension 을 rollup 한 행이고, `'(unknown)'` 은 값이 없는 bucket 임.
 
-`serving_dims` 밖의 dimension(`category` 등)별 집계는 `daily_` 에서 낸다.
-자세한 이유는 [architecture.md](docs/architecture.md) 6-2 에 있다.
+`serving_dims` 밖의 dimension(`category` 등)별 집계는 `daily_` 에서 냄.
+자세한 이유는 [architecture.md](docs/architecture.md) 6-2 에 있음.

@@ -1,13 +1,13 @@
 # 코드에 쓰인 JS 패턴
 
 `includes/` 와 `definitions/` 의 JS 가 객체를 다루는 방식 정리.
-문법 자체보다 **왜 그렇게 썼는지**에 무게를 둔다. 예시 값은 실제 코드를 실행한 결과다.
+문법 자체보다 **왜 그렇게 썼는지**에 무게를 둠. 예시 값은 실제 코드를 실행한 결과임.
 
-코드가 무엇을 하는지는 [code-map.md](code-map.md), 용어는 [glossary.md](glossary.md) 를 따른다.
+코드가 무엇을 하는지는 [code-map.md](code-map.md), 용어는 [glossary.md](glossary.md) 를 따름.
 
 ---
 
-## 파일이 하는 일은 세 종류뿐이다
+## 파일이 하는 일은 세 종류뿐임
 
 | 종류 | 예 | 성격 |
 |---|---|---|
@@ -15,21 +15,21 @@
 | **파생 인덱스** | `SHIFTS` | 선언을 builder가 쓰기 좋은 방향으로 가공 |
 | **헬퍼 함수** | `allDims()` `uniform()` `self()` `dailySQL()` | 선언에서 필요한 조각을 꺼내거나 조립 |
 
-선언은 손으로 쓰고, 파생과 헬퍼는 선언을 읽는다. **역방향은 없다** —
-헬퍼가 선언을 고치지 않는다.
+선언은 손으로 쓰고, 파생과 헬퍼는 선언을 읽음. **역방향은 없음** —
+헬퍼가 선언을 고치지 않음.
 
 ---
 
 ## 1. `Object.entries` — 객체를 순회 가능하게
 
-객체는 그냥 `for...of`를 돌 수 없다. `[키, 값]` 배열로 바꿔야 한다.
+객체는 그냥 `for...of`를 돌 수 없음. `[키, 값]` 배열로 바꿔야 함.
 
 ```js
 Object.entries({ daily: {...}, wtd: {...} })
 // → [ ["daily", {...}], ["wtd", {...}] ]
 ```
 
-`includes/periods.js` 의 `SHIFTS` — 실제로 쓰인 곳. 중첩 두 단계다.
+`includes/periods.js` 의 `SHIFTS` — 실제로 쓰인 곳. 중첩 두 단계임.
 
 ```js
   for (const [pName, p] of Object.entries(PERIODS)) {
@@ -41,9 +41,9 @@ Object.entries({ daily: {...}, wtd: {...} })
 
 `const [pName, p] of ...`는 그 쌍을 두 변수로 분해한다(구조 분해).
 바깥 루프에서 `pName = "wtd"`, `p = { type, label, trunc, end_flag, compare }`가 되고,
-안쪽 루프가 그 `p.compare`를 다시 순회한다.
+안쪽 루프가 그 `p.compare`를 다시 순회함.
 
-**변형 셋을 상황에 따라 골라 쓴다.**
+**변형 셋을 상황에 따라 골라 씀.**
 
 ```js
 // 값은 안 쓰므로 keys — includes/build.js
@@ -73,7 +73,7 @@ const SHIFTS = (() => {
 })();
 ```
 
-첫 줄과 마지막 줄만 떼어 보면 구조가 보인다.
+첫 줄과 마지막 줄만 떼어 보면 구조가 보임.
 
 ```js
 const SHIFTS = (() => { ... return acc; })();
@@ -81,13 +81,13 @@ const SHIFTS = (() => { ... return acc; })();
 //                                        ^^ 즉시 호출
 ```
 
-`const`는 값 하나만 받는데 계산이 여러 줄일 때 쓴다. 이점이 둘이다.
+`const`는 값 하나만 받는데 계산이 여러 줄일 때 씀. 이점이 둘임.
 
-- 임시 변수 `acc`가 모듈 바깥으로 새지 않는다
-- 모듈 로드 시 **딱 한 번** 실행되고 결과가 고정된다
+- 임시 변수 `acc`가 모듈 바깥으로 새지 않음
+- 모듈 로드 시 **딱 한 번** 실행되고 결과가 고정됨
 
 함수로 빼서 `const X = buildLabels()`로 해도 되지만, 그 함수를 다른 데서 부를 일이
-없으면 이름을 만들지 않는 편이 읽기 쉽다.
+없으면 이름을 만들지 않는 편이 읽기 쉬움.
 
 ---
 
@@ -95,15 +95,15 @@ const SHIFTS = (() => { ... return acc; })();
 
 `includes/periods.js` 의 `SHIFTS`
 
-선언과 사용의 **방향이 반대**라서 뒤집는다.
+선언과 사용의 **방향이 반대**라서 뒤집음.
 
 ```
 PERIODS   기간 → 비교 목록    "wtd는 wow와 yoy를 쓴다"          ← 사람이 쓰기 편한 방향
 SHIFTS    간격 → 비교 목록    "1 YEAR 로는 3개를 가져온다"       ← builder가 쓰기 편한 방향
 ```
 
-`metric_` 의 self-join 을 **간격 단위로 묶기 위해서**다. 비교 컬럼이 8개인데
-간격이 5개뿐이라, 뒤집지 않으면 같은 조인을 8번 쓴다.
+`metric_` 의 self-join 을 **간격 단위로 묶기 위해서**임. 비교 컬럼이 8개인데
+간격이 5개뿐이라, 뒤집지 않으면 같은 조인을 8번 씀.
 
 ```js
 const acc = {};
@@ -126,7 +126,7 @@ for (const [pName, p] of Object.entries(PERIODS)) {
 | mtd | yoy | 1 YEAR | → `[{daily, yoy}, {mtd, yoy}]` |
 | ytd | yoy | 1 YEAR | → `[{daily, yoy}, {mtd, yoy}, {ytd, yoy}]` |
 
-결과 — 이 값이 만들어진다. 파일에 이렇게 적혀 있는 것은 아니다.
+결과 — 이 값이 만들어짐. 파일에 이렇게 적혀 있는 것은 아님.
 
 ```js
 SHIFTS = {
@@ -139,9 +139,9 @@ SHIFTS = {
 }
 ```
 
-`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋을 채운다.
+`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋을 채움.
 
-**`wtd`만 364일**이라 별도 간격으로 갈라지는 것도 이 표에서 보인다.
+**`wtd`만 364일**이라 별도 간격으로 갈라지는 것도 이 표에서 보임.
 
 ---
 
@@ -154,13 +154,13 @@ acc[label] = acc[label] || {};
 acc[label][pName] = interval;
 ```
 
-첫 줄이 없으면 `undefined`에 프로퍼티를 넣으려다 터진다.
-`||`는 왼쪽이 falsy(`undefined` `null` `0` `""` `false`)면 오른쪽을 준다.
+첫 줄이 없으면 `undefined`에 프로퍼티를 넣으려다 터짐.
+`||`는 왼쪽이 falsy(`undefined` `null` `0` `""` `false`)면 오른쪽을 줌.
 
-**주의** — 유효한 값이 falsy일 수 있으면 `??`(nullish 병합)를 써야 한다.
-여기서는 `{}`나 배열만 담으므로 `||`로 충분하다.
+**주의** — 유효한 값이 falsy일 수 있으면 `??`(nullish 병합)를 써야 함.
+여기서는 `{}`나 배열만 담으므로 `||`로 충분함.
 
-같은 문법이 **기본값**에도 쓰인다.
+같은 문법이 **기본값**에도 쓰임.
 
 ```js
 const declared = m.serving_dims || servingDims(m.entity);
@@ -200,18 +200,18 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 });
 ```
 
-대괄호가 없으면 키가 문자열 `"dwDataset"`이 된다. 대괄호를 씌우면 **변수의 값**이 키가 된다.
+대괄호가 없으면 키가 문자열 `"dwDataset"`이 됨. 대괄호를 씌우면 **변수의 값**이 키가 됨.
 
 ```js
 { [dwDataset]: [...] }   // → { "dbt_dev_marts_core": [...] }
 { dwDataset: [...] }     // → { "dwDataset": [...] }        ← 틀림
 ```
 
-첫 줄의 `dataform.projectConfig.vars`가 `workflow_settings.yaml`의 `vars`를 읽는다.
-데이터셋 이름이 설정에서 오므로 키가 변수여야 한다.
+첫 줄의 `dataform.projectConfig.vars`가 `workflow_settings.yaml`의 `vars`를 읽음.
+데이터셋 이름이 설정에서 오므로 키가 변수여야 함.
 
-마지막 세 줄이 실제로 Dataform에 등록하는 부분이다 — 데이터셋 하나에 테이블 여러 개이므로
-`forEach` 를 두 번 중첩해 `declare()` 를 9번 호출한다.
+마지막 세 줄이 실제로 Dataform에 등록하는 부분임 — 데이터셋 하나에 테이블 여러 개이므로
+`forEach` 를 두 번 중첩해 `declare()` 를 9번 호출함.
 
 ---
 
@@ -224,7 +224,7 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 const self = (col) => ({ via: null, col });
 ```
 
-`includes/entities.js:36-50` — 쓰이는 곳. 마지막 줄만 `self()`다.
+`includes/entities.js:36-50` — 쓰이는 곳. 마지막 줄만 `self()`임.
 
 ```js
     joins: {
@@ -245,20 +245,20 @@ const self = (col) => ({ via: null, col });
     },
 ```
 
-`self("order_status")`가 만드는 값은 `{ via: null, col: "order_status" }`다.
-매번 `{ via: null, col: "..." }`를 쓰지 않으려고 만든 헬퍼다.
+`self("order_status")`가 만드는 값은 `{ via: null, col: "order_status" }`임.
+매번 `{ via: null, col: "..." }`를 쓰지 않으려고 만든 헬퍼임.
 
-**괄호를 빼면 동작이 달라진다.** `{`가 객체 리터럴이 아니라 함수 본문 블록으로 읽혀서
-`undefined`를 반환한다.
+**괄호를 빼면 동작이 달라짐.** `{`가 객체 리터럴이 아니라 함수 본문 블록으로 읽혀서
+`undefined`를 반환함.
 
 ```js
 (col) => ({ ... })   // 객체 반환
 (col) =>  { ... }    // 본문 블록. return 이 없으면 undefined
 ```
 
-**축약 프로퍼티** — `col: col` 대신 `col`만 썼다. 변수명과 키가 같으면 생략할 수 있다.
+**축약 프로퍼티** — `col: col` 대신 `col`만 썼음. 변수명과 키가 같으면 생략할 수 있음.
 
-같은 형태가 `includes/metrics.js:21-25`에도 있다. 이쪽은 블록이라 `return`이 있다.
+같은 형태가 `includes/metrics.js:21-25`에도 있음. 이쪽은 블록이라 `return`이 있음.
 
 ```js
 const uniform = (entity, value) => {
@@ -269,8 +269,8 @@ const uniform = (entity, value) => {
 ```
 
 `uniform("session", true)`가 `{ time: true, country: true, acquisition_channel: true,
-entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 쓰면 dimension이 늘 때
-지표 17개를 다 고쳐야 하므로, 선언은 짧게 두고 펼치는 일은 코드가 한다.
+entry_traffic_source: true, browser: true }`를 만듦. 축마다 손으로 쓰면 dimension이 늘 때
+지표 17개를 다 고쳐야 하므로, 선언은 짧게 두고 펼치는 일은 코드가 함.
 
 ---
 
@@ -286,16 +286,16 @@ entry_traffic_source: true, browser: true }`를 만든다. 축마다 손으로 �
   });
 ```
 
-선언에 없던 `name`을 붙여서 나중 단계가 dimension 이름을 알 수 있게 한다.
+선언에 없던 `name`을 붙여서 나중 단계가 dimension 이름을 알 수 있게 함.
 
 ```
 def            { via: "product", col: "category" }
 {name, ...def} { name: "category", via: "product", col: "category" }
 ```
 
-원본 `def`는 바뀌지 않는다 — 새 객체가 만들어진다.
-**뒤에 오는 것이 이긴다.** `{ ...def, name: d }`였다면 `def`에 `name`이 있을 때 그쪽이 덮인다.
-여기서는 `name`을 먼저 뒀으므로 `def.name`이 이긴다.
+원본 `def`는 바뀌지 않음 — 새 객체가 만들어짐.
+**뒤에 오는 것이 이김.** `{ ...def, name: d }`였다면 `def`에 `name`이 있을 때 그쪽이 덮임.
+여기서는 `name`을 먼저 뒀으므로 `def.name`이 이김.
 
 ---
 
@@ -317,16 +317,16 @@ function resolveJoins(name, m, dims) {
 }
 ```
 
-**두 곳에서 모아 한 곳에서 순서를 준다.**
+**두 곳에서 모아 한 곳에서 순서를 줌.**
 
-조인이 필요한 이유는 둘이다 — dimension이 그 조인을 거치거나(`via`), 지표 수식이
-그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 모아 중복을 없앤다.
+조인이 필요한 이유는 둘임 — dimension이 그 조인을 거치거나(`via`), 지표 수식이
+그 조인의 컬럼을 참조하거나(`{product.unit_cost}`). 둘을 `Set`에 모아 중복을 없앰.
 
-`Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않는다.** 그래서 마지막에
-`Object.keys(e.joins)`로 다시 훑는다. `LEFT JOIN` 순서가 선언 순서와 같아지고,
-지표가 달라져도 같은 조인은 같은 자리에 온다. diff 가 읽기 쉬워진다.
+`Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않음.** 그래서 마지막에
+`Object.keys(e.joins)`로 다시 훑음. `LEFT JOIN` 순서가 선언 순서와 같아지고,
+지표가 달라져도 같은 조인은 같은 자리에 옴. diff 가 읽기 쉬워짐.
 
-`order_item`의 dimension 8개 중 7개가 조인이 필요한데, 실제 조인은 **3번**이다.
+`order_item`의 dimension 8개 중 7개가 조인이 필요한데, 실제 조인은 **3번**임.
 
 ```
 category · department                      → product
@@ -335,11 +335,11 @@ purchase_type                              → order_header
 order_item_status                          → 조인 없음 (via: null)
 ```
 
-**조인에 이름이 있어서 되짚을 필요가 없다.** 이름이 없으면 `dims` 를 훑어
-`(테이블, 키)` 조합으로 조인 슬롯을 역산해야 한다. 지금은 `entities.js` 의 `joins` 를
-읽기만 하면 된다.
+**조인에 이름이 있어서 되짚을 필요가 없음.** 이름이 없으면 `dims` 를 훑어
+`(테이블, 키)` 조합으로 조인 슬롯을 역산해야 함. 지금은 `entities.js` 의 `joins` 를
+읽기만 하면 됨.
 
-역할 dimension(같은 dim을 두 키로 참조)도 마찬가지다. 이름이 다르면 다른 조인이다.
+역할 dimension(같은 dim을 두 키로 참조)도 마찬가지임. 이름이 다르면 다른 조인임.
 
 ```js
 joins: {
@@ -352,7 +352,7 @@ joins: {
 
 ## 9. 고차 함수 — `map` · `filter` · `join`
 
-SQL 조립은 대부분 이 셋의 조합이다. `includes/build.js:193-195`:
+SQL 조립은 대부분 이 셋의 조합임. `includes/build.js:193-195`:
 
 ```js
   ${dims.map(dimSelect).join(",\n  ")},
@@ -361,7 +361,7 @@ FROM ${ctx.ref(e.source)} AS base
 ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 ```
 
-`map`이 배열을 배열로 바꾸고 `join`이 문자열 하나로 합친다.
+`map`이 배열을 배열로 바꾸고 `join`이 문자열 하나로 합침.
 
 ```
 ["category", "country"]
@@ -370,24 +370,24 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 ```
 
 `dimSelect`를 괄호 없이 넘긴 것에 주의. `map(dimSelect)`는 함수 자체를 넘기는 것이고
-`map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀린다.
-인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감싼다.
+`map(dimSelect(d))`였다면 호출 결과를 넘기는 것이라 틀림.
+인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감쌈.
 
-`filter`로 후보를 거른다. `includes/build.js` 의 `servingAxes`:
+`filter`로 후보를 거름. `includes/build.js` 의 `servingAxes`:
 
 ```js
 const have = new Set(resolveDims(name, m).map((d) => d.name));
 return (m.serving_dims || servingDims(m.entity)).filter((d) => have.has(d));
 ```
 
-**콜백에서 구조 분해**도 자주 쓴다. `includes/metrics.js`:
+**콜백에서 구조 분해**도 자주 씀. `includes/metrics.js`:
 
 ```js
 for (const [name, m] of Object.entries(METRICS)) { ... }
 ```
 
-`([pName])`처럼 쓰면 `[키, 값]` 쌍에서 첫 원소만 꺼내고 값은 버린다는 뜻이다.
-둘 다 필요하면 `([pName, iv])`로 받는다.
+`([pName])`처럼 쓰면 `[키, 값]` 쌍에서 첫 원소만 꺼내고 값은 버린다는 뜻임.
+둘 다 필요하면 `([pName, iv])`로 받음.
 
 ---
 
@@ -417,19 +417,19 @@ GROUP BY ${seq(dims.length + 1)}`.trim();
 }
 ```
 
-`conds` 는 필터와 증분 조건을 같이 모은다. 둘 다 없으면 `WHERE` 자체가 안 붙고,
-하나만 있어도 `AND` 가 남지 않는다 — 배열에 모아 `join` 하면 구분자 처리가 사라진다.
+`conds` 는 필터와 증분 조건을 같이 모음. 둘 다 없으면 `WHERE` 자체가 안 붙고,
+하나만 있어도 `AND` 가 남지 않음 — 배열에 모아 `join` 하면 구분자 처리가 사라짐.
 
-백틱 문자열은 줄바꿈과 `${}` 삽입을 지원한다.
+백틱 문자열은 줄바꿈과 `${}` 삽입을 지원함.
 
-- **중첩 가능** — `${m.filter ? \`WHERE ${m.filter}\` : ""}`처럼 안에 또 백틱을 쓴다
-- **조건부 절**은 삼항 연산자로. `filter`가 없으면 빈 문자열이 되어 그 줄이 사라진다
-- 맨 앞 줄바꿈을 없애려고 `.trim()`을 붙인다
+- **중첩 가능** — `${m.filter ? \`WHERE ${m.filter}\` : ""}`처럼 안에 또 백틱을 씀
+- **조건부 절**은 삼항 연산자로. `filter`가 없으면 빈 문자열이 되어 그 줄이 사라짐
+- 맨 앞 줄바꿈을 없애려고 `.trim()`을 붙임
 
 `ctx.ref(...)`는 Dataform이 주는 함수로, 이름을 정규화된 테이블 경로로 바꾸고
-**동시에 의존 관계를 등록한다.** 문자열을 직접 쓰면 그래프에 엣지가 생기지 않는다.
+**동시에 의존 관계를 등록함.** 문자열을 직접 쓰면 그래프에 엣지가 생기지 않음.
 
-`includes/build.js:140-145`의 두 헬퍼도 같은 방식이다.
+`includes/build.js:140-145`의 두 헬퍼도 같은 방식임.
 
 ```js
 const dimSelect = (d) =>
@@ -440,18 +440,18 @@ const joinClause = (ctx, j) =>
   `  ON base.${j.key} = ${j.name}.${j.ref_key || j.key}`;
 ```
 
-`dimSelect`는 삼항 연산자로 두 형태를 고른다 — 조인해서 온 dimension이면 조인 이름을 붙이고,
-fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
+`dimSelect`는 삼항 연산자로 두 형태를 고름 — 조인해서 온 dimension이면 조인 이름을 붙이고,
+fact 자체 컬럼(`via: null`)이면 `base.`를 씀.
 
-**조인 이름이 그대로 SQL alias 가 된다.** `entities.js`에 `product`라고 적으면
-생성된 SQL에도 `AS product`가 나온다. 그래서 예약어를 쓸 수 없고,
-`resolveJoins`가 `RESERVED` 78개와 `base`를 컴파일 타임에 막는다 — `order`가 거기 있다.
+**조인 이름이 그대로 SQL alias 가 됨.** `entities.js`에 `product`라고 적으면
+생성된 SQL에도 `AS product`가 나옴. 그래서 예약어를 쓸 수 없고,
+`resolveJoins`가 `RESERVED` 78개와 `base`를 컴파일 타임에 막음 — `order`가 거기 있음.
 
 ---
 
 ## 11. `throw` — 컴파일 타임에 멈추기
 
-`includes/build.js` 의 `resolveDims` 전문. 예외가 여기 모여 있다.
+`includes/build.js` 의 `resolveDims` 전문. 예외가 여기 모여 있음.
 
 ```js
 function resolveDims(name, m) {
@@ -483,7 +483,7 @@ function resolveDims(name, m) {
 }
 ```
 
-이 한 함수에 앞서 본 패턴이 여섯 개 들어 있다.
+이 한 함수에 앞서 본 패턴이 여섯 개 들어 있음.
 
 | 줄 | 패턴 |
 |---|---|
@@ -494,14 +494,14 @@ function resolveDims(name, m) {
 | `m.additive[d] === false` | 값 검사 — 15번과 짝 |
 | `{ name: d, ...def }` | 스프레드 병합 (7번) |
 
-`build.js` 전체에서 `throw`는 5곳이고 전부 **선언이 잘못됐을 때**다.
-나머지 둘은 `periodSQL`의 "생성 가능한 기간이 없다"와 위 `알 수 없는 entity`다.
+`build.js` 전체에서 `throw`는 5곳이고 전부 **선언이 잘못됐을 때**임.
+나머지 둘은 `periodSQL`의 "생성 가능한 기간이 없다"와 위 `알 수 없는 entity`임.
 
 Dataform은 include를 컴파일할 때 이 코드를 실행하므로, 예외가 나면
-`dataform compile`이 실패한다. **런타임에 조용히 틀린 숫자가 나오는 대신
-배포 전에 멈춘다.**
+`dataform compile`이 실패함. **런타임에 조용히 틀린 숫자가 나오는 대신
+배포 전에 멈춤.**
 
-메시지에 `사용 가능:` 목록을 붙이는 이유는 오타 하나에 파일을 뒤지지 않게 하려는 것이다.
+메시지에 `사용 가능:` 목록을 붙이는 이유는 오타 하나에 파일을 뒤지지 않게 하려는 것임.
 
 ### 추측하지 않기 — `renderExpr`
 
@@ -521,19 +521,19 @@ function renderExpr(name, m, sql, where) {
 }
 ```
 
-**왜 테이블 접두사가 필요한가** — `metrics.js`의 수식은 선언 그대로 SQL에 들어간다.
+**왜 테이블 접두사가 필요한가** — `metrics.js`의 수식은 선언 그대로 SQL에 들어감.
 
 ```
 SUM(IF(is_revenue_recognized, unit_cost, 0))
 ```
 
-`unit_cost`는 `sem_fct_order_items`에도 `sem_dim_products`에도 있다.
-`daily_cogs`는 두 테이블을 조인하므로 BigQuery가 어느 쪽인지 고를 수 없다.
-`user_id`도 같다. `dataform compile`은 못 잡는다 — **문자열일 뿐이라 통과하고
-실행 단계에서 터진다.**
+`unit_cost`는 `sem_fct_order_items`에도 `sem_dim_products`에도 있음.
+`daily_cogs`는 두 테이블을 조인하므로 BigQuery가 어느 쪽인지 고를 수 없음.
+`user_id`도 같음. `dataform compile`은 못 잡음 — **문자열일 뿐이라 통과하고
+실행 단계에서 터짐.**
 
-**왜 중괄호인가** — 접두사를 붙이려면 어느 토큰이 컬럼인지 알아야 한다.
-정규식으로 추측하면 예외가 끝없이 나온다.
+**왜 중괄호인가** — 접두사를 붙이려면 어느 토큰이 컬럼인지 알아야 함.
+정규식으로 추측하면 예외가 끝없이 나옴.
 
 ```
 COUNTIF(status = "returned")     → "returned" 가 문자열인지 컬럼인지
@@ -542,11 +542,11 @@ EXTRACT(YEAR FROM record_date)   → YEAR · FROM 은 키워드
 `sale price`                     → 백틱 식별자
 ```
 
-키워드 목록을 늘려도 BigQuery의 예약어·타입명·날짜 단위가 수백 개라 따라잡을 수 없다.
-그리고 **큰따옴표 문자열은 조용히 틀린다** — `"base.returned"`도 유효한 문자열이라
-에러 없이 아무것도 매칭되지 않는다. P18이 막으려는 바로 그 유형이다.
+키워드 목록을 늘려도 BigQuery의 예약어·타입명·날짜 단위가 수백 개라 따라잡을 수 없음.
+그리고 **큰따옴표 문자열은 조용히 틀림** — `"base.returned"`도 유효한 문자열이라
+에러 없이 아무것도 매칭되지 않음. P18이 막으려는 바로 그 유형임.
 
-중괄호로 표시하면 추측할 것이 없다. **바깥은 건드리지 않는다.**
+중괄호로 표시하면 추측할 것이 없음. **바깥은 건드리지 않음.**
 
 | 수식 | 결과 |
 |---|---|
@@ -555,14 +555,14 @@ EXTRACT(YEAR FROM record_date)   → YEAR · FROM 은 키워드
 | `COUNTIF({status} = "returned")` | `COUNTIF(base.status = "returned")` |
 | `SUM(CAST({sale_price} AS INT64))` | `SUM(CAST(base.sale_price AS INT64))` |
 
-**중괄호를 깜빡하면** 접두사가 붙지 않은 채 남아 원래의 ambiguous 에러가 난다 —
-**값이 틀리는 대신 바로 멈춘다.** 이게 추측 방식과의 차이다.
+**중괄호를 깜빡하면** 접두사가 붙지 않은 채 남아 원래의 ambiguous 에러가 남 —
+**값이 틀리는 대신 바로 멈춤.** 이게 추측 방식과의 차이임.
 
-`{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡는다.
+`{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡음.
 
-**`product`는 어디서 온 이름인가** — `entities.js`의 `joins`에 적힌 이름이다.
-builder가 만든 이름이 아니므로 선언이 builder 내부를 모른다 (P5).
-선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막는다.
+**`product`는 어디서 온 이름인가** — `entities.js`의 `joins`에 적힌 이름임.
+builder가 만든 이름이 아니므로 선언이 builder 내부를 모름 (P5).
+선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막음.
 
 ```
 [t] expr 의 'warehouse.unit_cost' — 조인 'warehouse'가 선언되지 않았다.
@@ -572,18 +572,18 @@ builder가 만든 이름이 아니므로 선언이 builder 내부를 모른다 (
 ### dim 컬럼을 measure로 쓸 때의 주의
 
 `{product.unit_cost}`는 **현재 카탈로그 원가**고, `{unit_cost}`는 **주문 시점에
-기록된 원가**다. 둘 다 정당한 수요지만 앞의 것은 과거 숫자가 나중에 바뀐다 —
+기록된 원가**임. 둘 다 정당한 수요지만 앞의 것은 과거 숫자가 나중에 바뀜 —
 `sem_dim_users` · `sem_dim_products`는 현재 상태만 담고 있고 SCD 이력 커버리지가
-4.46%다.
+4.46%임.
 
 Kimball이 measure를 fact에 두라고 한 이유이고, 이 DW가 `unit_cost`를 주문 시점에
-fact에 기록해 둔 이유이기도 하다. **기능은 열되 기본은 fact다.**
+fact에 기록해 둔 이유이기도 함. **기능은 열되 기본은 fact임.**
 
 ---
 
 ## 12. `module.exports` — Dataform에서의 동작
 
-각 파일 끝에서 무엇을 밖으로 내보낼지 정한다.
+각 파일 끝에서 무엇을 밖으로 내보낼지 정함.
 
 ```js
 // includes/naming.js
@@ -611,11 +611,11 @@ module.exports = {
 };
 ```
 
-내보내지 않은 것은 파일 안에서만 산다 — `entities.js`의 `self`, `metrics.js`의
-`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`baseCTE`·`gridCTE`·`rollupSelect`가 그렇다.
-헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워진다.
+내보내지 않은 것은 파일 안에서만 삶 — `entities.js`의 `self`, `metrics.js`의
+`uniform`·`hll`, `build.js`의 `dimSelect`·`joinClause`·`baseCTE`·`gridCTE`·`rollupSelect`가 그러함.
+헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워짐.
 
-받는 쪽은 구조 분해로 필요한 것만 꺼낸다. `includes/build.js:11-13`:
+받는 쪽은 구조 분해로 필요한 것만 꺼냄. `includes/build.js:11-13`:
 
 ```js
 const { ENTITIES, allDims, allJoins, servingDims } = require("includes/entities");
@@ -624,10 +624,10 @@ const { dailyName, periodName, martName,
         RECORD_DATE, valueColumn, baseColumn } = require("includes/naming");
 ```
 
-`periods.js`는 4개를 내보내는데 `build.js`는 3개만 받는다 — `SHIFTS` 는 안 쓴다.
-무엇을 쓰는지가 파일 맨 위에 드러난다.
+`periods.js`는 4개를 내보내는데 `build.js`는 3개만 받음 — `SHIFTS` 는 안 씀.
+무엇을 쓰는지가 파일 맨 위에 드러남.
 
-**`includes/`의 파일은 두 가지로 쓸 수 있다.**
+**`includes/`의 파일은 두 가지로 쓸 수 있음.**
 
 ```js
 // (1) 다른 include 에서 — 명시적 require
@@ -637,10 +637,10 @@ const { ENTITIES } = require("includes/entities");
 ${metrics.select()}
 ```
 
-이 레포는 (1)만 쓴다. 명시적이라 어느 파일이 무엇을 읽는지 추적할 수 있다.
+이 레포는 (1)만 씀. 명시적이라 어느 파일이 무엇을 읽는지 추적할 수 있음.
 
-**`require("includes/x")`는 Dataform의 경로 규칙**이라 순수 node로는 해석되지 않는다.
-로컬에서 테스트하려면 `Module._resolveFilename`을 패치해야 한다.
+**`require("includes/x")`는 Dataform의 경로 규칙**이라 순수 node로는 해석되지 않음.
+로컬에서 테스트하려면 `Module._resolveFilename`을 패치해야 함.
 
 ---
 
@@ -654,11 +654,11 @@ const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 seq(4)   // → "1, 2, 3, 4"
 ```
 
-`GROUP BY 1, 2, 3, 4`를 만드는 데 쓴다. 컬럼 수가 선언에 따라 달라지므로 계산해야 한다.
+`GROUP BY 1, 2, 3, 4`를 만드는 데 씀. 컬럼 수가 선언에 따라 달라지므로 계산해야 함.
 
-- `{ length: n }`은 **유사 배열(array-like)** 이다. `length`만 있으면 `Array.from`이 배열로 바꿔준다
-- 두 번째 인자는 각 원소를 만드는 함수. `(원소, 인덱스)`를 받는데 원소는 `undefined`라 안 쓴다
-- **`_`는 "이 인자는 쓰지 않는다"는 관례**다. 문법이 아니라 약속이고, `x`라고 써도 동작은 같다
+- `{ length: n }`은 **유사 배열(array-like)** 임. `length`만 있으면 `Array.from`이 배열로 바꿔줌
+- 두 번째 인자는 각 원소를 만드는 함수. `(원소, 인덱스)`를 받는데 원소는 `undefined`라 안 씀
+- **`_`는 "이 인자는 쓰지 않는다"는 관례**임. 문법이 아니라 약속이고, `x`라고 써도 동작은 같음
 
 ---
 
@@ -677,19 +677,19 @@ function foldExpr(col, additive) {
 }
 ```
 
-`switch`는 보통 `break`가 필요하다. 없으면 다음 `case`로 흘러내린다(fall-through).
-여기서는 **`return`이 함수를 즉시 끝내므로** `break`가 필요 없다.
+`switch`는 보통 `break`가 필요함. 없으면 다음 `case`로 흘러내린다(fall-through).
+여기서는 **`return`이 함수를 즉시 끝내므로** `break`가 필요 없음.
 
-`default: return null`이 "접을 수 없다"는 신호다. 호출한 쪽(`dimFold`)이
-`!== null`로 검사해 예외를 던질지 정한다 — 판정과 처리가 나뉘어 있다.
+`default: return null`이 "접을 수 없다"는 신호임. 호출한 쪽(`dimFold`)이
+`!== null`로 검사해 예외를 던질지 정함 — 판정과 처리가 나뉘어 있음.
 
 ---
 
-## 15. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다르다
+## 15. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다름
 
 `includes/build.js:38-40`
 
-**이 파일에서 가장 미묘한 부분이다.**
+**이 파일에서 가장 미묘한 부분임.**
 
 ```js
     if (!(d in m.additive)) {
@@ -702,7 +702,7 @@ function foldExpr(col, additive) {
     }
 ```
 
-`additive`의 값으로 `false`가 올 수 있기 때문에 두 검사를 나눠야 한다.
+`additive`의 값으로 `false`가 올 수 있기 때문에 두 검사를 나눠야 함.
 
 설명용 예시로 값을 하나 두고 보자.
 
@@ -714,10 +714,10 @@ additive.category          // false  ← 값이 falsy
 !additive.category         // true   ← 이걸로 검사하면 "미선언"으로 오판한다
 ```
 
-`in`은 **키의 존재**만 본다. 값이 `false`든 `0`이든 상관없다.
+`in`은 **키의 존재**만 봄. 값이 `false`든 `0`이든 상관없음.
 
-두 오류는 고치는 방법이 다르다 — 앞은 선언을 추가하는 것이고,
-뒤는 entity를 옮기거나 sketch로 바꾸는 것이다. 그래서 메시지도 다르다.
+두 오류는 고치는 방법이 다름 — 앞은 선언을 추가하는 것이고,
+뒤는 entity를 옮기거나 sketch로 바꾸는 것임. 그래서 메시지도 다름.
 
 ---
 
@@ -739,19 +739,19 @@ function exprJoins(name, m, sql, where) {
 }
 ```
 
-`break`는 루프를 끝내지만 `continue`는 다음 회차로 넘어간다.
-`{sale_price}` 처럼 점이 없는 참조는 fact 컬럼이라 조인이 필요 없으므로 넘긴다.
-점이 있는 `{product.unit_cost}` 만 조인 이름을 검사한다.
+`break`는 루프를 끝내지만 `continue`는 다음 회차로 넘어감.
+`{sale_price}` 처럼 점이 없는 참조는 fact 컬럼이라 조인이 필요 없으므로 넘김.
+점이 있는 `{product.unit_cost}` 만 조인 이름을 검사함.
 
 같은 뜻을 `if (tail) { ... }`로 감쌀 수도 있지만, **들여쓰기가 한 단계 줄어서**
-`continue` 쪽이 읽기 쉽다. 뒤따르는 검사가 길수록 차이가 커진다.
+`continue` 쪽이 읽기 쉬움. 뒤따르는 검사가 길수록 차이가 커짐.
 
-**초기 반환(guard clause)과 같은 발상이다** — 처리할 게 아닌 것을 위에서 걸러내고
-본론을 왼쪽에 붙여 쓴다.
+**초기 반환(guard clause)과 같은 발상임** — 처리할 게 아닌 것을 위에서 걸러내고
+본론을 왼쪽에 붙여 씀.
 
 ---
 
-## 17. 상수 하나로 문제를 옮기기 — `NULL` 을 값으로 바꾼다
+## 17. 상수 하나로 문제를 옮기기 — `NULL` 을 값으로 바꿈
 
 `includes/build.js` 의 `UNKNOWN`
 
@@ -762,31 +762,31 @@ const UNKNOWN = "(unknown)";
 ```
 
 dimension이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고, `ON` 절에서
-그 행은 매칭되지 않는다. GoogleSQL 에는 `IS NOT DISTINCT FROM` 이 있어서 `NULL = NULL`
-을 `TRUE` 로 보지만, 그것으로 풀지 않는다.
+그 행은 매칭되지 않음. GoogleSQL 에는 `IS NOT DISTINCT FROM` 이 있어서 `NULL = NULL`
+을 `TRUE` 로 보지만, 그것으로 풀지 않음.
 
-**BigQuery 가 그 연산자를 해시 조인 키로 쓰지 못하기 때문이다.** 등가 조인이면 양쪽을
-해시로 나눠 붙이는데, `IS NOT DISTINCT FROM` 은 일반 술어라 중첩 루프가 된다.
-평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌다.
+**BigQuery 가 그 연산자를 해시 조인 키로 쓰지 못하기 때문임.** 등가 조인이면 양쪽을
+해시로 나눠 붙이는데, `IS NOT DISTINCT FROM` 은 일반 술어라 중첩 루프가 됨.
+평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌음.
 
-구간 self-join 에서 CPU 한도를 넘겨 실패한다 ([findings.md](findings.md) 8).
+구간 self-join 에서 CPU 한도를 넘겨 실패함 ([findings.md](findings.md) 8).
 
-고치는 방법이 둘이었다.
+고치는 방법이 둘이었음.
 
 | | |
 |---|---|
-| 조인 술어를 바꾼다 | `COALESCE(l,'x') = COALESCE(r,'x')` — 조인마다 식이 붙는다 |
-| **값에서 `NULL` 을 없앤다** | 한 단계에서 `'(unknown)'` 으로 바꾸면 이후 조인이 전부 `=` 다 |
+| 조인 술어를 바꿈 | `COALESCE(l,'x') = COALESCE(r,'x')` — 조인마다 식이 붙음 |
+| **값에서 `NULL` 을 없앰** | 한 단계에서 `'(unknown)'` 으로 바꾸면 이후 조인이 전부 `=` 임 |
 
-뒤쪽을 골랐다. `NULL` 이 사라지는 것이 아니라 **이름을 얻는다** — 뜻은 그대로
-"값이 없는 bucket"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
-소비자도 `IS NULL` 대신 `= '(unknown)'` 을 쓴다.
+뒤쪽을 골랐음. `NULL` 이 사라지는 것이 아니라 **이름을 얻음** — 뜻은 그대로
+"값이 없는 bucket"(P6-1)이고, `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같음.
+소비자도 `IS NULL` 대신 `= '(unknown)'` 을 씀.
 
-`'(all)'` 과는 겹치지 않는다. `'(unknown)'` 은 값이 없는 bucket이고 `'(all)'` 은 그 축을
-rollup 한 행이다.
+`'(all)'` 과는 겹치지 않음. `'(unknown)'` 은 값이 없는 bucket이고 `'(all)'` 은 그 축을
+rollup 한 행임.
 
-**상수를 파일 맨 위에 둔 이유**도 여기 있다. 문자열이 여러 곳에 흩어지면 하나를
-고쳤을 때 나머지가 조용히 어긋난다 — `'(all)'` 과 `'(unknown)'` 둘 다 그렇다.
+**상수를 파일 맨 위에 둔 이유**도 여기 있음. 문자열이 여러 곳에 흩어지면 하나를
+고쳤을 때 나머지가 조용히 어긋남 — `'(all)'` 과 `'(unknown)'` 둘 다 그러함.
 
 ---
 
@@ -794,9 +794,9 @@ rollup 한 행이다.
 
 `includes/build.js` 의 `metricSQL`
 
-비교 컬럼은 8개인데 시프트 간격은 5개뿐이다. **간격 하나가 컬럼 여럿을 채운다** —
-`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋이 나온다.
-그래서 먼저 간격으로 묶는다.
+비교 컬럼은 8개인데 시프트 간격은 5개뿐임. **간격 하나가 컬럼 여럿을 채움** —
+`1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base` 셋이 나옴.
+그래서 먼저 간격으로 묶음.
 
 ```js
   const byInterval = new Map();
@@ -816,9 +816,9 @@ rollup 한 행이다.
     `  ${shiftAlias(c.interval)}.${valueColumn(name, c.period)} AS ${c.column}`);
 ```
 
-**`joins` 는 간격으로, `bases` 는 컬럼으로 돈다.** 길이가 다르다 (5 대 8).
-둘을 잇는 것은 `shiftAlias(interval)` 뿐이다 — 같은 간격이면 같은 alias 가 나오므로
-`bases` 가 `joins` 가 만든 alias 를 그대로 가리킨다.
+**`joins` 는 간격으로, `bases` 는 컬럼으로 돎.** 길이가 다르다 (5 대 8).
+둘을 잇는 것은 `shiftAlias(interval)` 뿐임 — 같은 간격이면 같은 alias 가 나오므로
+`bases` 가 `joins` 가 만든 alias 를 그대로 가리킴.
 
 `1 YEAR` 회차가 만드는 것:
 
@@ -830,15 +830,15 @@ FROM period_net_revenue AS c
 LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 ```
 
-`shiftAlias` 는 `"364 DAY"` 를 `"b_364_day"` 로 바꾼다. 간격 문자열이 그대로
-식별자가 되므로 공백과 대문자를 지운다 — 값 하나에서 이름을 만드는 방식이라
-간격을 추가해도 alias 규칙을 손댈 일이 없다.
+`shiftAlias` 는 `"364 DAY"` 를 `"b_364_day"` 로 바꿈. 간격 문자열이 그대로
+식별자가 되므로 공백과 대문자를 지움 — 값 하나에서 이름을 만드는 방식이라
+간격을 추가해도 alias 규칙을 손댈 일이 없음.
 
 ---
 
 ## `build.js` 읽는 순서
 
-위 패턴을 알면 이 순서로 읽는 것이 가장 빠르다.
+위 패턴을 알면 이 순서로 읽는 것이 가장 빠름.
 
 | 순서 | 대상 | 무엇을 보나 |
 |---|---|---|
@@ -847,41 +847,41 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 | 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
 | 4 | `foldExpr` · `dimFold` | `additive` → 합치는 함수 선택 (14번) |
 | 5 | `baseCTE` · `gridCTE` | dimension 좁히기와 grid 채우기 |
-| 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만든다 |
+| 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만듦 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
-**6과 7이 나뉘어 있는 것이 핵심이다.** 기간 확장을 `metricSQL` 안의 CTE 로 두면
+**6과 7이 나뉘어 있는 것이 핵심임.** 기간 확장을 `metricSQL` 안의 CTE 로 두면
 `metricSQL` 이 그것을 여섯 번 참조하게 되고(본 쿼리 1 + 비교 조인 5), 같은 집계가
-그만큼 돈다. CTE 는 결과를 저장하지 않기 때문이다.
+그만큼 돎. CTE 는 결과를 저장하지 않기 때문임.
 
 ```
 periodSQL   daily_ → 채운 grid → 누적 → '(all)' rollup  → period_<metric> 테이블
 metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metric> 테이블
 ```
 
-`periodSQL` 은 CTE 세 개를 이어 붙이고 마지막에 rollup 단계를 붙인다.
+`periodSQL` 은 CTE 세 개를 이어 붙이고 마지막에 rollup 단계를 붙임.
 
 ```
 base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelect
 ```
 
-`metricSQL` 은 두 덩이다.
+`metricSQL` 은 두 덩임.
 
 ```
 1) joins/bases  간격마다 조인 한 줄, 컬럼마다 한 줄   → 길이가 다른 두 배열 (18번)
 2) 조립          SELECT + joins                       → 최종 문자열
 ```
 
-`ctx`는 Dataform이 넘겨주는 객체다. `ctx.ref(name)`이 이름을 정규화된 테이블
-경로로 바꾸면서 **동시에 의존 관계를 등록한다.** 그래서 `build.js`는 프로젝트 이름도,
-데이터셋 이름도 모른다 — 알 필요가 없게 만든 것이다.
+`ctx`는 Dataform이 넘겨주는 객체임. `ctx.ref(name)`이 이름을 정규화된 테이블
+경로로 바꾸면서 **동시에 의존 관계를 등록함.** 그래서 `build.js`는 프로젝트 이름도,
+데이터셋 이름도 모름 — 알 필요가 없게 만든 것임.
 
 ---
 
 ## 19. `publish()` 체이닝과 `ctx` 콜백 — generator 의 모양
 
 `definitions/semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js` ·
-`definitions/metadata/gen_registry.js` 넷이 같은 모양이다.
+`definitions/metadata/gen_registry.js` 넷이 같은 모양임.
 
 ```js
 Object.entries(METRICS).forEach(([name, m]) => {
@@ -891,12 +891,12 @@ Object.entries(METRICS).forEach(([name, m]) => {
 });
 ```
 
-**선언 하나가 테이블 하나가 된다** (P17). 지표를 추가하면 `forEach` 가 한 바퀴 더 돈다.
+**선언 하나가 테이블 하나가 됨** (P17). 지표를 추가하면 `forEach` 가 한 바퀴 더 돎.
 
 ### `ctx` 가 콜백으로 오는 이유
 
 `publish()` 의 첫 인자(config)는 **컴파일 타임에 확정**되지만, `query` 와 `preOps` 는
-**콜백**이다. Dataform 이 실행 직전에 `ctx` 를 넣어 부른다.
+**콜백**임. Dataform 이 실행 직전에 `ctx` 를 넣어 부름.
 
 ```js
 ctx.ref(name)        이름 → 정규화된 테이블 경로. 동시에 의존 관계를 등록한다
@@ -905,14 +905,14 @@ ctx.incremental()    지금이 증분 실행인가. 첫 적재에서는 false
 ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
 ```
 
-`ctx.incremental()` 이 **config 가 아니라 콜백 안에 있는 것**이 중요하다.
+`ctx.incremental()` 이 **config 가 아니라 콜백 안에 있는 것**이 중요함.
 첫 적재에서는 `false` 라 증분 조건이 붙지 않고 전 기간을 만들고, 이후 실행에서만
-`true` 가 된다. config 에서 판단했다면 그 구분을 할 수 없다.
+`true` 가 됨. config 에서 판단했다면 그 구분을 할 수 없음.
 
-`build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 모른다 —
-**알 필요가 없게 만든 것이다.**
+`build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 모름 —
+**알 필요가 없게 만든 것임.**
 
-### 계산된 키로 컬럼 문서를 만든다
+### 계산된 키로 컬럼 문서를 만듦
 
 ```js
 const columns = {
@@ -923,16 +923,16 @@ for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 �
 ```
 
 컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(3번). dimension은 개수가 달라서
-루프로 붙인다. 이렇게 만든 설명이 **BigQuery 콘솔의 컬럼 설명으로 그대로 간다.**
+루프로 붙임. 이렇게 만든 설명이 **BigQuery 콘솔의 컬럼 설명으로 그대로 감.**
 
 ### 넷의 차이
 
 | | 읽는 것 | 특징 |
 |---|---|---|
-| `gen_daily.js` | `sem_*` | 조인이 실행된다. 증분이면 `preOps` 로 구간을 지운다 |
+| `gen_daily.js` | `sem_*` | 조인이 실행됨. 증분이면 `preOps` 로 구간을 지움 |
 | `gen_period.js` | `daily_` | 기간 4종 확장 |
 | `gen_metric.js` | `period_` | 시프트 self-join |
-| `gen_registry.js` | **없음** | 선언만 읽어 리터럴로 만든다. `ref()` 가 하나도 없다 |
+| `gen_registry.js` | **없음** | 선언만 읽어 리터럴로 만듦. `ref()` 가 하나도 없음 |
 
 ---
 
