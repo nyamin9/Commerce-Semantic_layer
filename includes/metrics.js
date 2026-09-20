@@ -9,7 +9,7 @@
 // 축에 false가 나오면 기록할 사실이 아니라 고칠 신호다 — entity가 틀렸다 (P10).
 //
 // dimension 은 entity 가 정한다. 지표가 좁힐 수 없다 — daily_ 가 fallback 계층이라
-// 여기서 빼면 복원이 안 된다. 큐브(period_·metric_)만 좁히려면 serving_dims 를 쓴다.
+// 여기서 빼면 복원이 안 된다. period_·metric_ 의 dimension 만 좁히려면 serving_dims 를 쓴다.
 //
 //   buyer_count: { serving_dims: ["country", "purchase_type"] }
 //   → daily_ 는 dimension 전체, period_·metric_ 만 2개
@@ -29,7 +29,7 @@ const uniform = (entity, value) => {
   return acc;
 };
 
-const HLL_PRECISION = 15;   // 고정. 바꾸면 과거 sketch와 병합할 수 없다
+const HLL_PRECISION = 15;   // 고정. 바꾸면 과거 sketch 와 병합할 수 없다
 const hll = (col) => `HLL_COUNT.INIT({${col}}, ${HLL_PRECISION})`;
 
 const METRICS = {
@@ -74,7 +74,7 @@ const METRICS = {
   },
   buyer_count: {
     // 고객 하나가 여러 날에 걸치므로 날짜축 비가산이다. 고객 grain fact가
-    // 없어 entity를 옮길 수 없으므로 sketch로 저장한다 (P10-2).
+    // 없어 entity를 옮길 수 없으므로 sketch 로 저장한다 (P10-2).
     //
     // 매출 인식 필터를 걸지 않는다. order_item_status 가 dimension이라 소비 시점에
     // 거를 수 있고, 필터를 박으면 전체 구매자를 낼 방법이 없어진다 (P4).
@@ -170,7 +170,7 @@ const EXCLUDED = {
   // RATIOS 로 못 넣는 이유는 분자·분모가 지표가 아니라 같은 지표의 다른 dimension
   // 값이기 때문이다 — buyer_count where repeat / buyer_count where '(all)'
   repurchase_rate:     { reason: "purchase_type 으로 조회 가능. 분자·분모가 지표가 아니라 dimension 값이라 RATIOS 에 못 넣는다" },
-  delivery_days_p50:   { reason: "중앙값은 sketch로도 병합 불가 (P10-3)" },
+  delivery_days_p50:   { reason: "중앙값은 sketch 로도 병합 불가 (P10-3)" },
 };
 
 module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };

@@ -7,7 +7,7 @@
 //   daily        그날 하루. 집계하지 않고 그대로 통과시킨다
 //   cumulative   기간 시작부터 record_date 까지 누계다
 //
-// weekly·monthly·yearly 는 없다. 완결 기간의 rollup은 누계와 같은 값이기 때문이다 —
+// weekly·monthly·yearly 는 없다. 완결 기간의 rollup 은 누계와 같은 값이기 때문이다 —
 // 실측으로 10,080 조합 전부 일치했다. end_flag 로 골라 쓴다.
 //
 //   monthly  =  mtd  where is_month_end
@@ -21,11 +21,11 @@
 // 조인하고 좁은 기간을 IF 로 걸러내기 때문에, 마지막 것이 조인 범위가 된다.
 //
 // ── compare ──────────────────────────────────────────────────
-// 증감률이 아니라 기준값 컬럼을 만든다 (P14). record_date 를 시프트해 같은 기간
+// 증감률이 아니라 기준값 컬럼을 만든다 (P14). record_date 를 shift 해 같은 기간
 // 컬럼끼리 맞춘다.
 //
 // 간격은 기간마다 다를 수 있다. wtd 의 YoY 가 1 YEAR 이면 요일이 어긋난다 —
-// 2026-03-02(월)의 1년 전은 일요일이다. 주간 비교는 52주(364일) 시프트가
+// 2026-03-02(월)의 1년 전은 일요일이다. 주간 비교는 52주(364일) shift 가
 // 표준이며 같은 요일에 떨어진다.
 //
 // 누계에 dod 는 넣지 않는다. "어제까지 월 누계 대비 오늘까지"는 결국 오늘
@@ -70,8 +70,8 @@ const CUMULATIVE = Object.keys(PERIODS).filter((p) => PERIODS[p].type === "cumul
 // 완결 플래그 컬럼. record_date 에서 결정론적으로 나온다
 const END_FLAGS = CUMULATIVE.map((p) => ({ name: PERIODS[p].end_flag, trunc: PERIODS[p].trunc }));
 
-// 서로 다른 시프트 간격 → 그 간격으로 가져올 [기간, 라벨] 목록.
-// metricSQL 이 자기조인을 간격 단위로 묶는 근거다. 8개 비교 컬럼이 5번의
+// 서로 다른 shift 간격 → 그 간격으로 가져올 [기간, 라벨] 목록.
+// metricSQL 이 self-join 을 간격 단위로 묶는 근거다. 8개 비교 컬럼이 5번의
 // 조인으로 채워진다 — 1 DAY · 1 WEEK · 1 MONTH · 1 YEAR · 364 DAY
 const SHIFTS = (() => {
   const acc = {};

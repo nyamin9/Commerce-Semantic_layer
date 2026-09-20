@@ -1,4 +1,4 @@
-// SQL builder. 정책이 실제로 집행되는 곳이다.
+// SQL builder. 선언의 규칙을 실제로 검사하는 곳이다.
 //   P11  daily_ 와 metric_ 둘 다 재집계 가능한 형태로 저장한다
 //   P12  비율도 증감률도 컬럼으로 저장하지 않는다
 //   P14  비교는 기준값만. 날짜 조인으로 만들고 LAG를 쓰지 않는다
@@ -21,7 +21,7 @@ const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 //
 // 뜻은 그대로다 (P6-1). 바뀌는 것은 조인이다. NULL 을 남기면 조인을
 // IS NOT DISTINCT FROM 으로 써야 하는데, BigQuery 가 그것을 해시 조인 키로 쓰지
-// 못해 구간 자기조인이 중첩 루프로 떨어진다.
+// 못해 구간 self-join 이 중첩 루프로 떨어진다.
 //
 //   실측 2026-09-16. period_buyer_count 의 누계 단계.
 //   IS NOT DISTINCT FROM  CPU 88,022초 — 한도 5,100 초과로 실패
@@ -38,15 +38,15 @@ function resolveDims(name, m) {
 
   // daily_ 는 언제나 entity 의 dimension 전체를 갖는다. 지표가 좁히지 못한다.
   //
-  // daily_ 가 fallback 계층이기 때문이다 — 큐브에 없는 조합은 여기서 낸다.
+  // daily_ 가 fallback 계층이기 때문이다 — serving_dims 에 없는 조합은 여기서 낸다.
   // 여기서 dimension 을 빼면 나중에 그 축으로 보고 싶어도 복원할 방법이 없다.
   // 20만 행 · 17 MB 라 넓게 둬도 비용이 없다.
   //
-  // 비용이 드는 곳은 큐브다. 좁히려면 serving_dims 를 쓴다 (P4-1).
+  // 비용이 드는 곳은 period_ 의 dimension 조합이다. 좁히려면 serving_dims 를 쓴다 (P4-1).
   if (m.dims) {
     throw new Error(
       `[${name}] 지표는 dims 를 선언할 수 없다. daily_ 는 entity 의 dimension 전체를 갖는다. ` +
-      `큐브를 좁히려면 serving_dims 를 쓴다`
+      `period_ 의 dimension 을 좁히려면 serving_dims 를 쓴다`
     );
   }
 
@@ -62,7 +62,7 @@ function resolveDims(name, m) {
     }
     if (m.additive[d] === false) {
       throw new Error(
-        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch로 바꾼다 (P10)`
+        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch 로 바꾼다 (P10)`
       );
     }
     if (def.via && !(def.via in (e.joins || {}))) {
@@ -86,7 +86,7 @@ function resolveDims(name, m) {
 //
 // 접두사가 없으면 조인한 dim 과 이름이 겹치는 순간 모호해진다 — unit_cost 는
 // fact 와 sem_dim_products 양쪽에, user_id 는 fact 와 sem_dim_users 양쪽에 있다.
-// dataform compile 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터진다.
+// dataform compile 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 에러가 난다.
 //
 // product 는 entities.js 에 적힌 조인 이름이지 builder 가 만든 이름이 아니다.
 // 선언이 builder 내부를 모르게 둔다.
@@ -224,7 +224,7 @@ GROUP BY ${seq(dims.length + 1)}`.trim();
 function foldExpr(col, additive) {
   switch (additive) {
     case true:     return `SUM(${col})`;
-    // sketch는 sketch로 남긴다. MERGE 로 정수를 만들면 더 접을 수 없다 (P11)
+    // sketch 는 sketch 로 남긴다. MERGE 로 정수를 만들면 더 rollup 할 수 없다 (P11)
     case "sketch": return `HLL_COUNT.MERGE_PARTIAL(${col})`;
     case "last":   return `ANY_VALUE(${col} HAVING MAX ${RECORD_DATE})`;
     default:       return null;
@@ -238,17 +238,17 @@ function dimFold(name, m, dims) {
   if (kinds.size > 1) {
     throw new Error(
       `[${name}] dimension 축의 가산성이 섞여 있다: ${[...kinds].join(" · ")}. ` +
-      `한 컬럼으로 접을 수 없다 (P9)`
+      `한 컬럼으로 rollup 할 수 없다 (P9)`
     );
   }
   const kind = kinds.size ? [...kinds][0] : m.additive.time;
   if (foldExpr("x", kind) === null) {
-    throw new Error(`[${name}] dimension 축 가산성 '${kind}' 는 접을 수 없다 (P10)`);
+    throw new Error(`[${name}] dimension 축 가산성 '${kind}' 는 rollup 할 수 없다 (P10)`);
   }
   return kind;
 }
 
-// 누계를 만들 수 있는가. 가산은 창 함수로, sketch는 구간 병합으로 만든다.
+// 누계를 만들 수 있는가. 가산은 window function 으로, sketch 는 구간 병합으로 만든다.
 // 둘 다 아니면 daily 컬럼 하나만 남는다 (P10-3)
 const canCumulate = (m) => m.additive.time === true || m.additive.time === "sketch";
 
@@ -256,7 +256,7 @@ const canCumulate = (m) => m.additive.time === true || m.additive.time === "sket
 const usablePeriods = (m) => (canCumulate(m) ? Object.keys(PERIODS) : ["daily"]);
 
 // 값 컬럼 이름. gen_period · gen_metric · gen_registry 가 같은 규칙을 써야 한다.
-// 세 곳에 따로 쓰면 언젠가 어긋나고, 어긋나도 아무도 모른다 (P19)
+// 세 곳에 따로 쓰면 언젠가 어긋나고, 어긋나도 드러나지 않는다 (P19)
 const valueColumns = (name, m) => usablePeriods(m).map((p) => valueColumn(name, p));
 
 // 비교 기준값 계획. [{ period, label, interval, column }] 을 기간 선언 순서로.
@@ -275,7 +275,7 @@ function comparePlan(m) {
 // 값이 '(all)' 하나뿐이라 자리만 찬다 (P4).
 //
 // 지표가 serving_dims 를 선언하면 그것을, 생략하면 entity 것을 쓴다.
-// 큐브만 좁히고 daily_ 는 넓게 두고 싶을 때 쓴다 — dimension 하나가 행 수를
+// period_ 의 dimension 만 좁히고 daily_ 는 넓게 두고 싶을 때 쓴다 — dimension 하나가 행 수를
 // 곱하는 곳은 period_ 이고 daily_ 는 거의 안 커진다.
 //
 //   metrics.js   buyer_count: { serving_dims: ["country", "purchase_type"] }
@@ -302,7 +302,7 @@ function servingAxes(name, m) {
 //
 //   monthly  =  mtd  where is_month_end
 //
-// 완결 기간의 rollup이 누계와 같은 값이라 rollup 기간을 따로 만들지 않는다.
+// 완결 기간의 rollup 이 누계와 같은 값이라 rollup 기간을 따로 만들지 않는다.
 // 실측으로 10,080 조합 전부 일치했다 (2026-09-16).
 const endFlagNames = () => END_FLAGS.map((f) => f.name);
 
@@ -322,10 +322,10 @@ const ALL = "(all)";
 //
 // ── rollup 이 PTD 보다 나중인 이유 ──────────────────────────
 // 순서를 바꿔도 값은 같다. SUM 은 결합법칙이 성립하고, HLL 병합은 합집합이라
-// 조합별 WTD sketch를 합친 것이 전체 WTD sketch와 같다.
+// 조합별 WTD sketch 를 합친 것이 전체 WTD sketch 와 같다.
 //
 // 비용은 전혀 다르다. 먼저 rollup 하면 '(all)' 행의 sketch 가 조밀해지는데, sketch
-// 누계는 1년 구간을 자기조인해 병합하므로 그 조밀한 sketch를 하루당 180여 번씩
+// 누계는 1년 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를 하루당 180여 번씩
 // 읽는다. buyer_count 가 CPU 1,748,227초를 써서 한도(5,100)에 걸렸다 (2026-09-16).
 //
 // base 에서 누적하면 sketch 가 희소한 채로 조인되고, rollup 은 누적이 끝난 뒤
@@ -358,7 +358,7 @@ function baseCTE(name, m, axes) {
 // 조합 수만큼 곱해지고, 데이터가 없는 미래 날짜에 행이 생긴다.
 function gridCTE(ctx, m, axes) {
   const sketch = m.additive.time === "sketch";
-  // sketch는 없으면 NULL 로 둔다. MERGE 가 NULL 을 무시한다.
+  // sketch 는 없으면 NULL 로 둔다. MERGE 가 NULL 을 무시한다.
   // 가산은 0 이어야 누적이 앞 구간을 그대로 들고 간다
   const fill = sketch ? "a.v" : "COALESCE(a.v, 0)";
 
@@ -376,8 +376,8 @@ function gridCTE(ctx, m, axes) {
 ${axes.map((x) => `   AND a.${x} = c.${x}`).join("\n")}`;
 }
 
-// 가산 — 창 함수. grid를 한 번만 읽고 누계 3종을 동시에 만든다.
-// 기간별로 블록을 나누면 grid가 그만큼 재계산된다
+// 가산 — window function. grid 를 한 번만 읽고 누계 3종을 동시에 만든다.
+// 기간별로 블록을 나누면 grid 가 그만큼 재계산된다
 function cumWindowed(name, axes) {
   const part = axes.length ? `${axes.join(", ")}, ` : "";
   const wins = CUMULATIVE.map((p) =>
@@ -393,9 +393,9 @@ ${wins.join(",\n")}
 
 // sketch — HLL_COUNT.MERGE_PARTIAL 은 analytic function 을 지원하지 않는다.
 // dry run 은 통과하고 실행에서 떨어진다. 컴파일로도 dry run 으로도 못 잡는다.
-// 그래서 창 함수를 못 쓰고 [기간시작, 그날] 구간을 조인해 병합한다.
+// 그래서 window function 을 못 쓰고 [기간시작, 그날] 구간을 조인해 병합한다.
 //
-// 기간마다 블록을 따로 만들면 grid가 기간 수만큼 재계산되어 CPU 한도에 걸린다
+// 기간마다 블록을 따로 만들면 grid 가 기간 수만큼 재계산되어 CPU 한도에 걸린다
 // (실측 11,924초 / 한도 4,300). 그래서 가장 넓은 구간(ytd)으로 한 번만 조인하고
 // 좁은 기간은 IF 로 걸러낸다 — 집계 함수가 NULL 을 무시하는 성질을 쓴다.
 //
@@ -432,7 +432,7 @@ function cumNone(name, axes) {
 // 마지막 겹 — 각 축의 '(all)' 행을 만든다.
 //
 // GROUPING SETS 를 쓰지 않는다. BigQuery 가 집합마다 입력을 다시 읽어서, 축이
-// 4개면 cum 이 16번 재계산된다. cum 안에 1년 구간 자기조인이 들어 있는 sketch
+// 4개면 cum 이 16번 재계산된다. cum 안에 1년 구간 self-join 이 들어 있는 sketch
 // 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다 (2026-09-16).
 //
 // 대신 마스크를 CROSS JOIN 으로 붙인다. cum 을 한 번만 읽고 행을 2^n 배로 펼친
@@ -491,14 +491,14 @@ ${rollupSelect(name, m, axes).trim()}`.trim();
 }
 
 // ── 3단계: metric — 비교 기준값 ──────────────────────────────
-// period_ 를 시프트해 자기 자신과 조인한다. 물리 테이블이라 재계산이 없다.
+// period_ 를 shift 해 자기 자신과 조인한다. 물리 테이블이라 재계산이 없다.
 //
 // CTE 로 두면 같은 집계가 조인 수만큼 돈다. dimension 7개 지표에서 CPU 3,600초를 써
 // BigQuery on-demand 의 CPU/바이트 비율 제한에 걸렸다 — 스캔은 14 MB 라 비용이
 // 아니라 낭비가 문제였다 (2026-09-13). 조인 술어를 바꿔도 변하지 않았고
 // (= · COALESCE · IS NOT DISTINCT FROM 전부 3,600대) 테이블로 저장하니 통과했다.
 //
-// 조인은 간격 단위로 묶는다. 비교 컬럼 8개가 서로 다른 시프트 5개
+// 조인은 간격 단위로 묶는다. 비교 컬럼 8개가 서로 다른 shift 5개
 // (1 DAY · 1 WEEK · 1 MONTH · 1 YEAR · 364 DAY)에서 나오므로 조인도 5번이다.
 //
 // 간격이 기간마다 다르다. wtd 의 YoY 는 364일이어야 요일이 맞는다 —

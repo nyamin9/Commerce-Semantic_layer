@@ -12,7 +12,7 @@ includes/            선언 계층 — 사람이 쓰는 곳
   periods.js     86   기간 선언
   entities.js   167   entity 와 join graph
   metrics.js    176   지표 선언
-  build.js      549   SQL builder — 정책이 집행되는 곳
+  build.js      549   SQL builder — 선언을 검사하고 SQL 로 바꾸는 곳
 
 definitions/         Dataform action — 선언을 테이블로 만드는 곳
   sources/declarations.js        28   DW 읽기 전용 참조
@@ -24,7 +24,7 @@ definitions/         Dataform action — 선언을 테이블로 만드는 곳
   semantic/gen_metric.js          64   metric_<metric>
   metadata/gen_registry.js       158   metric_registry
 
-infra/               실행 계획 — GCP 리소스 선언
+infra/               실행 계획 — GCP resource 선언
   workflows.json  63   언제 어떤 태그를 어떤 계정으로 돌리는가
   apply.js       119   위 선언을 Dataform 에 적용
 
@@ -38,8 +38,8 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 | 지표 추가 | `metrics.js` 한 항목 | 테이블 3개 + registry 1행 |
 | 새 fact 위의 지표 | `entities.js` + `metrics.js` | 위와 같고 entity 항목이 하나 늚 |
 | dimension 추가 | `entities.js` 의 `dims` | 그 entity 의 모든 지표 |
-| 서빙 dimension 변경 | `entities.js` 의 `serving_dims` | 그 entity 의 모든 지표의 큐브 |
-| 한 지표만 큐브를 좁힘 | `metrics.js` 의 `serving_dims` | 그 지표의 `period_`·`metric_` 만 |
+| 서빙 dimension 변경 | `entities.js` 의 `serving_dims` | 그 entity 의 모든 지표의 dimension 조합 |
+| 한 지표만 dimension 을 좁힘 | `metrics.js` 의 `serving_dims` | 그 지표의 `period_`·`metric_` 만 |
 | 기간 추가 | `periods.js` 한 항목 | 전 지표에 값 컬럼 1개 + 비교 컬럼 n개 |
 | 비교 간격 변경 | `periods.js` 의 `compare` | 그 기간의 비교 컬럼 |
 | 갱신 방식 변경 | `entities.js` 의 `refresh` | 그 entity 의 `daily_` |
@@ -53,22 +53,22 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 | | 어디 | 뜻 |
 |---|---|---|
 | `dims` | `entities.js` | 그 fact 의 dimension 전체. **`daily_` 가 언제나 이것을 가짐** |
-| `serving_dims` | `entities.js` | 그 entity 지표들의 큐브 축. 기본값 |
-| `serving_dims` | `metrics.js` | 이 지표만의 큐브 축. 생략하면 entity 것 |
+| `serving_dims` | `entities.js` | 그 entity 지표들의 `period_` dimension. 기본값 |
+| `serving_dims` | `metrics.js` | 이 지표만의 `period_` dimension. 생략하면 entity 것 |
 
 - **지표는 `dims` 를 선언할 수 없음.** `daily_` 가 fallback 계층이라 거기서 dimension 을 빼면 나중에 그
   축으로 보고 싶어도 복원할 방법이 없음
-- 20만 행 · 17 MB 라 넓게 둬도 비용이 없고, 비용이 드는 곳은 큐브임
+- 20만 행 · 17 MB 라 넓게 둬도 비용이 없고, 비용이 드는 곳은 `period_` 의 dimension 조합임
 
 ```js
 // entity 기본값을 쓴다 — 지금 17개 지표 전부 이렇다
 net_revenue: { entity: "order_item", expr: "SUM({net_revenue})", ... }
 
-// 이 지표만 큐브를 좁힌다. daily_ 는 dimension 전체를 그대로 갖는다
+// 이 지표만 period_ 의 dimension 을 좁힌다. daily_ 는 dimension 전체를 그대로 갖는다
 buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"], ... }
 ```
 
-- 큐브가 커졌을 때 쪼개는 길이기도 함
+- dimension 조합이 커졌을 때 쪼개는 길이기도 함
 - 자세한 내용은 [porting.md](porting.md) 4장
 
 ---
@@ -135,7 +135,7 @@ PERIODS = {
 | `serving_dims` | `dims` 중 `period_`·`metric_` 이 가질 것. 지표가 덮어쓸 수 있음 | 서빙 테이블의 컬럼과 행 수 |
 | `refresh` | `"incremental"` 또는 `"table"` | `daily_` 의 갱신 방식 |
 
-- **`joins` 와 `dims` 를 나눠 선언함.** 둘을 합치면 조인에 부를 이름이 없어짐
+- **`joins` 와 `dims` 를 나눠 선언함.** 둘을 합치면 조인에 붙일 이름이 없어짐
 - 이름이 있어야 지표 수식이 dimension 테이블의 컬럼을 가리킬 수 있음
 
 ```js
@@ -145,7 +145,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 ```
 
 - `product` 는 여기 적힌 이름이지 builder 가 만든 alias 가 아님
-- **선언이 builder 내부를 모름.** 이 이름이 그대로 SQL alias 가 되므로 예약어면 컴파일 타임에 거부됨
+- **선언이 builder 내부에 기대지 않음.** 이 이름이 그대로 SQL alias 가 되므로 예약어면 컴파일 타임에 거부됨
 
 - 현재 4개 entity 가 있음
 
@@ -191,11 +191,11 @@ false     복원 불가                 생성 거부
 
 - `unit_cost` — fact 와 `sem_dim_products` 양쪽에 있음
 - `user_id` — fact 와 `sem_dim_users` 양쪽에 있음
-- `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터짐
+- `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 에러가 남
 
 ### 3-5. `build.js` (549줄)
 
-- 정책이 실제로 집행되는 곳
+- 선언의 규칙을 실제로 검사하는 곳
 - 초기에 한 번 쓰고 거의 건드리지 않음
 
 | 함수 | 역할 |
@@ -224,7 +224,7 @@ grid AS (  -- sem_dim_date × base 의 dimension 조합. 없으면 0 / NULL
   FROM (dates) d CROSS JOIN (SELECT DISTINCT ... FROM base) c
   LEFT JOIN base a ON a.record_date = d.record_date AND a.country = c.country AND ...
 ),
-cum AS (   -- PTD. 가산은 창 함수, sketch 는 구간 self-join
+cum AS (   -- PTD. 가산은 window function, sketch 는 구간 self-join
   SELECT record_date, ..., v AS net_revenue,
          SUM(v) OVER (PARTITION BY ..., DATE_TRUNC(record_date, MONTH) ORDER BY record_date) AS net_revenue_mtd, ...
   FROM grid
@@ -244,7 +244,7 @@ GROUP BY 1, 2, 3, 4, 5
 |---|---|---|
 | 1 | `resolveDims` · `renderExpr` | 선언 검증. 어떤 잘못을 어떻게 잡는지 |
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 |
-| 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만듦 |
+| 3 | `dailySQL` | 1·2를 써서 SQL 문자열 하나를 만듦 |
 | 4 | `foldExpr` · `dimFold` | `additive` → 함수 선택 |
 | 5 | `baseCTE` · `gridCTE` | dimension 좁히기와 빈 날 채우기 |
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | PTD 두 갈래와 `'(all)'` 행 |
@@ -279,13 +279,13 @@ GROUP BY 1, 2, 3, 4, 5
 | `sem_dim_date` | 2018~2031 날짜. `grid` 의 날짜 원천 |
 | `sem_fct_*` (4개) | surrogate key 부여, 자연키 제거, grain 보증 |
 
-- 각 파일에 게이트 assertion 이 붙음
+- 각 파일에 gate assertion 이 붙음
 - 깨지면 파이프라인이 멈춤
 
 ### 4-3. `assertions/partition_contract.js`
 
 - 마트의 파티션 컬럼이 `entities.js` 의 `date_col` 과 같은지 봄
-- **게이트임** — 우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춤
+- **gate 임** — 우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춤
 
 - 두 선언은 서로를 읽지 않음
 
@@ -306,7 +306,7 @@ entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축�
 ### 4-4. `assertions/upstream_contract.js` (86줄)
 
 - DW 가 계약을 어겼는지 감시함
-- **게이트가 아니라 감시임** — 깨져도 파이프라인은 돎
+- **gate 가 아니라 감시임** — 깨져도 파이프라인은 돎
 - 원인이 dbt-airflow 쪽에 있어 우리가 고칠 수 없기 때문임
 - 태그가 `monitoring` 이라 별도 워크플로로 돎
 
@@ -349,7 +349,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
 ```
 gen_daily.js    resolveDims(name, m)   →  allDims(m.entity)            entity 전체
-gen_period.js   servingAxes(name, m)   →  m.serving_dims || entity 것   큐브 축
+gen_period.js   servingAxes(name, m)   →  m.serving_dims || entity 것   period_ dimension
 gen_metric.js   servingAxes(name, m)   →  같음
 ```
 
@@ -366,7 +366,7 @@ metric_buyer_count    dimension 2개
 ```
 
 - 반대 방향도 막혀 있음
-- `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로 **큐브는 언제나 `daily_` 의 부분집합**임
+- `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로 **`serving_dims` 는 언제나 `daily_` dimension 의 부분집합**임
 - `dims` 에 없는 것을 `serving_dims` 에 적으면 컴파일이 거부함
 
 ### 4-6. `metadata/gen_registry.js` (158줄)
@@ -389,7 +389,7 @@ EXCLUDED   의도적으로 만들지 않는다. 사유를 남긴다   is_generat
 
 ## 5. `infra/` — 실행 계획
 
-- Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스라 git 에 남지
+- Dataform 의 release configuration 과 workflow configuration 은 GCP resource 라 git 에 남지
   않음
 - 레포만 보고는 무엇이 언제 도는지 알 수 없음
 
@@ -411,7 +411,7 @@ No actions to run.
 ```
 
 - 매칭되는 액션이 없으면 아무것도 안 만들고 `SUCCEEDED` 로 끝남
-- 스케줄이 매일 돌면서 0개를 실행하고 알림도 없음 — 데이터가 며칠 멈춰야 알아챔
+- 스케줄이 매일 돌면서 0개를 실행하고 알림도 없음 — 데이터가 며칠 멈춘 뒤에야 알게 됨
 
 - 그래서 `apply.js` 가 적용 전에 둘을 봄
 

@@ -43,8 +43,10 @@
 | `event_type` | — | fact 자체 | 조인 없음 | | | | ● |
 | `traffic_source` | — | fact 자체 | 조인 없음 | | | | ● |
 
-- **`country`와 `acquisition_channel`만 네 entity를 가로지름.** 이 둘이 conformed
-  dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축은 이것뿐임 (P7)
+- **네 entity 를 모두 가로지르는 것은 `country` 하나임.** `acquisition_channel` 은
+  `order_item`·`order`·`session` 셋에 있음
+- 이 둘이 conformed dimension 이고, 서로 다른 fact 의 지표를 나란히 놓을 수 있는 축은
+  이것뿐임 (P7)
 
 - `purchase_type` 만 fact 를 조인해서 옴
 - `sem_fct_orders` 에서 한 번 계산하고 `order_item` 은 `order_header` 라는 이름으로 가져옴 —
@@ -61,7 +63,7 @@
 | `user_event` | `country` |
 
 - 지표별로 덮어쓸 수도 있음
-- `metrics.js` 에 `serving_dims` 를 적으면 그 지표의 큐브만 좁아지고 `daily_` 는 넓게 남음 —
+- `metrics.js` 에 `serving_dims` 를 적으면 그 지표의 dimension 조합만 좁아지고 `daily_` 는 넓게 남음 —
   dimension 하나가 행 수를 곱하는 곳은 `period_` 이고 `daily_` 는 거의 안 커지기 때문임
 
 - **`daily_` 쪽은 좁힐 수 없음.** 지표가 `dims` 를 선언하면 컴파일이 거부함
@@ -69,7 +71,7 @@
 
 - 나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
   있음
-- grid가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없음
+- grid 가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없음
 
 - **`order`에 상품 dimension이 비어 있는 것은 누락이 아님.** 한 주문이 여러 상품을 포함하므로 주문 grain에서
   카테고리는 정의되지 않음
@@ -112,7 +114,7 @@ net_revenue: {
 
 ### 2-2. 단계 1 — `daily_net_revenue`
 
-- builder가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
+- builder 가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
   `date_col` + dimension으로 `GROUP BY` 함
 - **조인이 실행되는 곳은 여기 한 번뿐임** (P5)
 
@@ -144,7 +146,7 @@ GROUP BY 1, 2, 3
 
 ### 2-3. 단계 2 — `period_net_revenue`
 
-- `daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 폄
+- `daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 펼친 것임
 - 한 행이 "그 `record_date` 의 모든 것" 임 (P13)
 
 - 세 단계임
@@ -185,12 +187,12 @@ GROUP BY 1, 2, 3, 4, 5
 > ([findings.md](findings.md) 7).
 
 > **rollup 이 PTD 보다 나중인 이유.** 순서를 바꿔도 값은 같지만, 먼저 rollup 하면 `'(all)'`
-> 행의 sketch가 조밀해지고 그것을 1년 구간 자기조인에서 하루당 180여 번씩 읽음.
+> 행의 sketch 가 조밀해지고 그것을 1년 구간 self-join 에서 하루당 180여 번씩 읽음.
 
 - `grid` 는 `sem_dim_date` 를 기준 날짜 목록로 빈 날짜를 채움 (P15-1)
 - 활동한 날에만 누계를 만들면 rollup 하는 순간 대부분이 사라짐 ([findings.md](findings.md) 4)
 
-- `cum` 은 가산이면 창 함수, sketch면 구간 자기조인임
+- `cum` 은 가산이면 window function, sketch 면 구간 self-join 임
 - **출력 컬럼은 양쪽이 같음.**
 
 ```sql
@@ -203,7 +205,7 @@ HLL_COUNT.MERGE_PARTIAL(IF(b.record_date >= DATE_TRUNC(g.record_date, MONTH), b.
 
 ### 2-4. 단계 3 — `metric_net_revenue`
 
-- `period_` 를 시프트해 자기 자신과 조인하고 **기준값만** 붙임
+- `period_` 를 shift 해 자기 자신과 조인하고 **기준값만** 붙임
 - 증감률은 저장하지 않음 (P12·P14)
 
 ```sql
@@ -215,9 +217,9 @@ LEFT JOIN period_net_revenue AS b_1_year
   b_1_year.net_revenue_ytd AS ytd_yoy_base
 ```
 
-- 비교 컬럼 8개가 서로 다른 시프트 5개에서 나오므로 자기조인도 5번임
+- 비교 컬럼 8개가 서로 다른 shift 5개에서 나오므로 self-join 도 5번임
 
-| 컬럼 | 기준 | 시프트 |
+| 컬럼 | 기준 | shift |
 |---|---|---|
 | `dod_base` · `wow_base` · `yoy_base` | daily | `-1 DAY` · `-1 WEEK` · `-1 YEAR` |
 | `wtd_wow_base` · `wtd_yoy_base` | wtd | `-1 WEEK` · `-364 DAY` |
@@ -225,7 +227,7 @@ LEFT JOIN period_net_revenue AS b_1_year
 | `ytd_yoy_base` | ytd | `-1 YEAR` |
 
 > **`wtd` 의 YoY 만 364일임.** `1 YEAR` 로 하면 요일이 어긋남 —
-> 2026-03-02(월)의 1년 전은 일요일임. 52주 시프트가 같은 요일에 떨어짐.
+> 2026-03-02(월)의 1년 전은 일요일임. 52주 shift 가 같은 요일에 떨어짐.
 > **`DATE_SUB` 이 월말을 보정함.** `2026-03-31 - 1 MONTH = 2026-02-28` 이라 월말
 > `mtd` 끼리 맞물림.
 
@@ -241,7 +243,7 @@ LEFT JOIN period_net_revenue AS b_1_year
 
 ```
 dimension 축   category · department · order_item_status 를 없앤다     ← 마스크 CROSS JOIN
-시간 축   daily 여러 날을 기간 누계로 만든다                       ← 창 함수 / 구간 병합
+시간 축   daily 여러 날을 기간 누계로 만든다                       ← window function / 구간 병합
 ```
 
 - 어떤 함수를 쓸지는 `additive` 가 정함
@@ -252,7 +254,7 @@ dimension 축   category · department · order_item_status 를 없앤다     �
 | dimension | `true` | `SUM` + 마스크 `CROSS JOIN` |
 | dimension | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` + 마스크 `CROSS JOIN` |
 | 시간 | `true` | `SUM(v) OVER (PARTITION BY ... ORDER BY record_date)` |
-| 시간 | `"sketch"` | 구간 자기조인 + `HLL_COUNT.MERGE_PARTIAL` |
+| 시간 | `"sketch"` | 구간 self-join + `HLL_COUNT.MERGE_PARTIAL` |
 | 시간 | 그 밖 | **누계 컬럼을 만들지 않음.** `daily` 하나만 남음 (P10-3) |
 | 어느 축이든 | `false` | **생성 거부** (P18) |
 
@@ -266,7 +268,7 @@ dimension 축   category · department · order_item_status 를 없앤다     �
 ### 2-6. `additive`는 어디서 읽히는가
 
 - 축마다 소비처가 다름
-- **시간 축만 builder가 자동으로 씀.**
+- **시간 축만 builder 가 자동으로 씀.**
 
 ```
 선언 (metrics.js)
@@ -298,7 +300,7 @@ additive: { time: true, category: true, department: true, country: true,
 - 그래서 `uniform(entity, value)` 로 펼침
 - 축마다 가산성이 다를 때만 직접 씀
 
-- 이 검증이 없으면 어느 축으로 rollup 해도 되는지 아무도 모르는 채로 테이블이 만들어짐
+- 이 검증이 없으면 어느 축으로 rollup 해도 되는지 적혀 있지 않은 채로 테이블이 만들어짐
 - 선언 누락이 조용히 틀린 숫자로 나타나는 것을 막는 마지막 장치임
 
 ### 2-7. 잘못 선언하면 무슨 일이 생기는가
@@ -309,13 +311,14 @@ additive: { time: true, category: true, department: true, country: true,
 ### 2-8. 요약
 
 ```
-선언 (JS)              생성 (Dataform)                  결과 (BigQuery)
-─────────────────────  ──────────────────────────────  ───────────────────────
+선언 (JS)              생성 (Dataform)                    결과 (BigQuery)
+─────────────────────  ────────────────────────────────  ────────────────────────
 entities.js  ─┐
-              ├──→  조인 + 날짜×dimension GROUP BY  ──→  daily_<metric>    중간 상태
-metrics.js   ─┘                                          │
-                                                         ▼
-periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→  metric_<metric>  서빙 표면
+              ├──→  조인 + 날짜×dimension GROUP BY  ────→  daily_<metric>    중간 상태
+metrics.js   ─┘                                            │
+              ┌──→  serving_dims rollup + PTD  ──────────→  period_<metric>   기간 확장
+periods.js   ─┤                                            │
+              └──→  shift self-join 으로 비교 기준값  ───→  metric_<metric>   서빙 테이블
 ```
 
 - 이 구조가 주는 것은 순서대로 이러함
@@ -380,7 +383,7 @@ order_item entity에 두면   COUNT(DISTINCT order_key)   카테고리축 비가
 order entity로 옮기면      COUNT(*)                    전 축 가산
 ```
 
-- 주문 grain에는 카테고리라는 축이 애초에 존재하지 않으므로 비가산성이 소멸함
+- 주문 grain 에는 카테고리라는 축이 애초에 없으므로 비가산성이 사라짐
 - 비가산 축은 잘못된 entity 선언의 증상임
 
 - 대가는 4장에 있음 — 카테고리별 AOV를 낼 수 없게 됨
@@ -457,9 +460,9 @@ order_count   order      entity                order_status       country  age_g
 |---|---|
 | 세션 퍼널 전환율<br>(view → cart → purchase) | 상류 결함 7. `purchased`인데 `viewed_product`가 아닌 세션 72,045건, 세션 구매율 77.1%. 플래그가 이름대로 동작하지 않음 |
 | 코호트 리텐션 | daily 집계로 복원 불가능. 사용자 단위 식별자가 필요하므로 atomic fact 위의 별도 모델 |
-| LTV | 위와 같음. 다일 상태(multi-day state) |
+| LTV | 위와 같음. 여러 날에 걸친 상태를 들고 있어야 함 |
 | 재구매율 | 사용자의 전체 이력이 필요 |
-| 중앙값·분위수 계열 | sketch로도 병합 불가. daily만 만들고 rollup 거부 대상 (P10-3) |
+| 중앙값·분위수 계열 | sketch 로도 병합 불가. daily만 만들고 rollup 거부 대상 (P10-3) |
 | 주문 시점 상품 속성 | 상류 결함 5. SCD 이력 커버리지 4.46% |
 
 - 앞의 넷은 **daily의 상위 집계가 아니라 atomic fact에 대한 다른 질문**임
@@ -473,11 +476,11 @@ order_count   order      entity                order_status       country  age_g
 - 여기서는 각 테이블의 역할만 다룸
 
 ```
-semantic_mart      sem_dim_* 3개  +  sem_fct_* 4개                    7
-semantic           daily_<metric> 14  +  metric_<metric> 14          28
-semantic_metadata  metric_registry                                    1
-                                                                  ─────
-                                                                     36
+semantic_mart      sem_dim_* 3개  +  sem_fct_* 4개                     7
+semantic           daily_ · period_ · metric_ 각 17개                  51
+semantic_metadata  metric_registry                                     1
+                                                                  ──────
+                                                                      59
 ```
 
 ### 6-1. `daily_<metric>` — 중간 상태
@@ -494,25 +497,25 @@ semantic_metadata  metric_registry                                    1
 - dimension 이 `serving_dims` 로 좁혀지므로
   `category`·`department`·`order_item_status` 는 여기 없음
 - 그것이 필요하면 `daily_` 에서 직접 집계함 (P4)
-- 대신 남은 4개 dimension 의 `'(all)'` rollup 행이 테이블로 저장돼 있음
+- 대신 남은 5개 dimension 의 `'(all)'` rollup 행이 테이블로 저장돼 있음
 
-- `metric_` 이 이 테이블을 다섯 번 자기조인하므로 CTE 가 아니라 테이블이어야 함
+- `metric_` 이 이 테이블을 다섯 번 self-join 하므로 CTE 가 아니라 테이블이어야 함
 - 비교 없이 기간별 집계만 필요한 소비자는 여기서 끝남
 
-### 6-3. `metric_<metric>` — 서빙 표면
+### 6-3. `metric_<metric>` — 서빙 테이블
 
 - `period_` 에 비교 기준값 8컬럼을 붙인 것
 
-- **`daily_`와 같은 저장 원칙을 따름** (P11) — sketch는 BYTES로 남고 증감률은 저장하지 않음
+- **`daily_`와 같은 저장 원칙을 따름** (P11) — sketch 는 BYTES로 남고 증감률은 저장하지 않음
 - 확정은 소비 시점에 함
 
 | 컬럼 | 내용 |
 |---|---|
 | `record_date` | 기준일. `daily` 는 그날, 누계는 기간 시작부터 이 날까지 (P13) |
 | `is_week_end` · `is_month_end` · `is_year_end` | 이 날이 그 기간의 마지막 날인가 |
-| *(dimension 4축)* | `'(all)'` 은 그 dimension 을 rollup 한 행. `NULL` 은 값이 없는 bucket (P6-1) |
+| *(dimension 5축)* | `'(all)'` 은 그 dimension 을 rollup 한 행. `'(unknown)'` 은 값이 없는 bucket (P6-3) |
 | `<m>` · `<m>_wtd` · `<m>_mtd` · `<m>_ytd` | 가산 지표는 값, distinct 계열은 sketch(BYTES) |
-| `*_base` 8개 | 시프트한 시점의 값. 접두어가 없으면 `daily` 기준 (P13-1) |
+| `*_base` 8개 | shift 한 시점의 값. 접두어가 없으면 `daily` 기준 (P13-1) |
 
 - 소비 시점에 하는 일은 둘뿐임
 
@@ -550,7 +553,7 @@ WHERE record_date = @as_of
   AND gender = '(all)' AND acquisition_channel = '(all)'
 ```
 
-- `record_date` 파티션 프루닝이 걸려 하루치 파티션만 읽음
+- `record_date` partition pruning 이 걸려 하루치 파티션만 읽음
 
 - `daily_` 에서 직접 구간 합을 내는 방법도 여전히 유효함 — `category` 처럼 서빙 테이블에 없는 축으로 누계를 봐야 할
   때가 그러함
@@ -598,7 +601,7 @@ GROUP BY category
 1. **지표 카탈로그** — BI에 그대로 붙이면 지표 목록 화면이 됨
 2. **소비 측 판단 근거** — `additive_by_axis` 를 읽고 그 축으로 rollup 해도 되는지 결정함
 3. **서빙 레이어의 경로 선택** — 나중에 서빙을 만들면 `additive`를 보고
-   daily rollup을 쓸지 atomic fact로 내려갈지 고름 (aggregate awareness)
+   daily rollup 을 쓸지 atomic fact로 내려갈지 고름 (aggregate awareness)
 
 ---
 
@@ -665,7 +668,7 @@ GROUP BY category
 > 2단계로 돌아가 고객 하나가 한 행인 fact로 옮기려 했지만 그런 테이블이 없음.
 > 주문도 세션도 고객을 한 행으로 담지 않음. **옮길 곳이 없을 때가 P10-2임.**
 >
-> 값 대신 병합 가능한 sketch를 저장하면 날짜축으로도 합칠 수 있음.
+> 값 대신 병합 가능한 sketch 를 저장하면 날짜축으로도 합칠 수 있음.
 > `HLL_COUNT.INIT({user_id})`가 그래서 선택되었고, 가산성은 전 축 `"sketch"`가 되었음.
 
 ### 7-4. 4단계 — 선언을 씀
@@ -714,7 +717,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
 
 ### 7-6. 6단계 — `period_` · `metric_cancelled_units` (생성)
 
-- `additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가 선택됨
+- `additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 window function 이 선택됨
 - dimension 은 `serving_dims` 5개로 좁혀지고, 각 축의 `'(all)'` rollup 행이 생김
 - 누계 3종이 컬럼으로 붙음
 - 비교 기준값 8개가 날짜 조인으로 붙음 (P14)

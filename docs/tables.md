@@ -136,7 +136,7 @@ net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd
 
 ---
 
-## 5. `metric_<metric>` — 3단계 · 서빙 표면
+## 5. `metric_<metric>` — 3단계 · 서빙 테이블
 
 - `period_` 의 모든 컬럼 + 비교 기준값 8개
 - **소비자는 이 테이블만 읽음.**

@@ -14,7 +14,7 @@
 
 **둘 — 사람이 손으로 만들던 집계 테이블이 선언에서 생성됨.**
 - 지표 하나를 추가하는 비용이 선언 한 항목으로 고정됨
-- 기간 컬럼 4개와 비교 컬럼 8개, 각 축의 `'(all)'` rollup이 따라옴
+- 기간 컬럼 4개와 비교 컬럼 8개, 각 축의 `'(all)'` rollup 이 따라옴
 - SQL 파일은 늘지 않음
 
 | | 이전 | 이후 |
@@ -48,7 +48,7 @@
 - `daily_`가 이미 집계된 결과라 없는 dimension은 복원되지 않음
 - dimension은 넉넉히 선언함
 
-- **`serving_dims` 밖의 축은 누계로 못 봄.** `period_`·`metric_` 이 dimension 4개만 갖기 때문에,
+- **`serving_dims` 밖의 축은 누계로 못 봄.** `period_`·`metric_` 이 dimension 5개만 갖기 때문에,
   `category` 별 MTD 는 `daily_` 에서 구간을 잘라 합해야 함 (P4·P15)
 
 ---
@@ -81,7 +81,7 @@ semantic.daily_<metric>     record_date × dimension 전체. sketch 는 sketch �
 semantic.period_<metric>    record_date × serving_dims. rollup 행 + PTD 컬럼
     │
     ▼
-semantic.metric_<metric>    서빙 표면. + 비교 기준값
+semantic.metric_<metric>    서빙 테이블. + 비교 기준값
 semantic_metadata.metric_registry
 ```
 
@@ -95,7 +95,7 @@ semantic_metadata.metric_registry
 
 1. **dimension 로직의 자리** — 파생 dimension을 집계 SQL의 `CASE WHEN`으로 만들면
    그 정의가 지표 수만큼 복제됨. semantic layer가 없애려던 문제를 그대로 재현함.
-2. **assertion의 자리** — declaration에는 `config{}`가 없어 `uniqueKey`를 걸 수 없음.
+2. **assertion 의 자리** — declaration에는 `config{}`가 없어 `uniqueKey`를 걸 수 없음.
    물리 테이블이어야 fan trap 방어 장치가 제자리에 옴.
 3. **키 정규화** — 자연키를 아예 제거해서 잘못된 조인을 구조적으로 불가능하게 만듦.
 4. **상류 변경 흡수** — DW 컬럼명이 바뀌어도 충격을 한 곳에서 받음.
@@ -139,7 +139,7 @@ dbt_dev_marts_core.fct_order_items  →   semantic_mart.sem_fct_order_items
 ### 4-1. 키와 grain
 
 **P1. grain은 선언함. 가정하지 않음.**
-- 모든 fact/dim에 `uniqueKey` assertion을 걺
+- 모든 fact/dim에 `uniqueKey` assertion 을 걺
 - 깨지면 파이프라인이 멈춤
 
 **P2. 조인은 surrogate key로만 함.**
@@ -169,7 +169,7 @@ dbt_dev_marts_core.fct_order_items  →   semantic_mart.sem_fct_order_items
 **P4-1. `serving_dims` 에 넣기 전에 조합 수를 세고 CPU 를 실측함.**
 
 - `serving_dims` 에 dimension 하나를 넣으면 `period_`·`metric_` 의 행이 곱해짐
-- `daily_` 는 거의 안 커짐 — 비용은 전부 큐브에 있음
+- `daily_` 는 거의 안 커짐 — 비용은 전부 `period_` 의 dimension 조합에 있음
 
 ```
 purchase_type (값 2개)   조합 720 → 1,409   rollup 포함 1,708 → 5,064   행 480만 → 1,426만
@@ -213,7 +213,7 @@ sem_dim_users        ─┘    (dimension 이 컬럼으로     (조인 없음)
 
 - fact에 dimension을 미리 붙이지 않는 이유는 셋임
 
-1. **dimension 추가가 fact 재생성을 부름.** 선언 한 줄이어야 할 일이 대형 테이블 재빌드가 됨
+1. **dimension 을 추가하면 fact 를 다시 만들어야 함.** 선언 한 줄이어야 할 일이 대형 테이블 재빌드가 됨
 2. **역할 dimension을 표현할 수 없음.** 같은 dim을 두 키로 참조하는 경우(주문일/배송일) 평탄화가 깨짐
 3. **dimension 변경 시점이 fact에 고정됨.** point-in-time을 나중에 도입할 여지가 사라짐
 
@@ -230,8 +230,8 @@ dims:  { category: { via: "product", col: "category" } },
 expr: "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 ```
 
-- `product`는 여기 적힌 이름이지 builder가 만든 alias 가 아님
-- **선언은 builder 내부를 모름** — alias 규칙을 바꿔도 `metrics.js`는 그대로임
+- `product`는 여기 적힌 이름이지 builder 가 만든 alias 가 아님
+- **선언은 builder 내부에 기대지 않음** — alias 규칙을 바꿔도 `metrics.js`는 그대로임
 
 - 세 가지를 컴파일 타임에 검사함
 
@@ -259,7 +259,7 @@ joins: {
 
 - 테이블 접두사가 없으면 조인한 dim과 이름이 겹치는 순간 모호해짐 — `unit_cost`는 fact와 `sem_dim_products`
   양쪽에, `user_id`는 fact와 `sem_dim_users` 양쪽에 있음
-- `dataform compile`은 문자열이라 통과시키고 **BigQuery 실행 단계에서야 터짐.**
+- `dataform compile`은 문자열이라 통과시키고 **BigQuery 실행 단계에서야 에러가 남.**
 
 - 어느 토큰이 컬럼인지 정규식으로 추측하지 않는 이유는 조용히 틀리기 때문임
 - `COUNTIF(status = "returned")`에서 `"returned"`를 컬럼으로 보면 `"base.returned"`가
@@ -292,9 +292,9 @@ joins: {
 - 다만 `NULL`의 출처가 둘인데 구별되지 않음 — **키가 dim에 없는 것**과 **dim에 있는데 값이 `NULL`인 것**임
 - 구별이 필요해지면 Kimball의 unknown member (dim에 `'Unknown'` 행을 두어 항상 조인되게 하는 것)를 씀
 
-- **규모를 먼저 잼.** `daily_`가 생기면 `NULL` bucket이 그대로 보임
+- **규모를 먼저 재어 봄.** `daily_`가 생기면 `NULL` bucket이 그대로 보임
 - 0이면 아무것도 하지 않고, 있으면 그때 [operations.md](operations.md) 5장에 등재함
-- 재보지 않고 assertion을 걸면 항상 실패 상태로 남아 아무도 보지 않게 됨
+- 재보지 않고 assertion 을 걸면 항상 실패 상태로 남아 아무도 보지 않게 됨
 
 **P6-2. dimension은 그 entity의 grain 에서 나온 것이어야 함.**
 
@@ -316,7 +316,7 @@ joins: {
 
 - `NULL` 을 남기면 조인을 `IS NOT DISTINCT FROM` 으로 써야 하는데, **BigQuery 가 그것을 해시 조인 키로
   쓰지 못함.** 등가 조인이면 양쪽을 해시로 나눠 붙이는데 일반 술어라 중첩 루프가 됨
-- 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터짐
+- 평범한 조인에서는 차이가 드러나지 않다가 구간 self-join 에서 CPU 한도를 넘김
 
 - 구간 self-join 에서 CPU 한도를 넘겨 실패함 ([findings.md](findings.md) 8)
 
@@ -331,7 +331,7 @@ joins: {
 | `'(all)'` | 그 dimension 을 rollup 한 행 (P4) |
 
 - `daily_` 에는 `NULL` 이 그대로 남음
-- 원자 집계라 상류가 준 모양을 바꾸지 않음
+- atomic fact 를 그대로 집계한 것이라 상류가 준 모양을 바꾸지 않음
 
 **P7. conformed dimension은 이름과 의미가 같아야 함.**
 - `country`는 어느 fact에서 오든 같은 뜻이어야 함
@@ -352,28 +352,28 @@ joins: {
 | | 방법 | 예 |
 |---|---|---|
 | **P10-1** | entity를 옮김 | `order_count`를 `sem_fct_orders`(주문 1건 = 1행)로 옮기면 `COUNT(*)`가 되고 카테고리축 자체가 사라짐 |
-| **P10-2** | 못 옮기면 sketch로 | `buyer_count` by category |
-| **P10-3** | sketch도 안 되면 | 중앙값·분위수는 daily만 만들고 rollup을 거부함 |
+| **P10-2** | 못 옮기면 sketch 로 | `buyer_count` by category |
+| **P10-3** | sketch 도 안 되면 | 중앙값·분위수는 daily만 만들고 rollup 을 거부함 |
 
-**P11. `daily_`와 `metric_`은 둘 다 재집계 가능한 형태로 저장함.**
+**P11. `daily_` · `period_` · `metric_` 은 모두 재집계 가능한 형태로 저장함.**
 
 - 확정(sketch → 정수, 분자 ÷ 분모)은 저장 시점이 아니라 **소비 시점**에 함
-- 확정된 값은 더 이상 rollup할 수 없으므로, 물리 테이블에 확정값을 넣으면 dimension 을 rollup 하는 순간 쓸 수 없게
+- 확정된 값은 더 이상 rollup 할 수 없으므로, 물리 테이블에 확정값을 넣으면 dimension 을 rollup 하는 순간 쓸 수 없게
   됨
 
-| measure 유형 | 두 테이블 모두 저장하는 것 | 소비 시점 |
+| measure 유형 | 세 테이블 모두 저장하는 것 | 소비 시점 |
 |---|---|---|
 | 합계·건수 | 값 | 그대로 |
 | distinct 수 | **HLL sketch(BYTES)** | `HLL_COUNT.EXTRACT` |
 | 평균·비율 | **저장하지 않음** | 분자 ÷ 분모 (P12) |
 
-- 두 테이블을 나누는 이유는 확정 시점이 아니라 역할임
+- 세 테이블을 나누는 이유는 확정 시점이 아니라 역할임
 
 | | 역할 |
 |---|---|
 | `daily_<metric>` | **조인이 실행되는 유일한 곳.** 날짜 × dimension 집계 |
 | `period_<metric>` | 기간 4종으로 확장 |
-| `metric_<metric>` | `period_`를 시프트해 자기 자신과 조인. 비교 기준값 |
+| `metric_<metric>` | `period_`를 shift 해 자기 자신과 조인. 비교 기준값 |
 
 - **셋으로 나눈 이유는 비용임.** 기간 확장을 CTE 로 두면 `metric_` 이 다섯 번 참조해(본 쿼리 1 + 비교 조인 4) 같은
   집계가 다섯 번 돎
@@ -424,16 +424,17 @@ record_date  country  is_week_end is_month_end is_year_end
 - `record_date` 에서 결정되기 때문임 — `wtd` 의 시작은 `DATE_TRUNC(record_date,
   WEEK(MONDAY))` 임
 
-- **`weekly`·`monthly`·`yearly` 는 만들지 않음.** 완결 기간의 rollup은 같은 축에서 누계와 값이 같음
+- **`weekly`·`monthly`·`yearly` 는 만들지 않음.** 완결 기간의 rollup 은 같은 축에서 누계와 값이 같음
 - 완결 주 10,080 조합이 전부 일치함 ([findings.md](findings.md) 13)
 
 ```
 monthly  =  mtd  where is_month_end
 ```
 
-- 행으로 두면 값이 중복될 뿐 아니라 **미완결 기간이 미래 날짜를 닮.** 완결 기간의 집계는 기간의 마지막 날을 날짜로 갖는데, 그 날이
-  아직 오지 않았기 때문임
-- 데이터가 9/17까지일 때 그 주의 행은 9/20 을 달고 4일치만 담고, `wow_base` 도 그 4일치를 지난주 7일 전체와 맞댐
+- 행으로 두면 값이 중복될 뿐 아니라 **진행 중인 기간의 날짜가 미래가 됨.** 완결 기간의 집계는 기간의
+  마지막 날을 날짜로 갖는데, 그 날이 아직 오지 않았기 때문임
+- 데이터가 9/17까지일 때 그 주의 행은 날짜가 9/20 이면서 4일치만 담고, `wow_base` 도 그 4일치를
+  지난주 7일 전체와 비교함
 
 - PTD 에는 그 문제가 없음
 - `record_date` 는 항상 실제로 지난 날임
@@ -453,7 +454,7 @@ wtd_wow_base · mtd_mom_base · ...  누계 기준 비교
 
 **P14. 비교는 기준값(`_base`)만 저장함. 날짜 조인으로 만들고 `LAG`를 쓰지 않음.**
 
-- `_base`는 집계가 아니라 조회임 — 같은 테이블에서 시프트한 행의 값을 복사함
+- `_base`는 집계가 아니라 조회임 — 같은 테이블에서 shift 한 행의 값을 복사함
 - 원래 값이 가산이면 `_base`도 가산임 — **단 모든 행에 채워져 있을 때만** (P14-1)
 
 ```sql
@@ -464,12 +465,12 @@ LEFT JOIN period_x AS b
   b.net_revenue_mtd AS mtd_yoy_base    -- 같은 조인에서 누계 기준까지
 ```
 
-- **조인은 간격 단위로 묶음.** 비교 컬럼 8개가 서로 다른 시프트 5개 (`1 DAY`·`1 WEEK`·`1 MONTH`·`1
-  YEAR`·`364 DAY`)에서 나오므로 자기조인도 5번임
+- **조인은 간격 단위로 묶음.** 비교 컬럼 8개가 서로 다른 shift 5개 (`1 DAY`·`1 WEEK`·`1 MONTH`·`1
+  YEAR`·`364 DAY`)에서 나오므로 self-join 도 5번임
 
-- **시프트 간격은 기간마다 다를 수 있음.** `wtd`의 YoY를 `1 YEAR`로 하면
+- **shift 간격은 기간마다 다를 수 있음.** `wtd`의 YoY를 `1 YEAR`로 하면
   요일이 어긋남 — 2026-03-02(월)의 1년 전은 일요일임. 주간 비교는
-  **52주(364일)** 시프트여야 같은 요일에 떨어짐
+  **52주(364일)** shift 여야 같은 요일에 떨어짐
 - **`DATE_SUB` 이 월말을 보정함.** `2026-03-31 - 1 MONTH = 2026-02-28` 이라 월말
   `mtd` 끼리 맞물림. 대신 3/30 과 3/31 이 둘 다 2/28 로 감
 - `LEFT JOIN`이어야 함. `INNER`면 기준 기간이 없을 때 현재 행까지 사라짐
@@ -480,7 +481,7 @@ LEFT JOIN period_x AS b
 - P14 는 "원래 값이 가산이면 `_base` 도 가산이므로 dimension 을 rollup 해도 남는다" 고 했음
 **모든 행에 `_base` 가 채워져 있을 때만 참임.**
 
-- 시프트한 기간에 **같은 dimension 조합이 없으면** `_base` 는 `NULL` 이고, `SUM` 은 `NULL` 을 빼고 더함
+- shift 한 기간에 **같은 dimension 조합이 없으면** `_base` 는 `NULL` 이고, `SUM` 은 `NULL` 을 빼고 더함
 - dimension이 잘게 쪼개져 있을수록 매칭이 드물어 누락이 커짐
 
 - dimension 이 잘게 쪼개져 있을수록 매칭이 드물어 누락이 커짐 — department 별로 합산하면 **56배** 차이가 남
@@ -494,7 +495,7 @@ LEFT JOIN period_x AS b
 | dimension 을 rollup 하며 `SUM` | **쓰지 말 것** |
 
 - rollup 해야 한다면 **`'(all)'` 행을 읽음** (P4)
-- 그 dimension 을 rollup 한 행이 이미 테이블로 저장돼 있고, 그 행의 `_base` 는 같은 grain 에서 시프트 조인한
+- 그 dimension 을 rollup 한 행이 이미 테이블로 저장돼 있고, 그 행의 `_base` 는 같은 grain 에서 shift 조인한
   값이라 맞음
 - 이것이 `'(all)'` 을 미리 만들어 두는 이유 중 하나임
 
@@ -503,7 +504,7 @@ LEFT JOIN period_x AS b
 - 누계는 소비 시점 파생으로도 낼 수 있지만, 모든 소비자가 기간 경계와 sketch 병합 규칙을 각자 알아야 함
 - 그것이 semantic layer 가 없앨 지식임 (P1)
 
-- 대신 **grid를 채우는 것이 조건**임
+- 대신 **grid 를 채우는 것이 조건**임
 - 활동한 날에만 PTD 행을 만들면 dimension 을 rollup 하는 순간 대부분이 사라짐
 
 - 빈 날을 채우지 않으면 rollup 한 값이 **실제의 13%** 가 나옴 ([findings.md](findings.md) 4)
@@ -518,15 +519,15 @@ LEFT JOIN period_x AS b
 - 그날 활동이 없어도 행이 생기고, 누적값이 앞 구간을 그대로 들고 가므로 rollup 해도 빠지지 않음
 
 - **grid 크기는 (조합 수 × 날짜)로만 정해짐.** 원본 행 수와 무관함
-- 그래서 서빙 테이블의 dimension을 `serving_dims` 4축으로 좁힘 (P4) — `category`(26) 하나만 넣어도
+- 그래서 서빙 테이블의 dimension을 `serving_dims` 5축으로 좁힘 (P4) — `category`(26) 하나만 넣어도
   26배가 됨
 
 | | 조합 | 날짜 | 행 |
 |---|---|---|---|
-| 전체 dimension 7개 | 27,749 | 2,811 | 7,800만 |
-| **conformed 4축 + rollup** | **1,708** | 2,811 | **480만** |
+| 전체 dimension 8개 | 58,439 | 2,816 | 1억 6,456만 |
+| **conformed 5축 + rollup** | **5,064** | 2,816 | **1,426만** |
 
-**P15-1. `sem_dim_date`는 grid의 기준 날짜 목록임. `daily_` 의 날짜를 쓰지 않음.**
+**P15-1. `sem_dim_date`는 grid 의 기준 날짜 목록임. `daily_` 의 날짜를 쓰지 않음.**
 
 - `daily_` 의 날짜를 쓰면 전사적으로 거래가 0인 날이 통째로 빠져 누계의 연속성이 끊김
   ([findings.md](findings.md) 5)
@@ -544,10 +545,10 @@ LEFT JOIN period_x AS b
 ### 4-5. 생성
 
 **P17. 기계적인 것은 생성함.**
-- 사람이 쓰는 SQL은 generator가 표현할 수 없는 것에 한함
+- 사람이 쓰는 SQL은 generator 가 표현할 수 없는 것에 한함
 - 그런 지표도 registry에는 등록함 — "생성되지 않았다"와 "존재하지 않는다"는 다름
 
-**P18. builder는 틀린 결과를 내느니 거부함.**
+**P18. builder 는 틀린 결과를 내느니 거부함.**
 - `additive: false` 조합은 빈 테이블을 만들지 않고 건너뜀
 - 빈 테이블이 남으면 소비자가 "값이 0"으로 오해함
 
@@ -557,7 +558,7 @@ LEFT JOIN period_x AS b
 
 ### 4-6. 상류 계약
 
-**P20. DW 소스에 건 assertion은 게이트가 아니라 감시임.**
+**P20. DW 소스에 건 assertion 은 gate 가 아니라 감시임.**
 - 깨져도 우리가 고칠 수 없음
 - dbt에 보고하고, 여기서 덮지 않음
 
@@ -567,7 +568,7 @@ LEFT JOIN period_x AS b
 
 | 두 곳 | 어긋나면 | 대조하는 것 |
 |---|---|---|
-| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 느려짐 | assertion (게이트) |
+| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 느려짐 | assertion (gate) |
 | 액션의 `tags` ↔ `workflows.json` 의 `includedTags` | 0개 액션으로 성공함 | `apply.js` (적용 전) |
 
 - 둘 다 **에러가 안 나고 비용이나 실행 여부만 달라짐.**
@@ -577,8 +578,8 @@ LEFT JOIN period_x AS b
 - `workflows.json` 은 JSON 이라 아예 못 읽음
 
 **P21. 알려진 상류 결함은 우회하지 말고 기록함.**
-- 조용한 우회는 문제를 숨김
-- [operations.md](operations.md) 5장에 적고 assertion으로 감시함
+- 조용히 우회하면 문제가 드러나지 않음
+- [operations.md](operations.md) 5장에 적고 assertion 으로 감시함
 
 **P22. 갱신 방식은 상류를 따름. 상류보다 촘촘하게 잡지 않음.**
 
@@ -603,12 +604,12 @@ LEFT JOIN period_x AS b
 - 상류 **모델 로직**이 바뀌어 과거 값이 달라지는 것은 구간으로 못 잡음
 - 그때는 `--full-refresh`임
 
-**증분 구간을 서브쿼리로 잡으면 파티션 프루닝이 걸리지 않음.**
+**증분 구간을 서브쿼리로 잡으면 partition pruning 이 걸리지 않음.**
 - `(SELECT MAX(record_date) FROM self)` 는 실행 시점에야 값이 정해져서 BigQuery 가 파티션을 미리
   걸러내지 못함 — **189배** 차이가 남 ([findings.md](findings.md) 10)
 
-- `CURRENT_DATE` 기준으로 바꾸면 프루닝은 되지만 **fact 날짜가 오늘보다 뒤처져 있어 증분이 0행을 처리함.** 정적 하한을
-  덧붙이면 프루닝이 살아나지만, 그 기간보다 오래 멈추면 `daily_` 에 에러 없이 구멍이 생김 — 그쪽이 더 나쁨 (P18)
+- `CURRENT_DATE` 기준으로 바꾸면 pruning 은 되지만 **fact 날짜가 오늘보다 뒤처져 있어 증분이 0행을 처리함.** 정적 하한을
+  덧붙이면 pruning 이 다시 걸리지만, 그 기간보다 오래 멈추면 `daily_` 에 에러 없이 구멍이 생김 — 그쪽이 더 나쁨 (P18)
 
 - 현재 비용은 40 MiB 대 30 MiB 임
 - **정확성을 택하고 한계를 기록함.** 테이블이 커져 실제로 아프면 그때 정적 하한과 신선도 assertion 을 같이 넣음
@@ -624,7 +625,7 @@ LEFT JOIN period_x AS b
 - 상류를 여러 날치 최신화하고 증분을 돌리면 남은 옛 행이 합계를 부풀림 ([findings.md](findings.md) 9)
 
 - 구간 경계는 `preOps` 의 `DECLARE` 로 **한 번만 계산해 고정함.** `DELETE` 가 `MAX(record_date)`
-  를 바꾸므로 `DELETE` 와 본 쿼리가 각자 계산하면 서로 다른 구간을 보고 그 사이가 중복되거나 빔
+  를 바꾸므로 `DELETE` 와 본 쿼리가 각자 계산하면 서로 다른 구간을 보고 그 사이가 중복되거나 비게 됨
 
 - 경계는 `LEAST(우리 max, 소스 max) - 3` 임
 - 소스 기준만 쓰면 우리가 며칠 쉬는 동안 들어온 날짜가 빈 채로 남음
@@ -637,23 +638,23 @@ LEFT JOIN period_x AS b
 |---|---|
 | SSOT | semantic layer. `rpt_daily_revenue` 는 대조 완료 — 폐기 가능 |
 | `rpt_daily_funnel` · `rpt_user_cohort_retention` | **존치.** 우리가 의도적으로 만들지 않은 영역임 (P17).<br>퍼널은 상류 결함 7, 코호트는 사용자 생애주기 — 후속 페이즈 |
-| `dim_date` | semantic layer가 소유. 변환이 아니라 축임.<br>**`period_` grid의 기준 날짜 목록**임. `daily_` 는 조인하지 않음 (P15-1) |
+| `dim_date` | semantic layer가 소유. 변환이 아니라 축임.<br>**`period_` grid 의 기준 날짜 목록**임. `daily_` 는 조인하지 않음 (P15-1) |
 | 파생 dimension | `semantic_mart`의 `dim_*`에서 생성 |
 | 비율 지표 | registry에 선언만. 테이블 생성 안 함 |
-| HLL precision | **15 고정.** 나중에 바꾸면 과거 sketch와 병합 불가 |
+| HLL precision | **15 고정.** 나중에 바꾸면 과거 sketch 와 병합 불가 |
 | 지표당 테이블 | **3개** — `daily_` + `period_` + `metric_`. 전부 물리 테이블 |
 | 날짜 컬럼 | `record_date` 하나. 세 단계가 같은 이름을 씀 (P13) |
 | 기간 | **컬럼**임 (P13). `<m>` `<m>_wtd` `<m>_mtd` `<m>_ytd`.<br>`weekly`·`monthly`·`yearly` 는 만들지 않고 `is_*_end` 로 고름 |
-| 서빙 dimension | `serving_dims` 4축 + 각 축의 `'(all)'` rollup 행. `daily_` 는 전체 dimension (P4) |
-| 비교 | 8컬럼. `dod_base` `wow_base` `yoy_base` + `wtd_`·`mtd_`·`ytd_` 접두어.<br>증감률은 저장하지 않음. 주간 YoY는 364일 시프트 |
+| 서빙 dimension | `serving_dims` 5축 + 각 축의 `'(all)'` rollup 행. `daily_` 는 전체 dimension (P4) |
+| 비교 | 8컬럼. `dod_base` `wow_base` `yoy_base` + `wtd_`·`mtd_`·`ytd_` 접두어.<br>증감률은 저장하지 않음. 주간 YoY는 364일 shift |
 | SCD | 당분간 현재 상태만 사용. 이력 커버리지 4.46% |
 | `daily_` 갱신 | entity별. `order_item`·`order`·`session` 은 `table`, `user_event` 는 증분 `[ds-3, ds]` |
-| `period_`·`metric_` 갱신 | 전부 `table`. 하루가 늘면 grid가 하루 늘고 364일·1년 뒤 비교 기준값까지 바뀜 |
+| `period_`·`metric_` 갱신 | 전부 `table`. 하루가 늘면 grid 가 하루 늘고 364일·1년 뒤 비교 기준값까지 바뀜 |
 | clustering | **걸지 않음.** BigQuery 권장 기준이 64 MB인데 `daily_*` 최대가 18 MB 안쪽임 |
 
 - `period_` 와 `metric_` 은 한 행에 `daily` 와 누계를 함께 담음
-- 셋 다 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라 역할임 — `daily_` 는 전체 dimension의 원자
-  집계, `period_` 는 `serving_dims` rollup의 기간 확장, `metric_` 은 거기에 비교를 붙인 서빙 표면임
+- 셋 다 재집계 가능한 형태로 저장하며(P11), 차이는 저장 형식이 아니라 역할임 — `daily_` 는 전체 dimension 의
+  집계, `period_` 는 `serving_dims` rollup 의 기간 확장, `metric_` 은 거기에 비교를 붙인 서빙 테이블임
 
 ---
 

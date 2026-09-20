@@ -50,7 +50,7 @@ dimension 7개 지표    CPU 3,600초 / 한도 4,300    스캔은 14 MB
 
 - 비용이 아니라 낭비가 문제임
 - **조인 술어를 바꿔도 변하지 않음** — `=` · `COALESCE` · `IS NOT DISTINCT FROM` 이 전부
-  3,600대였음
+  3,600초대였음
 - 중간 단계를 테이블로 저장하는 것만 효과가 있음 (2026-09-13)
 
 - → [architecture.md](architecture.md) 5절 · [principles.md](principles.md) P11
@@ -78,7 +78,7 @@ country 별 합계    25,618
 
 - → [principles.md](principles.md) P15-1
 
-## 6. rollup 을 PTD 보다 먼저 하면 sketch 가 터짐
+## 6. rollup 을 PTD 보다 먼저 하면 sketch 가 CPU 한도를 넘김
 
 - rollup 을 먼저 하면 `'(all)'` 행의 HLL sketch 가 조밀해짐
 - sketch PTD 는 1년 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를 날마다 수백 번 읽음
@@ -111,7 +111,7 @@ axis_mask CROSS JOIN   통과
 ## 8. `IS NOT DISTINCT FROM` 은 해시 조인 키가 못 됨
 
 - 등가 조인이면 양쪽을 해시로 나눠 붙이는데, 일반 술어라 중첩 루프가 됨
-- 평범한 조인에서는 티가 안 나다가 구간 self-join 에서 터짐
+- 평범한 조인에서는 차이가 드러나지 않다가 구간 self-join 에서 CPU 한도를 넘김
 
 ```
 period_buyer_count 의 누계 단계 — grid 2,023,920 행 × 1년 구간
@@ -139,7 +139,7 @@ IS NOT DISTINCT FROM   CPU 88,022초   한도 초과로 실패
 
 - → [principles.md](principles.md) P22
 
-## 10. 증분 구간을 서브쿼리로 잡으면 파티션 프루닝이 안 걸림
+## 10. 증분 구간을 서브쿼리로 잡으면 partition pruning 이 안 걸림
 
 - `(SELECT MAX(record_date) FROM self)` 는 실행 시점에야 값이 정해져서 BigQuery 가 파티션을 미리
   걸러내지 못함
@@ -149,7 +149,7 @@ IS NOT DISTINCT FROM   CPU 88,022초   한도 초과로 실패
 서브쿼리       3,000,288 B      → 189배
 ```
 
-- `CURRENT_DATE` 기준으로 바꾸면 프루닝은 되지만 fact 날짜가 오늘보다 뒤처져 있어 증분이 0행을 처리함
+- `CURRENT_DATE` 기준으로 바꾸면 pruning 은 되지만 fact 날짜가 오늘보다 뒤처져 있어 증분이 0행을 처리함
 - **정확성을 택하고 한계를 기록함.**
 
 - 같은 189배가 마트의 `partitionBy` 와 `entities.js` 의 `date_col` 이 어긋날 때도 남
@@ -175,7 +175,7 @@ IS NOT DISTINCT FROM   CPU 88,022초   한도 초과로 실패
 
 ## 12. `_base` 를 rollup 하며 `SUM` 하면 과소 집계됨
 
-- 시프트한 시점에 같은 dimension 조합이 없으면 `_base` 는 `NULL` 이고, `SUM` 은 `NULL` 을 빼고 더함
+- shift 한 시점에 같은 dimension 조합이 없으면 `_base` 는 `NULL` 이고, `SUM` 은 `NULL` 을 빼고 더함
 
 ```
 metric_net_revenue 의 daily 행 194,406개 중 전년 동일 조합이 있는 행   1,754개 (0.9%)
@@ -251,7 +251,7 @@ buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
 파이프라인   4분 0초 → 3분 48초
 ```
 
-- `daily_` 가 20만 행이라 전체 재생성이 쌈
+- `daily_` 가 20만 행이라 전체 재생성이 더 저렴함
 - 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가 더 붙음
 
 - → [operations.md](operations.md) 2절
@@ -265,7 +265,7 @@ buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
 | `daily` 컬럼이 `daily_` 를 `serving_dims` 로 집계한 값과 같은가 | 1,635 | **0** |
 | `'(all)'` 행이 각 dimension 값의 합과 같은가 | 260 | **0** |
 | 월말 `mtd` 가 `daily_` 의 그 달 합과 같은가 | 92 | **0** |
-| 비교 기준값이 시프트한 날짜의 값을 가리키는가 | 81,984 | **0** |
+| 비교 기준값이 shift 한 날짜의 값을 가리키는가 | 81,984 | **0** |
 | `record_date` 가 `daily_` 의 최대값을 넘지 않는가 | 4,801,188 | **0** |
 
 - `purchase_type` 추가 후 (2026-09-20)

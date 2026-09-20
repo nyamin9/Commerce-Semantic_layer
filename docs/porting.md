@@ -7,10 +7,12 @@
 
 | | |
 |---|---|
-| **A. 설계** | 엔진과 데이터가 달라도 그대로 통함. 옮길 가치가 있는 것은 이쪽임 |
-| **B. 선언** | 갈아끼움. 새 프로젝트의 fact 와 지표를 적으면 됨 |
-| **C. 엔진** | BigQuery·Dataform 에 묶여 있음. 다른 엔진이면 다시 재야 함 |
-| **D. 서빙 레이어** | Cube·Looker 위로 옮길 때 `serving_dims` 가 무엇이 되는가 |
+| **1. 설계** | 엔진과 데이터가 달라도 그대로 통함. 옮길 가치가 있는 것은 이쪽임 |
+| **2. 선언** | 갈아끼움. 새 프로젝트의 fact 와 지표를 적으면 됨 |
+| **3. 엔진** | BigQuery·Dataform 에 묶여 있음. 다른 엔진이면 다시 재야 함 |
+| **4. 서빙 레이어** | Cube·Looker 위로 옮길 때 `serving_dims` 가 무엇이 되는가 |
+
+- 5장은 옮길 때 처음에 정할 것을 모은 것임
 
 ---
 
@@ -19,9 +21,9 @@
 ### 1-1. 테이블을 3단계로 나눔
 
 ```
-1단계  원자 집계   조인을 실행한다. dimension 을 전부 갖는다
+1단계  일별 집계   조인을 실행한다. dimension 을 전부 갖는다
 2단계  기간 확장   dimension 을 좁히고 PTD 와 rollup 행을 만든다
-3단계  비교        2단계를 시프트해 self-join 한다
+3단계  비교        2단계를 shift 해 self-join 한다
 ```
 
 - **셋 다 테이블로 저장함.** 한 쿼리에 넣으면 같은 집계가 여러 번 돎
@@ -146,11 +148,11 @@ monthly  =  mtd  where is_month_end
 
 - 비율을 저장하면 rollup 할 때 깨짐
 - `AVG` 도 `SUM` 도 틀린 값을 냄
-- 시프트한 시점의 **값**을 복사해 두고 나눗셈은 조회 시점에 함
+- shift 한 시점의 **값**을 복사해 두고 나눗셈은 조회 시점에 함
 
 - **self-join 은 간격 단위로 묶음.** 비교 컬럼이 8개라도 서로 다른 간격이 5개면 조인은 5번임
 
-- **주 단위 비교의 전년 시프트는 364일임.** 1년으로 시프트하면 요일이 어긋남
+- **주 단위 비교의 전년 shift 는 364일임.** 1년으로 shift 하면 요일이 어긋남
 
 ### 1-10. 선언 오류는 컴파일 타임에 거부함
 
@@ -180,11 +182,11 @@ dimension 축이 false          예외
 
 - **상류가 전체를 다시 만드는 fact 위에는 증분을 올리지 않음.** 과거 구간의 변경을 놓침
 
-### 1-12. 상류에 건 검사는 게이트가 아니라 감시임
+### 1-12. 상류에 건 검사는 gate 가 아니라 감시임
 
 - 우리가 고칠 수 없는 것은 파이프라인을 멈추게 하지 않음
 - 별도 워크플로로 돌려 보고만 함
-- 알려진 결함은 우회하지 말고 기록함 — 조용한 우회는 문제를 숨김
+- 알려진 결함은 우회하지 말고 기록함 — 조용히 우회하면 문제가 드러나지 않음
 
 ### 1-13. 나란히 적힌 선언은 구조로 묶지 말고 감시함
 
@@ -202,7 +204,7 @@ dimension 축이 false          예외
 - 대신 **양쪽을 다 읽을 수 있는 제3자가 대조함.**
 
 ```
-파티션   assertion 이 INFORMATION_SCHEMA 와 entities.js 를 대조    게이트
+파티션   assertion 이 INFORMATION_SCHEMA 와 entities.js 를 대조    gate
 태그     apply.js 가 컴파일 그래프와 workflows.json 을 대조        적용 전 거부
 ```
 
@@ -268,7 +270,7 @@ dimension 축이 false          예외
 | **`CUBE` 를 다른 grouping element 와 못 섞음** | `GROUP BY record_date, CUBE(...)` 가 *"only supports CUBE when there are no other grouping elements"* 로 거부 | 부분집합을 직접 펼치거나 마스크를 씀 |
 | **`GROUPING SETS` 가 집합마다 입력을 다시 읽음** | dimension 4개면 16번. 입력에 self-join 이 있으면 CPU 한도 초과 | 마스크를 `CROSS JOIN` 으로 붙여 입력을 한 번만 읽음 |
 | **`IS NOT DISTINCT FROM` 이 해시 조인 키가 못 됨** | 일반 술어로 취급되어 중첩 루프가 됨. 구간 self-join 에서 CPU 한도 초과 | `NULL` 을 값으로 바꿔 `=` 로 조인함 |
-| **`HLL_COUNT.MERGE_PARTIAL` 이 analytic function 을 지원하지 않음** | dry run 통과, 실행에서 `Analytic function MERGE_PARTIAL is not supported` | 창 함수 대신 구간 self-join |
+| **`HLL_COUNT.MERGE_PARTIAL` 이 analytic function 을 지원하지 않음** | dry run 통과, 실행에서 `Analytic function MERGE_PARTIAL is not supported` | window function 대신 구간 self-join |
 | **on-demand 의 CPU/바이트 비율 제한** | 스캔이 작아도 CPU 를 많이 쓰면 거부함 | 중간 결과를 테이블로 저장해 재계산을 없앰 |
 | **파티션 컬럼을 바꿀 수 없음** | `CREATE OR REPLACE` 가 *"Cannot replace a table with a different partitioning spec"* 로 거부 | 테이블을 지우고 다시 만듦 |
 | **예약어 78개** | 조인 이름이 `order`·`cube` 면 생성된 SQL 이 깨짐 | 컴파일 타임에 거부함 |
@@ -281,7 +283,7 @@ dimension 축이 false          예외
 GROUPING SETS / CUBE 의 재계산 여부      → 마스크 방식이 필요한가
 NULL-safe 조인이 해시 조인이 되는가      → '(unknown)' bucket 이 필요한가
 distinct 근사 자료구조의 이름과 정밀도   → HLL 대신 무엇이 있는가
-그 자료구조를 창 함수에서 쓸 수 있는가   → 구간 self-join 이 필요한가
+그 자료구조를 window function 에서 쓸 수 있는가   → 구간 self-join 이 필요한가
 파티션 정의를 바꿀 수 있는가             → 스키마 변경 절차
 ```
 
@@ -290,11 +292,11 @@ distinct 근사 자료구조의 이름과 정밀도   → HLL 대신 무엇이 �
 | 성질 | 무엇 |
 |---|---|
 | **CTE 는 결과를 저장하지 않음** | 여러 번 참조하면 그만큼 다시 계산됨. 단계를 테이블로 쪼개는 근거 |
-| **`ctx.ref()` 가 의존 관계를 등록함** | builder 가 프로젝트 이름도 데이터셋 이름도 모름 |
+| **`ctx.ref()` 가 의존 관계를 등록함** | builder 에 프로젝트 이름도 데이터셋 이름도 들어가지 않음 |
 | **`preOps` 로 `DECLARE` 와 `DELETE` 를 넣음** | insert_overwrite 를 구현하는 방법 |
 | **`uniqueKey` 를 주면 `MERGE` 를 씀** | 쓰지 않음. `preOps` 로 직접 구간을 지움 |
 | **컴파일 타임 도구임** | 런타임에 SQL 을 조립하지 않음. 선언한 조합 안에서만 움직임 |
-| **release / workflow configuration 은 git 에 없음** | GCP 리소스임. 선언 파일을 따로 두고 스크립트로 맞춤 |
+| **release / workflow configuration 은 git 에 없음** | GCP resource 임. 선언 파일을 따로 두고 스크립트로 맞춤 |
 
 - **dbt 로 옮긴다면** — 3단계 분리는 모델 3개로, `additive` 선언은 매크로로, generator 는 Jinja 루프로
   바뀜
@@ -333,10 +335,10 @@ preAggregations: {
 - 다만 실제 쿼리 로그를 보고 후보를 **추천**하는 기능은 있음 — Cube 의 Rollup Designer, Looker 의
   Aggregate Awareness Recommendations
 
-### 4-2. 그래서 여러 개를 두는 것이 싸짐
+### 4-2. 그래서 여러 개를 두는 편이 더 저렴함
 
 ```
-큐브 하나        a × b × c × d       모든 조합. 이 레포의 방식
+사전 집계 하나   a × b × c × d       모든 조합. 이 레포의 방식
 rollup 여러 개   a×b · a×c · b×d     실제로 쓰는 것만. 나머지는 원본으로 간다
 ```
 
@@ -347,7 +349,7 @@ rollup 여러 개   a×b · a×c · b×d     실제로 쓰는 것만. 나머지�
 ### 4-3. 이 레포에서 쪼개려면
 
 - 기술적으로는 가능함
-- `metrics.js` 에 지표별 `serving_dims` 를 적으면 그 지표의 큐브만 좁아짐
+- `metrics.js` 에 지표별 `serving_dims` 를 적으면 그 지표의 dimension 조합만 좁아짐
 - 한 지표에 rollup 을 여럿 두려면 generator 를 손봐야 함
 
 - **다만 소비자가 어느 테이블을 읽을지 알아야 함.** 쿼리를 보고 골라주는 계층이 없어서 view 로도 못 가림 — view 는 들어온

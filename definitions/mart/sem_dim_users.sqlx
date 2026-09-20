@@ -2,7 +2,7 @@ config {
   type: "table",
   schema: naming.DATASETS.MART,
   tags: [naming.TAGS.MART, "dimension"],
-  description: "고객 차원. 고객 1건 = 1행. 네 fact가 공유하는 conformed dimension",
+  description: "고객 dimension. 고객 1건 = 1행. 네 fact가 공유하는 conformed dimension",
   assertions: {
     uniqueKey: ["user_id"],
     nonNull:   ["user_id"],

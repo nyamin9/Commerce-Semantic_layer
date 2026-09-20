@@ -13,11 +13,11 @@
 | 종류 | 예 | 성격 |
 |---|---|---|
 | **선언 데이터** | `PERIODS` `ENTITIES` `METRICS` `SOURCES` | 사람이 읽고 쓰는 설정. 로직 없음 |
-| **파생 인덱스** | `SHIFTS` | 선언을 builder가 쓰기 좋은 방향으로 가공 |
-| **헬퍼 함수** | `allDims()` `uniform()` `self()` `dailySQL()` | 선언에서 필요한 조각을 꺼내거나 조립 |
+| **파생 인덱스** | `SHIFTS` | 선언을 builder 가 쓰기 좋은 방향으로 가공 |
+| **helper 함수** | `allDims()` `uniform()` `self()` `dailySQL()` | 선언에서 필요한 조각을 꺼내거나 조립 |
 
-- 선언은 손으로 쓰고, 파생과 헬퍼는 선언을 읽음
-- **역방향은 없음** — 헬퍼가 선언을 고치지 않음
+- 선언은 손으로 쓰고, 파생과 helper 는 선언을 읽음
+- **역방향은 없음** — helper 가 선언을 고치지 않음
 
 ---
 
@@ -159,7 +159,7 @@ acc[label] = acc[label] || {};
 acc[label][pName] = interval;
 ```
 
-- 첫 줄이 없으면 `undefined`에 프로퍼티를 넣으려다 터짐
+- 첫 줄이 없으면 `undefined` 에 속성을 넣으려다 에러가 남
 - `||`는 왼쪽이 falsy(`undefined` `null` `0` `""` `false`)면 오른쪽을 줌
 
 - **주의** — 유효한 값이 falsy일 수 있으면 `??`(nullish 병합)를 써야 함
@@ -253,7 +253,7 @@ const self = (col) => ({ via: null, col });
 ```
 
 - `self("order_status")`가 만드는 값은 `{ via: null, col: "order_status" }`임
-- 매번 `{ via: null, col: "..." }`를 쓰지 않으려고 만든 헬퍼임
+- 매번 `{ via: null, col: "..." }`를 쓰지 않으려고 만든 helper 임
 
 - **괄호를 빼면 동작이 달라짐.** `{`가 객체 리터럴이 아니라 함수 본문 블록으로 읽혀서 `undefined`를 반환함
 
@@ -262,7 +262,7 @@ const self = (col) => ({ via: null, col });
 (col) =>  { ... }    // 본문 블록. return 이 없으면 undefined
 ```
 
-- **축약 프로퍼티** — `col: col` 대신 `col`만 썼음
+- **축약 속성** — `col: col` 대신 `col`만 썼음
 - 변수명과 키가 같으면 생략할 수 있음
 
 - 같은 형태가 `includes/metrics.js:21-25`에도 있음
@@ -331,7 +331,7 @@ function resolveJoins(name, m, dims) {
   참조하거나(`{product.unit_cost}`)
 - 둘을 `Set`에 모아 중복을 없앰
 
-- `Set`은 무엇이 들었는지만 답하고 **순서는 신경 쓰지 않음.** 그래서 마지막에 `Object.keys(e.joins)`로 다시 훑음
+- `Set`은 무엇이 들었는지만 알려주고 **순서는 보장하지 않음.** 그래서 마지막에 `Object.keys(e.joins)`로 다시 훑음
 - `LEFT JOIN` 순서가 선언 순서와 같아지고, 지표가 달라져도 같은 조인은 같은 자리에 옴
 - diff 가 읽기 쉬워짐
 
@@ -344,7 +344,8 @@ purchase_type                              → order_header
 order_item_status                          → 조인 없음 (via: null)
 ```
 
-- **조인에 이름이 있어서 되짚을 필요가 없음.** 이름이 없으면 `dims` 를 훑어 `(테이블, 키)` 조합으로 조인 슬롯을 역산해야 함
+- **조인에 이름이 있어서 되짚을 필요가 없음.** 이름이 없으면 `dims` 를 훑어 `(테이블, 키)` 조합으로
+  어느 조인인지 역산해야 함
 - 지금은 `entities.js` 의 `joins` 를 읽기만 하면 됨
 
 - 역할 dimension(같은 dim을 두 키로 참조)도 마찬가지임
@@ -442,7 +443,7 @@ GROUP BY ${seq(dims.length + 1)}`.trim();
 - `ctx.ref(...)`는 Dataform이 주는 함수로, 이름을 정규화된 테이블 경로로 바꾸고 **동시에 의존 관계를 등록함.**
   문자열을 직접 쓰면 그래프에 엣지가 생기지 않음
 
-- `includes/build.js:140-145`의 두 헬퍼도 같은 방식임
+- `includes/build.js:140-145`의 두 helper 도 같은 방식임
 
 ```js
 const dimSelect = (d) =>
@@ -476,7 +477,7 @@ function resolveDims(name, m) {
   if (m.dims) {
     throw new Error(
       `[${name}] 지표는 dims 를 선언할 수 없다. daily_ 는 entity 의 dimension 전체를 갖는다. ` +
-      `큐브를 좁히려면 serving_dims 를 쓴다`
+      `period_ 의 dimension 을 좁히려면 serving_dims 를 쓴다`
     );
   }
 
@@ -490,7 +491,7 @@ function resolveDims(name, m) {
     }
     if (m.additive[d] === false) {
       throw new Error(
-        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch로 바꾼다 (P10)`
+        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch 로 바꾼다 (P10)`
       );
     }
     return { name: d, ...def };
@@ -544,7 +545,7 @@ SUM(IF(is_revenue_recognized, unit_cost, 0))
 - `unit_cost` 는 `sem_fct_order_items` 에도 `sem_dim_products` 에도 있음
 - `user_id` 는 fact 에도 `sem_dim_users` 에도 있음
 - `daily_cogs` 는 두 테이블을 조인하므로 BigQuery 가 어느 쪽인지 고를 수 없음
-- `dataform compile` 은 **못 잡음** — 문자열일 뿐이라 통과하고 실행 단계에서 터짐
+- `dataform compile` 은 **못 잡음** — 문자열일 뿐이라 통과하고 실행 단계에서 에러가 남
 
 - **왜 중괄호인가** — 접두사를 붙이려면 어느 토큰이 컬럼인지 알아야 함
 - 정규식으로 추측하면 예외가 끝없이 나옴
@@ -576,7 +577,7 @@ EXTRACT(YEAR FROM record_date)   → YEAR · FROM 은 키워드
 - `{sale_price` 처럼 짝이 안 맞으면 치환되지 않고 중괄호가 남으므로, 그것도 잡음
 
 - **`product`는 어디서 온 이름인가** — `entities.js`의 `joins`에 적힌 이름임
-- builder가 만든 이름이 아니므로 선언이 builder 내부를 모름 (P5)
+- builder 가 만든 이름이 아니므로 선언이 builder 내부에 기대지 않음 (P5)
 - 선언되지 않은 이름을 쓰면 `exprJoins`가 컴파일 타임에 막음
 
 ```
@@ -626,9 +627,9 @@ module.exports = {
 };
 ```
 
-- 내보내지 않은 것은 파일 안에서만 삶 — `entities.js`의 `self`, `metrics.js`의 `uniform`·`hll`,
+- 내보내지 않은 것은 파일 안에서만 쓰임 — `entities.js`의 `self`, `metrics.js`의 `uniform`·`hll`,
   `build.js`의 `dimSelect`·`joinClause`·`baseCTE`·`gridCTE`·`rollupSelect`가 그러함
-- 헬퍼가 밖으로 새면 그것도 계약이 되어 바꾸기 어려워짐
+- helper 를 밖으로 내보내면 그것도 계약이 되어 바꾸기 어려워짐
 
 - 받는 쪽은 구조 분해로 필요한 것만 꺼냄
 - `includes/build.js:11-13`:
@@ -699,7 +700,7 @@ function foldExpr(col, additive) {
 - 없으면 다음 `case`로 흘러내림(fall-through)
 - 여기서는 **`return`이 함수를 즉시 끝내므로** `break`가 필요 없음
 
-- `default: return null`이 "접을 수 없다"는 신호임
+- `default: return null`이 "rollup 할 수 없다"는 신호임
 - 호출한 쪽(`dimFold`)이 `!== null`로 검사해 예외를 던질지 정함 — 판정과 처리가 나뉘어 있음
 
 ---
@@ -716,7 +717,7 @@ function foldExpr(col, additive) {
     }
     if (m.additive[d] === false) {
       throw new Error(
-        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch로 바꾼다 (P10)`
+        `[${name}] dimension '${d}'가 비가산이다. entity를 옮기거나 sketch 로 바꾼다 (P10)`
       );
     }
 ```
@@ -736,7 +737,7 @@ additive.category          // false  ← 값이 falsy
 - `in`은 **키의 존재**만 봄
 - 값이 `false`든 `0`이든 상관없음
 
-- 두 오류는 고치는 방법이 다름 — 앞은 선언을 추가하는 것이고, 뒤는 entity를 옮기거나 sketch로 바꾸는 것임
+- 두 오류는 고치는 방법이 다름 — 앞은 선언을 추가하는 것이고, 뒤는 entity를 옮기거나 sketch 로 바꾸는 것임
 - 그래서 메시지도 다름
 
 ---
@@ -787,7 +788,7 @@ const UNKNOWN = "(unknown)";
 
 - **BigQuery 가 그 연산자를 해시 조인 키로 쓰지 못하기 때문임.** 등가 조인이면 양쪽을 해시로 나눠 붙이는데, `IS NOT
   DISTINCT FROM` 은 일반 술어라 중첩 루프가 됨
-- 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌음
+- 평범한 조인에서는 차이가 드러나지 않다가 구간 self-join 에서 CPU 한도를 넘겼음
 
 - 구간 self-join 에서 CPU 한도를 넘겨 실패함 ([findings.md](findings.md) 8)
 
@@ -815,7 +816,7 @@ const UNKNOWN = "(unknown)";
 
 - `includes/build.js` 의 `metricSQL`
 
-- 비교 컬럼은 8개인데 시프트 간격은 5개뿐임
+- 비교 컬럼은 8개인데 shift 간격은 5개뿐임
 - **간격 하나가 컬럼 여럿을 채움** — `1 YEAR` 하나로 `yoy_base`·`mtd_yoy_base`·`ytd_yoy_base`
   셋이 나옴
 - 그래서 먼저 간격으로 묶음
@@ -866,7 +867,7 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 |---|---|---|
 | 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (12번) |
 | 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (9번) |
-| 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만듦 (11번) |
+| 3 | `dailySQL` | 1·2를 써서 SQL 문자열 하나를 만듦 (11번) |
 | 4 | `foldExpr` · `dimFold` | `additive` → 합치는 함수 선택 (15번) |
 | 5 | `baseCTE` · `gridCTE` | dimension 좁히기와 grid 채우기 |
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만듦 |
@@ -878,7 +879,7 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 
 ```
 periodSQL   daily_ → 채운 grid → 누적 → '(all)' rollup  → period_<metric> 테이블
-metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metric> 테이블
+metricSQL   period_ 를 shift 해 자기 자신과 조인    → metric_<metric> 테이블
 ```
 
 - `periodSQL` 은 CTE 세 개를 이어 붙이고 마지막에 rollup 단계를 붙임
@@ -887,7 +888,7 @@ metricSQL   period_ 를 시프트해 자기 자신과 조인    → metric_<metr
 base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelect
 ```
 
-- `metricSQL` 은 두 덩임
+- `metricSQL` 은 두 부분으로 나뉨
 
 ```
 1) joins/bases  간격마다 조인 한 줄, 컬럼마다 한 줄   → 길이가 다른 두 배열 (19번)
@@ -896,7 +897,7 @@ base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelec
 
 - `ctx`는 Dataform이 넘겨주는 객체임
 - `ctx.ref(name)`이 이름을 정규화된 테이블 경로로 바꾸면서 **동시에 의존 관계를 등록함.** 그래서 `build.js`는
-  프로젝트 이름도, 데이터셋 이름도 모름 — 알 필요가 없게 만든 것임
+  프로젝트 이름도, 데이터셋 이름도 들어가지 않음 — 알 필요가 없게 만든 것임
 
 ---
 
@@ -919,7 +920,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
 ### 21-1. `ctx` 가 콜백으로 오는 이유
 
 - `publish()` 의 첫 인자(config)는 **컴파일 타임에 확정**되지만, `query` 와 `preOps` 는 **콜백**임
-- Dataform 이 실행 직전에 `ctx` 를 넣어 부름
+- Dataform 이 실행 직전에 `ctx` 를 넣어 호출함
 
 ```js
 ctx.ref(name)        이름 → 정규화된 테이블 경로. 동시에 의존 관계를 등록한다
@@ -932,7 +933,7 @@ ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
 - 첫 적재에서는 `false` 라 증분 조건이 붙지 않고 전 기간을 만들고, 이후 실행에서만 `true` 가 됨
 - config 에서 판단했다면 그 구분을 할 수 없음
 
-- `build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 모름 —
+- `build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 들어가지 않음 —
 **알 필요가 없게 만든 것임.**
 
 ### 21-2. 계산된 키로 컬럼 문서를 만듦
@@ -955,7 +956,7 @@ for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 �
 |---|---|---|
 | `gen_daily.js` | `sem_*` | 조인이 실행됨. 증분이면 `preOps` 로 구간을 지움 |
 | `gen_period.js` | `daily_` | 기간 4종 확장 |
-| `gen_metric.js` | `period_` | 시프트 self-join |
+| `gen_metric.js` | `period_` | shift self-join |
 | `gen_registry.js` | **없음** | 선언만 읽어 리터럴로 만듦. `ref()` 가 하나도 없음 |
 
 ---

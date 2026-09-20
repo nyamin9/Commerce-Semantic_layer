@@ -207,7 +207,7 @@ wow_base           wtd_wow_base
 | **builder** | `includes/build.js`. 선언을 읽어 SQL 문자열을 만듦 |
 | **generator** | `definitions/**/gen_*.js`. builder 를 불러 Dataform action 을 만듦 |
 | **join graph** | `entities.js` 의 `joins` + `dims`. 어느 dimension 에 어떤 경로로 닿는지의 선언 |
-| **`order_header`** | `order_item` 이 `sem_fct_orders` 를 부르는 조인 이름. `order` 는 GoogleSQL 예약어라 못 씀 |
+| **`order_header`** | `order_item` 에서 `sem_fct_orders` 로 가는 조인 이름. `order` 는 GoogleSQL 예약어라 못 씀 |
 | **`reprocess_from`** | 증분 갱신이 다시 만들 구간의 시작일. `preOps` 의 `DECLARE` 로 고정함 |
 | **`LOOKBACK_DAYS`** | 증분 갱신이 거슬러 올라가는 일수. 현재 3 |
 
@@ -217,7 +217,7 @@ wow_base           wtd_wow_base
 |---|---|
 | **action** | Dataform 이 실행하는 단위 하나. 테이블 생성, assertion, operation |
 | **assertion** | 조건을 어긴 행을 뽑는 쿼리. 한 행이라도 나오면 실패임 |
-| **게이트 assertion** | 깨지면 파이프라인을 멈추는 것. 우리가 보증하는 내용 |
+| **gate assertion** | 깨지면 파이프라인을 멈추는 것. 우리가 보증하는 내용 |
 | **감시 assertion** | 깨져도 멈추지 않는 것. 상류(DW)가 어긴 내용이라 우리가 고칠 수 없음 |
 | **incremental** | 최근 구간만 다시 만드는 갱신 방식 |
 | **insert_overwrite** | 구간을 `DELETE` 하고 다시 `INSERT` 하는 증분 방식. `MERGE` 는 옛 행을 남겨서 쓰지 않음 |
@@ -226,6 +226,11 @@ wow_base           wtd_wow_base
 | **workflow configuration** | 컴파일 결과를 어느 태그로 언제 어떤 계정으로 실행할지의 설정 |
 | **partition** | BigQuery 가 테이블을 날짜로 나눠 저장하는 것. 조회 시 읽는 양이 줌 |
 | **CTE** | `WITH` 로 이름 붙인 서브쿼리. 결과를 저장하지 않아 여러 번 참조하면 그만큼 다시 계산됨 |
+| **window function** | `OVER (PARTITION BY … ORDER BY …)` 로 행마다 구간 집계를 내는 SQL 기능. 가산 지표의 PTD 를 이것으로 만듦 |
+| **self-join** | 같은 테이블을 자기 자신과 조인하는 것. sketch 의 PTD 와 비교 기준값이 이 방식임 |
+| **shift** | 비교 기준 시점을 얻으려고 `record_date` 를 일정 간격만큼 옮기는 것. 간격은 `1 DAY`·`1 WEEK`·`1 MONTH`·`1 YEAR`·`364 DAY` 다섯 가지 |
+| **partition pruning** | 조회 조건으로 읽을 partition 을 줄이는 것. 조건이 서브쿼리면 걸리지 않음 |
+| **helper** | 선언에서 조각을 꺼내거나 조립하는 작은 함수. `allDims()` · `uniform()` · `self()` |
 
 ## 8. 원칙 번호
 
@@ -259,6 +264,17 @@ wow_base           wtd_wow_base
 | 원자 fact | **atomic fact** |
 | sentinel | **특수값** |
 | 창고 | **DW** 또는 **warehouse** |
+| 창 함수 | **window function** |
+| 자기조인 | **self-join** |
+| 시프트 | **shift** |
+| 프루닝 | **pruning** · **partition pruning** |
+| 헬퍼 | **helper** |
+| 게이트 | **gate** |
+| 큐브 | **dimension 조합** 또는 `serving_dims` |
+| 서빙 표면 | **서빙 테이블** 또는 `metric_<metric>` |
+| 리소스 · 브랜치 | **resource** · **branch** |
 | 살아남는다 (remaining 의 직역) | **남음** · **그대로 둠** |
+| 터진다 · 살아난다 (사물을 사람처럼 쓰는 말) | **에러가 난다** · **한도를 넘는다** · **다시 걸린다** |
+| 모른다 (모듈·선언을 주어로 쓸 때) | **기대지 않는다** · **들어가지 않는다** |
 
 - 새 단어가 필요하면 **이 문서에 먼저 추가하고 씀.**

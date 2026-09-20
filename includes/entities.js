@@ -5,9 +5,9 @@
 //   joins  어느 테이블에 어느 키로 붙는가. 이름을 준다
 //   dims   그 조인에서 어느 컬럼을 dimension으로 쓰는가
 //
-// 둘을 합쳐 쓰면 조인 슬롯에 부를 이름이 없어진다. 이름이 있어야 지표 수식이
+// 둘을 합쳐 쓰면 조인에 붙일 이름이 없어진다. 이름이 있어야 지표 수식이
 // dim 컬럼을 가리킬 수 있다 — {product.unit_cost} 처럼. builder 가 만든 이름이
-// 아니라 여기 적힌 이름이라 선언이 builder 내부를 모른다 (P5).
+// 아니라 여기 적힌 이름이라 선언이 builder 내부에 기대지 않는다 (P5).
 //
 // 여기 없는 dimension은 그 entity에서 쓸 수 없다 (P6).
 // 가능한 조합을 이어주는 것보다 불가능한 조합을 막는 쪽이 중요하다.
@@ -32,7 +32,7 @@
 //   "table"        상류가 전체 재생성한다. 우리도 매번 다시 만든다
 
 // 이름 규칙은 naming.js 한 곳에만 둔다 (P19). 여기서 문자열을 직접 쓰면
-// 접두사가 두 곳에 생기고, 어긋나도 ctx.ref() 가 실패하기 전까지 모른다
+// 접두사가 두 곳에 생기고, 어긋나도 ctx.ref() 가 실패하기 전까지 드러나지 않는다
 const { martName } = require("includes/naming");
 
 const PRODUCT = martName("dim_products");
@@ -66,7 +66,7 @@ const ENTITIES = {
       order_header: { to: ORDER,   key: "order_key"  },
     },
 
-    // brand 는 dimension이 아니다 (P4). 고유값 2,753개라 grid를 2,753배 부풀리는데,
+    // brand 는 dimension이 아니다 (P4). 고유값 2,753개라 grid 를 2,753배 부풀리는데,
     // 그러면 기간 집계가 의미가 없어진다 — 2,754일치를 연 단위로 집계해도 행이
     // 178,916 로 5% 밖에 안 줄었다. 빼면 83,320 이다 (2026-09-13 측정).
     // 브랜드별 집계가 필요하면 semantic_mart 에 직접 SQL 을 쓴다.

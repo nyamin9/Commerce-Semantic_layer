@@ -5,7 +5,7 @@
 //   node infra/apply.js --dry-run   차이만 보여준다
 //   node infra/apply.js             적용한다
 //
-// Dataform 의 release/workflow configuration 은 GCP 리소스라 git 에 남지 않는다.
+// Dataform 의 release/workflow configuration 은 GCP resource 라 git 에 남지 않는다.
 // 선언을 원천으로 두고 이 스크립트가 맞춘다.
 //
 // PATCH 는 invocationConfig 같은 중첩 필드를 갱신하지 못한다. 그래서 workflow

@@ -20,7 +20,7 @@
 
 - `dataform compile` 이 정하는 것은 **무엇을 만들지**임
 - 언제 어떤 계정으로 돌릴지는 Dataform 의 release configuration 과 workflow configuration 이
-  정하는데, 그건 GCP 리소스라 git 에 없음 — 레포만 보고는 무엇이 언제 도는지 알 수 없음
+  정하는데, 그건 GCP resource 라 git 에 없음 — 레포만 보고는 무엇이 언제 도는지 알 수 없음
 
 - 그래서 `infra/workflows.json` 을 원천으로 두고 `apply.js` 가 맞춤
 
@@ -32,7 +32,7 @@ node infra/apply.js             # 적용
 | | cron (UTC) | 태그 | 성격 |
 |---|---|---|---|
 | `production` (release) | `0 4 * * *` | — | `main` 컴파일 |
-| `semantic-daily` | `30 4 * * *` | `mart` `semantic` | 본 파이프라인. 게이트 assertion 포함 |
+| `semantic-daily` | `30 4 * * *` | `mart` `semantic` | 본 파이프라인. gate assertion 포함 |
 | `upstream-monitoring` | `0 5 * * *` | `monitoring` | 상류 감시. 실패해도 본 파이프라인은 돎 |
 
 - 상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작함
@@ -40,7 +40,7 @@ node infra/apply.js             # 적용
   (테이블 59 · assertion 118 을 돌렸을 때. 지금 그래프는 assertion 124)
 
 - `order_item`·`order` 는 매일 전 기간을 다시 만듦
-- `daily_` 가 20만 행이라 전체 재생성이 증분보다 쌈 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
+- `daily_` 가 20만 행이라 전체 재생성이 증분보다 저렴함 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
   더 붙음 ([findings.md](findings.md) 17)
 
 ### 2-1. 실행 계정
@@ -69,7 +69,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 
 | 데이터셋 | 내용 |
 |---|---|
-| `semantic_mart` | 7개 테이블. 게이트 assertion 15개 |
+| `semantic_mart` | 7개 테이블. gate assertion 15개 |
 | `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 크기는 [tables.md](tables.md) 6장 |
 | `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
@@ -119,7 +119,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | 6 | `dim_date` 부재 | — | semantic layer 가 생성 |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased` 인데 `viewed_product` 가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없음** |
 | 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 24개. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 채움 |
-| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과임) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀림.<br>우리 쪽은 `order` entity 라 department 축이 없음 |
+| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀림.<br>우리 쪽은 `order` entity 라 department 축이 없음 |
 
 - 2~4번은 모두 최근 구간에 몰려 있어 늦게 도착한 데이터 문제로 보임
 
@@ -156,7 +156,7 @@ npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 - `dataform run` 은 `.df-credentials.json` 또는 ADC 가 필요함
 - 실제 운영은 Dataform 콘솔의 서비스 계정으로 돌아가므로 로컬 실행은 편의 목적임
 
-- `main` 이 Dataform 이 추적하는 브랜치임
+- `main` 이 Dataform 이 추적하는 branch 임
 - 콘솔 workspace 는 자동 동기화되지 않으므로 푸시 후 `Pull from default branch` 를 눌러야 반영됨
 
 ### 6-1. 스키마를 바꿀 때
@@ -174,6 +174,6 @@ npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
 | | |
 |---|---|
 | 고객 grain entity | 재구매율 · LTV · 코호트를 열려면 사용자 1명 = 1행인 fact 가 필요함 |
-| 큐브 쪼개기 | 분석가에게 먼저 열고 `INFORMATION_SCHEMA.JOBS` 로 실제 조합을 센 뒤 판단함 ([porting.md](porting.md) 4장) |
+| dimension 조합 쪼개기 | 분석가에게 먼저 열고 `INFORMATION_SCHEMA.JOBS` 로 실제 조합을 센 뒤 판단함 ([porting.md](porting.md) 4장) |
 | 퍼널 · 코호트 지표 | 상류 결함 7 이 해소되어야 함 |
 | SCD point-in-time | 이력 커버리지 4.46%. 이력이 쌓이면 재검토 |

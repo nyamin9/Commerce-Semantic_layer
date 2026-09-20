@@ -2,14 +2,14 @@ config {
   type: "table",
   schema: naming.DATASETS.MART,
   tags: [naming.TAGS.MART, "dimension"],
-  description: "날짜 차원. semantic layer가 소유한다 — 변환이 아니라 축이고, 상류에 없다",
+  description: "날짜 dimension. semantic layer가 소유한다 — 변환이 아니라 축이고, 상류에 없다",
   assertions: {
     uniqueKey: ["date_day"],
     nonNull:   ["date_day"],
   },
   columns: {
     date_day:        "날짜. PK",
-    week_start_date: "주 시작일(월요일). 주간 롤업의 period_start 와 같은 기준",
+    week_start_date: "주 시작일(월요일). 주간 rollup의 period_start 와 같은 기준",
     is_weekend:      "주말 여부",
   },
 }
@@ -31,7 +31,7 @@ SELECT
   FORMAT_DATE('%A',    date_day)     AS day_name,
   FORMAT_DATE('%Y-%m', date_day)     AS year_month,
   -- 주 시작을 월요일로 맞춘다. periods.js 의 WEEK(MONDAY) 와 같은 기준이어야
-  -- 날짜 차원으로 자른 결과와 주간 롤업이 어긋나지 않는다
+  -- 날짜 dimension으로 자른 결과와 주간 rollup 이 어긋나지 않는다
   DATE_TRUNC(date_day, WEEK(MONDAY)) AS week_start_date,
   LAST_DAY(date_day, WEEK(MONDAY))   AS week_end_date,
   DATE_TRUNC(date_day, MONTH)        AS month_start_date,

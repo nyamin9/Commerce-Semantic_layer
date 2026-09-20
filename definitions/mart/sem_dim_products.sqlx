@@ -2,7 +2,7 @@ config {
   type: "table",
   schema: naming.DATASETS.MART,
   tags: [naming.TAGS.MART, "dimension"],
-  description: "상품 차원. 상품 1건 = 1행. semantic layer가 참조하는 유일한 상품 원천",
+  description: "상품 dimension. 상품 1건 = 1행. semantic layer가 참조하는 유일한 상품 원천",
   assertions: {
     uniqueKey: ["product_id"],
     nonNull:   ["product_id"],
@@ -11,7 +11,7 @@ config {
   columns: {
     product_id:  "상품 식별자. PK",
     category:    "상품 카테고리. 지표 전반의 표준 분류 축",
-    brand:       "브랜드. 소스가 비어 있으면 '(unknown)'. 차원은 아니다 (P4)",
+    brand:       "브랜드. 소스가 비어 있으면 '(unknown)'. dimension 은 아니다 (P4)",
     department:  "부문",
     unit_cost:   "단위 원가",
     retail_price:"정가",
@@ -22,7 +22,7 @@ config {
 -- 상류가 category_name 을 바꿔도 충격이 여기서 멈춘다.
 -- brand 는 소스에서 24개 상품이 비어 있다 (2026-09-13 측정. 결함 8).
 -- 라벨을 붙여 버킷을 드러낸다 — Kimball 의 unknown member (P6-1).
--- 차원으로는 쓰지 않는다. 고유값이 2,753개라 롤업이 깨진다 (P4, entities.js 주석).
+-- dimension 으로는 쓰지 않는다. 고유값이 2,753개라 rollup 이 깨진다 (P4, entities.js 주석).
 SELECT
   product_id,
   product_name,

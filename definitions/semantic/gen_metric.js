@@ -1,9 +1,9 @@
-// metric_<metric> 생성. period_ 를 시프트해 자기 자신과 조인하고 비교 기준값을 붙인다.
+// metric_<metric> 생성. period_ 를 shift 해 자기 자신과 조인하고 비교 기준값을 붙인다.
 //
 // dimension 조인은 없다 (P5). period_ 하나만 읽으므로 atomic fact 와 dimension 을
 // 다시 읽지 않는다 (P11). 기간 확장도 dimension rollup도 period_ 가 이미 해뒀다.
 //
-// 비교 컬럼 8개가 서로 다른 시프트 5개에서 나오므로 자기조인도 5번이다 —
+// 비교 컬럼 8개가 서로 다른 shift 5개에서 나오므로 self-join 도 5번이다 —
 // 1 DAY · 1 WEEK · 1 MONTH · 1 YEAR · 364 DAY (근거는 build.js 의 metricSQL 주석).
 //
 // 전부 table 이다 (P22). 하루가 추가되면 364일·1년 뒤 행의 비교 기준값까지
@@ -36,7 +36,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
       : `${m.description} — ${what}`;
   }
 
-  // 증감률이 아니라 시프트한 기간의 값이다. 나눗셈은 소비 시점에 한다 (P12).
+  // 증감률이 아니라 shift 한 기간의 값이다. 나눗셈은 소비 시점에 한다 (P12).
   //
   // NULL 은 0 이 아니라 "그 기간에 같은 dimension 조합이 없었다" 는 뜻이다.
   // dimension 을 rollup 하며 SUM 하면 NULL 이 빠져 과소 집계된다 — '(all)' 행을 쓰면 된다 (P14-1)
@@ -51,7 +51,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
     type:        "table",
     schema:      DATASETS.METRIC,
     tags:        [TAGS.SEMANTIC, "metric"],
-    description: `${m.description} — ${axes.length}축 rollup × 기간 컬럼 + 비교 기준값. 서빙 표면`,
+    description: `${m.description} — ${axes.length}축 rollup × 기간 컬럼 + 비교 기준값. 서빙 테이블`,
     columns,
 
     bigquery: { partitionBy: RECORD_DATE },

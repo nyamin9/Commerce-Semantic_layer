@@ -36,7 +36,7 @@ semantic.daily_<metric>      record_date × dimension 전체
         ▼
 semantic.period_<metric>     record_date × serving_dims + PTD 컬럼
         │
-        │  record_date 를 시프트한 self-join 5번
+        │  record_date 를 shift 한 self-join 5번
         ▼
 semantic.metric_<metric>     + 비교 기준값 8컬럼          ← 소비자는 이것만 읽는다
 semantic_metadata.metric_registry                        지표 카탈로그
@@ -81,7 +81,7 @@ includes/                           선언 계층 — 사람이 쓰는 곳
   periods.js                        기간 선언
   entities.js                       entity 와 join graph
   metrics.js                        지표 선언
-  build.js                          SQL builder (정책 집행부)
+  build.js                          SQL builder. 선언을 검사하고 SQL 로 바꾼다
 
 definitions/                        Dataform action
   sources/declarations.js           DW 읽기 전용 참조
@@ -92,7 +92,7 @@ definitions/                        Dataform action
   semantic/gen_metric.js            metric_<metric>
   metadata/gen_registry.js          metric_registry
 
-infra/                              실행 계획 — GCP 리소스 선언
+infra/                              실행 계획 — GCP resource 선언
   workflows.json                    스케줄 · 태그 · 실행 계정
   apply.js                          선언을 Dataform 에 적용
 
