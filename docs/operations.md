@@ -167,6 +167,6 @@ npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
 | | |
 |---|---|
 | 고객 grain entity | 재구매율 · LTV · 코호트를 열려면 사용자 1명 = 1행인 fact 가 필요함 |
-| 큐브 쪼개기 | 분석가에게 먼저 열고 `INFORMATION_SCHEMA.JOBS` 로 실제 조합을 센 뒤 판단함 ([porting.md](porting.md) D절) |
+| 큐브 쪼개기 | 분석가에게 먼저 열고 `INFORMATION_SCHEMA.JOBS` 로 실제 조합을 센 뒤 판단함 ([porting.md](porting.md) 4장) |
 | 퍼널 · 코호트 지표 | 상류 결함 7 이 해소되어야 함 |
 | SCD point-in-time | 이력 커버리지 4.46%. 이력이 쌓이면 재검토 |

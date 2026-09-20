@@ -2,8 +2,9 @@
 
 BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 
-변환(transformation)은 **dbt-airflow** 가 담당하고, 이 레포는 **semantic layer 만**
-담당함. DW 테이블은 만들지 않고 `declaration` 으로 읽기만 함.
+- **변환(transformation)** — `dbt-airflow` 가 담당. 이 레포 밖
+- **semantic layer** — 이 레포가 담당
+- DW 테이블은 만들지 않음. `declaration` 으로 읽기만 함
 
 ## 1. 무엇을 만드나
 
@@ -49,8 +50,10 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 2026-08-31   China    (all)          TRUE               14,815   260,673        62,020
 ```
 
-`weekly` · `monthly` · `yearly` 는 만들지 않음. 완결된 기간의 집계는 PTD 와 값이
-같아서 `is_month_end` 같은 플래그로 고름.
+`weekly` · `monthly` · `yearly` 는 만들지 않음.
+
+- 완결된 기간의 집계는 PTD 와 값이 같음
+- 그래서 `is_month_end` 같은 플래그로 골라 씀
 
 ## 3. 문서
 
@@ -66,9 +69,8 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 | [operations.md](docs/operations.md) | 스케줄 · 실행 계정 · 상류 결함 · 현재 상태 |
 | [js-patterns.md](docs/js-patterns.md) | 코드를 읽기 전에 JS 가 낯설다면 |
 
-**처음 읽는다면** `glossary.md` → `architecture.md` → `tables.md` → `code-map.md` 순서를 권함.
-
-**지표를 추가하려면** `metrics.md` 7장만 보면 됨.
+- **처음 읽는다면** — `glossary.md` → `architecture.md` → `tables.md` → `code-map.md`
+- **지표를 추가하려면** — `metrics.md` 7장만 보면 됨
 
 ## 4. 디렉터리
 
@@ -139,7 +141,7 @@ WHERE record_date = CURRENT_DATE() AND country='KR'
   AND age_group='(all)' AND gender='(all)' AND acquisition_channel='(all)'
 ```
 
-`'(all)'` 은 그 dimension 을 rollup 한 행이고, `'(unknown)'` 은 값이 없는 bucket 임.
-
-`serving_dims` 밖의 dimension(`category` 등)별 집계는 `daily_` 에서 냄.
-자세한 이유는 [architecture.md](docs/architecture.md) 6-2 에 있음.
+- `'(all)'` — 그 dimension 을 rollup 한 행
+- `'(unknown)'` — 값이 없는 bucket
+- `serving_dims` 밖의 dimension(`category` 등)별 집계는 `daily_` 에서 냄.
+  이유는 [architecture.md](docs/architecture.md) 6-2 에 있음

@@ -67,7 +67,7 @@ net_revenue: { entity: "order_item", expr: "SUM({net_revenue})", ... }
 buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"], ... }
 ```
 
-큐브가 커졌을 때 쪼개는 길이기도 함. 자세한 내용은 [porting.md](porting.md) D절.
+큐브가 커졌을 때 쪼개는 길이기도 함. 자세한 내용은 [porting.md](porting.md) 4장.
 
 ---
 
@@ -184,9 +184,11 @@ dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 �
 {product.unit_cost}   →  product.unit_cost      조인해서 오는 컬럼
 ```
 
-접두사가 없으면 조인한 dimension 테이블과 이름이 겹치는 순간 모호해짐 — `unit_cost` 는
-fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` 양쪽에 있음.
-`dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터짐.
+접두사가 없으면 조인한 dimension 테이블과 이름이 겹치는 순간 모호해짐.
+
+- `unit_cost` — fact 와 `sem_dim_products` 양쪽에 있음
+- `user_id` — fact 와 `sem_dim_users` 양쪽에 있음
+- `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터짐
 
 ### 3-5. `build.js` (549줄)
 

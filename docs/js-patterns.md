@@ -527,10 +527,10 @@ function renderExpr(name, m, sql, where) {
 SUM(IF(is_revenue_recognized, unit_cost, 0))
 ```
 
-`unit_cost`는 `sem_fct_order_items`에도 `sem_dim_products`에도 있음.
-`daily_cogs`는 두 테이블을 조인하므로 BigQuery가 어느 쪽인지 고를 수 없음.
-`user_id`도 같음. `dataform compile`은 못 잡음 — **문자열일 뿐이라 통과하고
-실행 단계에서 터짐.**
+- `unit_cost` 는 `sem_fct_order_items` 에도 `sem_dim_products` 에도 있음
+- `user_id` 는 fact 에도 `sem_dim_users` 에도 있음
+- `daily_cogs` 는 두 테이블을 조인하므로 BigQuery 가 어느 쪽인지 고를 수 없음
+- `dataform compile` 은 **못 잡음** — 문자열일 뿐이라 통과하고 실행 단계에서 터짐
 
 **왜 중괄호인가** — 접두사를 붙이려면 어느 토큰이 컬럼인지 알아야 함.
 정규식으로 추측하면 예외가 끝없이 나옴.

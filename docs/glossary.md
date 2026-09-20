@@ -75,11 +75,10 @@ Brasil   (all)            4,970.90   ├→ country 를 rollup (나머지 13개�
 | `true` | `SUM` | `net_revenue` |
 | `"sketch"` | `HLL_COUNT.MERGE_PARTIAL` | `buyer_count` |
 
-`buyer_count` 를 `SUM` 으로 rollup 하면 틀림. 같은 사람이 여러 category 에서 사면
-두 번 세어지기 때문임.
-
-**시간 방향은 rollup 이라고 부르지 않음.** 일자별을 월 단위로 합치는 것은 PTD 이고,
-코드에서도 단계가 나뉘어 있음 — rollup 단계는 dimension 만, `cum` 단계가 시간을 다룸.
+- `buyer_count` 를 `SUM` 으로 rollup 하면 **틀림** — 같은 사람이 여러 category 에서
+  사면 두 번 세어지기 때문
+- **시간 방향은 rollup 이라고 부르지 않음** — 일자별을 월 단위로 합치는 것은 PTD 임
+- 코드에서도 단계가 나뉘어 있음 — rollup 단계는 dimension 만, `cum` 단계가 시간을 다룸
 
 ### 3-2. serving_dims 를 어떻게 고르나
 
@@ -88,8 +87,9 @@ Brasil   (all)            4,970.90   ├→ country 를 rollup (나머지 13개�
 상관없음.
 
 ```
-dims 8개 전부      조합 55,498 × 2,813일 = 1억 5,600만 행
-serving_dims 5개   조합  1,406 × 2,813일 =     395만 행   → rollup 행까지 1,422만
+dims 8개 전부      조합 58,439 × 2,816일 = 1억 6,456만 행
+serving_dims 5개   조합  1,409 × 2,816일 =     397만 행
+                   rollup 행까지 포함하면 조합 5,064 →  1,426만 행
 ```
 
 `category` 하나(값 26개)만 넣어도 26배가 됨. 반대로 `purchase_type`(값 2개)은
@@ -100,7 +100,7 @@ serving_dims 5개   조합  1,406 × 2,813일 =     395만 행   → rollup 행�
 
 | entity | `serving_dims` | 조합 | rollup 포함 |
 |---|---|---|---|
-| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` · `purchase_type` | 1,406 | 5,054 |
+| `order_item` · `order` | `country` · `age_group` · `gender` · `acquisition_channel` · `purchase_type` | 1,409 | 5,064 |
 | `session` | `country` · `acquisition_channel` | 68 | 89 |
 | `user_event` | `country` | 15 | 16 |
 
@@ -144,7 +144,12 @@ GROUP BY category
 한 사람이 완료 주문과 취소 주문을 둘 다 가질 수 있어서 bucket 이 겹침. 뺄셈을 하면
 양쪽에 다 있는 사람이 통째로 사라짐 ([findings.md](findings.md) 15).
 
-그래서 `buyer_count` · `paying_buyer_count` · `void_buyer_count` 셋을 따로 만듦.
+그래서 셋을 따로 만듦.
+
+- `buyer_count` — 주문이 있는 고객
+- `paying_buyer_count` — 매출이 인식된 주문이 있는 고객
+- `void_buyer_count` — 취소·반품된 주문이 있는 고객
+
 셋을 더해도 전체가 되지 않음. distinct count 의 성질이라 정확히 세도 마찬가지임.
 
 ## 4. 지표 테이블 3단계

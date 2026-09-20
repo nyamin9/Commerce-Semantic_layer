@@ -383,9 +383,11 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 
 ### 3-4. HLL 지표
 
-`buyer_count` · `visitor_count` · `active_user` 셋은 sketch로 저장함.
-precision은 **15 고정**이며 나중에 바꾸면 과거 sketch와 병합할 수 없음.
-기대 오차 약 1.6%이므로 정산·과금 용도로 쓰지 않음.
+`buyer_count` · `visitor_count` · `active_user` 셋은 sketch 로 저장함.
+
+- precision 은 **15 고정** — 나중에 바꾸면 과거 sketch 와 병합할 수 없음
+- 기대 오차 약 1.6%
+- 그래서 정산·과금 용도로 쓰지 않음
 
 ---
 
@@ -681,9 +683,10 @@ dimension 8개가 전부 들어감. 선언에 적지 않아도 `entities.js` 가
 
 ### 7-6. 6단계 — `period_` · `metric_cancelled_units` (생성)
 
-`additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가
-선택됨. dimension 은 `serving_dims` 5개로 좁혀지고 각 축의 `'(all)'` rollup 행이
-생김. 누계 3종이 컬럼으로 붙고, 비교 기준값 8개가 날짜 조인으로 붙음 (P14).
+- `additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가 선택됨
+- dimension 은 `serving_dims` 5개로 좁혀지고, 각 축의 `'(all)'` rollup 행이 생김
+- 누계 3종이 컬럼으로 붙음
+- 비교 기준값 8개가 날짜 조인으로 붙음 (P14)
 
 ```
 record_date · country · age_group · gender · acquisition_channel · purchase_type ·

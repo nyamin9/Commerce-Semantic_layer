@@ -57,12 +57,13 @@ Looker · Cube · dbt MetricFlow 와 비교하면 **다른 지점은 하나뿐�
 "product_name 에 blue"   → 선언 안 됨              → 기성 도구도 거부
 ```
 
-핵심은 **선언된 dimension 을 조건으로 쓸 수 있느냐**임. 기성 도구는 선언된 dimension
-이면 `GROUP BY` 에 없어도 필터로 쓸 수 있음 — atomic fact 로 fallback 하면 되기
-때문임. 사전 집계만 있으면 `GROUP BY` 에 넣은 dimension 으로만 거를 수 있음.
+핵심은 **선언된 dimension 을 조건으로 쓸 수 있느냐**임.
 
-그래서 고유값이 많은 컬럼(`retail_price` 4,212개 · `product_name` 27,309개)은 이
-구조에서 dimension 이 될 수 없고, `price_tier` 같은 **bucket 으로 만들어야** 함.
+- **기성 도구** — 선언된 dimension 이면 `GROUP BY` 에 없어도 필터로 쓸 수 있음.
+  atomic fact 로 fallback 하면 되기 때문
+- **이 레포** — `GROUP BY` 에 넣은 dimension 으로만 거를 수 있음
+- 그래서 고유값이 많은 컬럼(`retail_price` 4,212개 · `product_name` 27,309개)은
+  dimension 이 될 수 없고 `price_tier` 같은 **bucket 으로 만들어야** 함
 
 Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불가능하기 때문임. 기능
 부족이 아니라 도구의 층위이고, dbt Core 도 같은 이유로 못 함.
@@ -81,7 +82,7 @@ Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불�
 
 | | 값 |
 |---|---|
-| `daily_` 행 수 ÷ atomic fact 행 수 | 98.68% (200,206 / 202,877) — 거의 줄지 않음 |
+| `daily_` 행 수 ÷ atomic fact 행 수 | 98.63% (204,238 / 207,078) — 거의 줄지 않음 |
 | atomic fact 전 기간 + dimension 조인 + 임의 필터 | 8.5 MB |
 
 이 규모에서 사전 집계는 성능 이득이 거의 없음. 이득은 이쪽임.
@@ -96,8 +97,10 @@ Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불�
 - 기간 하나 추가 → `periods.js` 한 항목 → 17개 지표에 전부 적용
 - 지표 하나 추가 → `metrics.js` 한 항목 → 기간 컬럼 4 · 비교 컬럼 8 · `'(all)'` 행 자동
 
-`wtd` 의 전년 비교를 364일로 고친 것이 실제 사례임. 한 줄로 전 지표의 주 단위
-비교가 전부 맞아졌음. 손으로 만들었다면 지표 수만큼 고쳐야 했고 하나는 빠뜨렸을 것임.
+실제 사례가 `wtd` 의 전년 비교를 364일로 고친 것임.
+
+- 한 줄로 전 지표의 주 단위 비교가 전부 맞아졌음
+- 손으로 만들었다면 지표 수만큼 고쳐야 했고, 하나는 빠뜨렸을 것임
 
 ## 4. 어디까지 답하는가
 
@@ -112,9 +115,13 @@ Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불�
 | DW · raw 직접 | 무엇이든 | 보장 안 됨 |
 
 세 번째 줄이 현실의 탈출구이고, `semantic_mart` 를 따로 만들어 둔 이유가 여기서
-드러남. 자유롭게 SQL 을 써도 자연키가 없어 잘못된 조인이 불가능하고, dimension PK
-유일성이 assertion 으로 보장되어 fan-out 이 생기지 않음. **지표를 틀린 수식으로
-계산하는 것은 막지 못하지만, 조인 때문에 숫자가 부푸는 것은 구조적으로 막힘.**
+드러남. 자유롭게 SQL 을 써도
+
+- 자연키가 없어 **잘못된 조인이 불가능함**
+- dimension PK 유일성이 assertion 으로 보장되어 **fan-out 이 생기지 않음**
+
+**지표를 틀린 수식으로 계산하는 것은 막지 못하지만, 조인 때문에 숫자가 부푸는 것은
+구조적으로 막힘.**
 
 | 상황 | 처리 |
 |---|---|
@@ -134,20 +141,20 @@ sem_fct_*  +  sem_dim_*
       │
       │  조인 실행 (여기 한 번뿐)
       ▼
-daily_<metric>     record_date × dims 전체            203,168행
+daily_<metric>     record_date × dims 전체              204,238행
       │
       │  serving_dims 로 좁히고 · grid 채우고 · PTD 계산하고 · rollup
       ▼
-period_<metric>    record_date × serving_dims      14,227,010행
+period_<metric>    record_date × serving_dims       14,260,224행
       │
       │  record_date 를 시프트한 self-join 5번
       ▼
-metric_<metric>    + 비교 기준값 8컬럼             14,227,010행
+metric_<metric>    + 비교 기준값 8컬럼              14,260,224행
 ```
 
 각 단계가 무엇을 사고 무엇을 포기하는지가 설계의 전부임.
 
-| | 삶 | 포기함 |
+| | 사는 것 | 포기하는 것 |
 |---|---|---|
 | `daily_` | dimension 을 전부 가짐. 조인이 한 번만 돎 | 여기엔 PTD 도 비교도 없음 |
 | `period_` | PTD 와 rollup 행이 생김 | `serving_dims` 밖의 dimension |
@@ -199,16 +206,17 @@ PTD 에는 그 문제가 없음. `record_date` 는 항상 실제로 지난 날�
 ### 6-2. dimension 을 두 단계로 나눠 가짐
 
 ```
-daily_    dims 전체        order_item 기준 7개
-period_   serving_dims     4개 + 각 dimension 의 '(all)' rollup 행
+daily_    dims 전체        order_item 기준 8개
+period_   serving_dims     5개 + 각 dimension 의 '(all)' rollup 행
 ```
 
 `period_` 가 `dims` 전부를 쓰지 못하는 이유는 6-3 의 `grid` 때문임. 행 수가
 (조합 수 × 날짜 수)로만 정해지므로 조합이 늘면 그대로 곱해짐.
 
 ```
-dims 8개 전부      조합 55,498 × 2,815일 = 1억 5,600만 행
-serving_dims 5개   조합  1,406 × 2,815일 =     396만 행   → rollup 행까지 1,422만
+dims 8개 전부      조합 58,439 × 2,816일 = 1억 6,456만 행
+serving_dims 5개   조합  1,409 × 2,816일 =     397만 행
+                   rollup 행까지 포함하면 조합 5,064 →  1,426만 행
 ```
 
 `'(all)'` rollup 행을 미리 만들어 두는 것이 이 결정의 짝임. 소비자가 직접 rollup 할
@@ -233,13 +241,13 @@ PTD 를 활동이 있는 날에만 만들면 rollup 했을 때 대부분이 사�
 
 ### 6-4. rollup 보다 PTD 를 먼저 계산함
 
-순서를 바꿔도 값은 같음. `SUM` 은 결합법칙이 성립하고, HLL 병합은 합집합이라 조합별
-`wtd` sketch 를 합친 것이 전체 `wtd` sketch 와 같음.
-
-**비용은 전혀 다름.** rollup 을 먼저 하면 `'(all)'` 행의 sketch 가 조밀해지는데, sketch
-PTD 는 1년 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를 하루당 180여 번씩 읽음.
-
-rollup 을 먼저 하면 CPU 한도에 걸려 생성 자체가 실패함 ([findings.md](findings.md) 6).
+- **값은 순서와 무관함** — `SUM` 은 결합법칙이 성립하고, HLL 병합은 합집합이라
+  조합별 `wtd` sketch 를 합친 것이 전체 `wtd` sketch 와 같음
+- **비용은 전혀 다름** — rollup 을 먼저 하면 `'(all)'` 행의 sketch 가 조밀해짐.
+  sketch PTD 는 1년 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를
+  하루당 180여 번씩 읽음
+- rollup 을 먼저 하면 CPU 한도에 걸려 **생성 자체가 실패함**
+  ([findings.md](findings.md) 6)
 
 ### 6-5. 비교는 기준값만 저장함
 
@@ -259,12 +267,11 @@ net_revenue_mtd   768,676      mtd_yoy_base   94,971
 
 ### 6-6. 증분은 `MERGE` 가 아니라 구간을 지우고 다시 넣음
 
-`MERGE` 는 지우지 않음. dimension 값이 바뀌면 `(record_date, dimension)` 키가 달라져
-옛 행이 매칭되지 않고 그대로 남음. `uniqueKey` assertion 도 못 잡음. 키는 여전히
-유일하기 때문임.
-
-상류를 여러 날치 최신화하고 증분을 돌리면 남은 옛 행이 합계를 부풀림
-([findings.md](findings.md) 9).
+- `MERGE` 는 **지우지 않음** — dimension 값이 바뀌면 `(record_date, dimension)` 키가
+  달라져 옛 행이 매칭되지 않고 그대로 남음
+- `uniqueKey` assertion 도 **못 잡음** — 키는 여전히 유일하기 때문
+- 상류를 여러 날치 최신화하고 증분을 돌리면 남은 옛 행이 합계를 부풀림
+  ([findings.md](findings.md) 9)
 
 ## 7. sketch 지표는 구조가 같고 함수만 다름
 

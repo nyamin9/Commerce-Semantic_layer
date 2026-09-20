@@ -138,9 +138,11 @@ dbt_dev_marts_core.fct_order_items  →   semantic_mart.sem_fct_order_items
 모든 fact/dim에 `uniqueKey` assertion을 걺. 깨지면 파이프라인이 멈춤.
 
 **P2. 조인은 surrogate key로만 함.**
-이 DW의 자연키는 유일하지 않음 — `order_id` 4,038행, `order_item_id` 5,161행 중복.
-소스가 ID를 재사용함. 자연키로 조인하면 **에러 없이 조용히 fan-out** 됨.
-`semantic_mart`에서 자연키를 제거해 실수를 구조적으로 막음.
+
+- 이 DW 의 자연키는 유일하지 않음 — `order_id` 4,038행, `order_item_id` 5,161행 중복
+- 소스가 ID 를 재사용하기 때문
+- 자연키로 조인하면 **에러 없이 조용히 fan-out** 됨
+- `semantic_mart` 에서 자연키를 제거해 실수를 구조적으로 막음
 
 **P3. dimension의 PK 유일성은 장식이 아니라 fan trap 방어 장치임.**
 dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 조용히 부풂.
@@ -150,11 +152,13 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 **P4. dimension 로직은 dimension 안에 있음. 고유값이 많은 컬럼은 dimension이 될 수 없음.**
 집계 SQL 안에서 bucket을 만들지 않음. 파생 dimension은 `semantic_mart`의 `sem_dim_*`에서 만듦.
 
-고유값이 많으면 grid가 그만큼 부풀고, **그러면 기간 rollup이 작동하지 않음.**
-`brand` 는 고유값이 2,753개라 연 단위로 집계해도 행이 5%밖에 줄지 않음.
+고유값이 많으면 grid 가 그만큼 부풀고, **그러면 기간 rollup 이 작동하지 않음.**
 
-게다가 그 크기로 비교 self-join 을 돌리면 BigQuery on-demand 의 CPU 한도에 걸려
-`metric_` 이 생성되지 못함. **그래서 `brand` 는 dimension 이 아님.** 브랜드별 집계가 필요하면 `semantic_mart` 에
+- `brand` 는 고유값이 2,753개라 연 단위로 집계해도 행이 5%밖에 줄지 않음
+- 그 크기로 비교 self-join 을 돌리면 BigQuery on-demand 의 CPU 한도에 걸려
+  `metric_` 이 생성되지 못함
+
+**그래서 `brand` 는 dimension 이 아님.** 브랜드별 집계가 필요하면 `semantic_mart` 에
 직접 SQL 을 씀.
 
 **P4-1. `serving_dims` 에 넣기 전에 조합 수를 세고 CPU 를 실측함.**
@@ -163,7 +167,7 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 `daily_` 는 거의 안 커짐 — 비용은 전부 큐브에 있음.
 
 ```
-purchase_type (값 2개)   조합 720 → 1,406   rollup 포함 1,708 → 5,054   행 480만 → 1,422만
+purchase_type (값 2개)   조합 720 → 1,409   rollup 포함 1,708 → 5,064   행 480만 → 1,426만
 category (값 26개)       조합이 26배
 ```
 
@@ -183,9 +187,10 @@ category (값 26개)       조합이 26배
 
 **P5. dimension은 fact에 붙이지 않음. 조인은 `daily_` 생성 시 딱 한 번 실행함.**
 
-`semantic_mart`는 star schema를 유지함 — dim과 fact를 분리함.
-조인 관계는 `entities.js`의 `joins`에, 그 조인에서 뽑아 쓸 컬럼은 `dims`에
-선언하고, generator가 그 선언을 읽어 `daily_<metric>`을 만들 때 조인을 실행함.
+- `semantic_mart` 는 star schema 를 유지함 — dim 과 fact 를 분리함
+- 조인 관계는 `entities.js` 의 `joins` 에 선언함
+- 그 조인에서 뽑아 쓸 컬럼은 `dims` 에 선언함
+- generator 가 그 선언을 읽어 `daily_<metric>` 을 만들 때 조인을 실행함
 
 ```
 sem_fct_order_items  ─┐
@@ -194,9 +199,10 @@ sem_dim_users        ─┘    (dimension 이 컬럼으로     (조인 없음)
                             들어가 있다)
 ```
 
-**`daily_`는 이미 비정규화된 결과물임.** dimension이 평범한 컬럼으로 들어가 있어서
-그 위의 모든 집계는 조인이 필요 없음. 조인 비용은 지표당 하루 한 번이지
-조회할 때마다가 아님.
+**`daily_` 는 이미 비정규화된 결과물임.**
+
+- dimension 이 평범한 컬럼으로 들어가 있어서 그 위의 모든 집계는 조인이 필요 없음
+- 조인 비용은 지표당 하루 한 번이지 조회할 때마다가 아님
 
 fact에 dimension을 미리 붙이지 않는 이유는 셋임.
 
