@@ -9,12 +9,13 @@
 | 데이터셋 | 테이블 | 개수 |
 |---|---|---|
 | `semantic_mart` | `sem_dim_*` 3 + `sem_fct_*` 4 | 7 |
-| `semantic` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` | 51 |
+| `semantic` | `daily_<metric>` · `period_<metric>` · `metric_<metric>` | 55 |
 | `semantic_metadata` | `metric_registry` | 1 |
 | `semantic_assertions` | assertion 결과. Dataform 이 만듦 | — |
 
-- `semantic` 의 51개는 **지표 17개 × 3단계**임
-- 지표마다 컬럼 구성이 같고 dimension 개수만 entity 에 따라 다름
+- `semantic` 의 55개는 **지표 17개 × 3단계 + 조합 2개 × 2단계**임
+- `daily_` 는 지표당 하나이고, `period_`·`metric_` 은 dimension 조합마다 한 쌍임
+- 지표마다 컬럼 구성이 같고 dimension 개수만 조합에 따라 다름
 
 ---
 
@@ -175,7 +176,26 @@ SAFE_DIVIDE(net_revenue_mtd - mtd_yoy_base, mtd_yoy_base)
 
 ---
 
-## 6. 지표별 크기
+## 6. 조합 테이블 — `period_<metric>__<조합>`
+
+- 지표가 `rollups` 를 선언하면 조합마다 `period_`·`metric_` 한 쌍이 더 생김
+- 기본 조합(접미어 없는 테이블)은 그대로 남음
+
+| 테이블 | dimension | 행 | 크기 |
+|---|---|---|---|
+| `period_net_revenue__category` | `purchase_type` · `category` | 228,096 | 20.6 MB |
+| `metric_net_revenue__category` | 위와 같음 + 비교 기준값 8컬럼 | 228,096 | 46.6 MB |
+| `period_gross_revenue__category` | `purchase_type` · `category` | 228,096 | 20.6 MB |
+| `metric_gross_revenue__category` | 위와 같음 + 비교 기준값 8컬럼 | 228,096 | 46.6 MB |
+
+- 조합 수는 `(2+1) × (26+1) = 81` 이고, 날짜 2,816일을 곱해 228,096행임
+- `+1` 은 각 축의 `'(all)'` rollup 행임
+- 기본 조합이 1,426만 행 · 1,497 MB 이니 **1.6%** 임
+
+- `daily_` 는 조합과 무관하게 지표당 하나임
+- `metric_<metric>__<조합>` 은 짝이 맞는 `period_<metric>__<조합>` 만 읽음
+
+## 7. 지표별 크기
 
 - dimension 개수가 entity 마다 달라서 행 수가 크게 차이 남
 
@@ -202,7 +222,7 @@ SAFE_DIVIDE(net_revenue_mtd - mtd_yoy_base, mtd_yoy_base)
 - `purchase_type`(값 2개)을 넣으면서 조합이 1,708 → 5,064 로 2.96배가 됐음
 - 값이 2개인 dimension 이 3배를 만드는 것은 rollup 행 때문임 — `first` · `repeat` · `'(all)'`
 
-### 6-1. 저장 크기
+### 7-1. 저장 크기
 
 - sketch 지표가 가산 지표보다 큼
 - 값 컬럼 12개가 전부 `BYTES` 이기 때문임
@@ -217,12 +237,12 @@ SAFE_DIVIDE(net_revenue_mtd - mtd_yoy_base, mtd_yoy_base)
 | `metric_buyer_count` | 14,260,224 | 3,924.2 MB |
 | `period_event_count` | 44,912 | 2.3 MB |
 
-- `semantic` 전체는 51개 테이블 · 3억 4,480만 행 · 47.5 GB 임
+- `semantic` 전체는 55개 테이블 · 3억 4,571만 행 · 47.7 GB 임
 - 행 수는 날마다 조금씩 늚
 
 ---
 
-## 7. `metric_registry` — 지표 카탈로그
+## 8. `metric_registry` — 지표 카탈로그
 
 - 선언을 테이블로 만든 것
 - 29행임 (base 17 · ratio 7 · excluded 5)
@@ -258,7 +278,7 @@ WHERE metric_name = 'net_revenue'
 
 ---
 
-## 8. 테이블 간 의존
+## 9. 테이블 간 의존
 
 - `dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프임
 
@@ -278,7 +298,7 @@ fct_user_events  → sem_fct_user_events┘
 
 ---
 
-## 9. 조회 예시
+## 10. 조회 예시
 
 ```sql
 -- 전사 이번 달 누계와 작년 같은 날까지

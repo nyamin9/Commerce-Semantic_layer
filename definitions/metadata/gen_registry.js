@@ -15,9 +15,9 @@
 // registry 가 유일한 거처다.
 
 const { METRICS, RATIOS, EXCLUDED } = require("includes/metrics");
-const { DATASETS, TAGS }            = require("includes/naming");
+const { DATASETS, TAGS, metricName } = require("includes/naming");
 const { ENTITIES, allDims }          = require("includes/entities");
-const { valueColumns, comparePlan, servingAxes, resolveDims } = require("includes/build");
+const { valueColumns, comparePlan, servingAxes, rollupAxes, rollupNames, resolveDims } = require("includes/build");
 
 // ── SQL 리터럴 ────────────────────────────────────────────────
 // expr 에 작은따옴표가 들어 있다 — COUNTIF({order_item_status} = 'returned').
@@ -30,6 +30,18 @@ const lit = (v) =>
 const str   = (v) => lit(v) || "CAST(NULL AS STRING)";
 const arr   = (xs) => (xs && xs.length ? `[${xs.map(lit).join(", ")}]` : "CAST([] AS ARRAY<STRING>)");
 const bool  = (v) => (v ? "TRUE" : "FALSE");
+
+// 조합 목록. 어느 축이 어느 테이블에 있는지의 단일 원천이다 —
+// 쿼리를 보고 테이블을 골라주는 계층이 없으므로 소비자가 여기서 찾는다
+// 필드 이름이 rollup 이면 GoogleSQL 예약어 ROLLUP 과 부딪힌다 (실측: Unexpected keyword ROLLUP)
+const ROLLUP_TYPE = "ARRAY<STRUCT<rollup_name STRING, serving_table STRING, serving_dims ARRAY<STRING>>>";
+
+const rollupArr = (xs) =>
+  xs && xs.length
+    ? `[${xs.map((r) =>
+        `STRUCT(${str(r.rollup)} AS rollup_name, ${lit(r.table)} AS serving_table, ` +
+        `${arr(r.dims)} AS serving_dims)`).join(", ")}]`
+    : `CAST([] AS ${ROLLUP_TYPE})`;
 
 // ── 이름 충돌은 컴파일 타임에 잡는다 (P19) ────────────────────
 const seen = new Set();
@@ -51,6 +63,7 @@ const row = (o) => `  STRUCT(
     ${arr(o.dimensions)} AS dimensions,
     ${str(o.additive_by_axis)} AS additive_by_axis,
     ${arr(o.serving_dims)} AS serving_dims,
+    ${rollupArr(o.rollups)} AS rollups,
     ${arr(o.value_columns)} AS value_columns,
     ${arr(o.compare_columns)} AS compare_columns,
     ${str(o.numerator)} AS numerator,
@@ -79,6 +92,11 @@ for (const [name, m] of Object.entries(METRICS)) {
     dimensions:       resolveDims(name, m).map((d) => d.name),
     additive_by_axis: JSON.stringify(m.additive),
     serving_dims:     servingAxes(name, m),
+    rollups:          rollupNames(m).map((r) => ({
+                        rollup: r,
+                        table:  `semantic.${metricName(name, r)}`,
+                        dims:   rollupAxes(name, m, r),
+                      })),
     value_columns:    valueColumns(name, m),
     compare_columns:  comparePlan(m).map((c) => c.column),
     is_approximate:   m.additive.time === "sketch",
@@ -138,7 +156,8 @@ publish("metric_registry", {
     filter:           "집계 전 행 필터",
     dimensions:       "daily_ 가 가진 dimension 전체. ratio 는 분자·분모의 교집합이다 (P12)",
     additive_by_axis: "축별 가산성 JSON. true · \"sketch\" · \"last\" (P9)",
-    serving_dims:     "metric_ 의 grain. 각 축의 '(all)' rollup 행까지 만들어져 있다 (P4)",
+    serving_dims:     "기본 조합의 grain. 각 축의 '(all)' rollup 행까지 만들어져 있다 (P4)",
+    rollups:          "이 지표가 만든 조합 전부. rollup_name 이 NULL 인 항목이 기본 조합이다 — 접미어 없는 테이블",
     value_columns:    "metric_ 의 값 컬럼. 접두어가 없으면 daily 다 (P13). 누계 불가면 daily 하나뿐 (P10-3)",
     compare_columns:  "붙은 비교 기준값 컬럼. 증감률이 아니다 (P14)",
     numerator:        "ratio 전용. 분자 지표 이름",

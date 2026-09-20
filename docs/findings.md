@@ -275,7 +275,21 @@ buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
 | `daily_` 의 `purchase_type` 별 매출 = 원본 | 2 | **0** |
 | `'(all)'` = first + repeat (매출, 262일) | 262 | **0** |
 
-## 19. `rpt_*` 대조
+## 19. STRUCT 필드 이름도 예약어를 피해야 함
+
+- `metric_registry` 에 조합 목록을 `ARRAY<STRUCT<rollup STRING, ...>>` 로 넣었더니 실패함
+
+```
+bigquery error: Syntax error: Unexpected keyword ROLLUP at [13:37]
+```
+
+- `ROLLUP` 은 GoogleSQL 예약어임 — `GROUP BY ROLLUP(...)` 의 그 키워드임
+- 조인 alias 만 예약어를 피하면 된다고 보고 있었는데, **STRUCT 필드 이름도 같음**
+- `rollup_name` 으로 바꿔 해결함 (2026-09-21)
+
+- → [code-map.md](code-map.md) 4-6
+
+## 20. `rpt_*` 대조
 
 - `dbt_dev_marts_reporting.rpt_daily_revenue` 와 `record_date × department`
   grain 으로 전 구간 대조

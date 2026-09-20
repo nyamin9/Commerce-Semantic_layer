@@ -19,9 +19,9 @@ definitions/         Dataform action — 선언을 테이블로 만드는 곳
   mart/*.sqlx                     7개  semantic_mart
   assertions/upstream_contract.js 86   DW 감시
   assertions/partition_contract.js     파티션 컬럼 계약
-  semantic/gen_daily.js           54   daily_<metric>
-  semantic/gen_period.js          61   period_<metric>
-  semantic/gen_metric.js          64   metric_<metric>
+  semantic/gen_daily.js           54   daily_<metric>           지표당 하나
+  semantic/gen_period.js          65   period_<metric>[__조합]  조합마다 하나
+  semantic/gen_metric.js          68   metric_<metric>[__조합]  조합마다 하나
   metadata/gen_registry.js       158   metric_registry
 
 infra/               실행 계획 — GCP resource 선언
@@ -75,7 +75,7 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 
 ## 3. `includes/` — 선언 계층
 
-### 3-1. `naming.js` (40줄)
+### 3-1. `naming.js` (93줄)
 
 - 이름 규칙을 한 곳에 모음
 - 규칙이 흩어지면 `ctx.ref()` 가 끊어짐
@@ -159,14 +159,18 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 - **`order` 에 상품 dimension 이 없는 것은 누락이 아님.** 한 주문이 여러 상품을 포함하므로 주문 grain 에서
   category 가 정의되지 않음
 
-### 3-4. `metrics.js` (176줄)
+### 3-4. `metrics.js` (189줄)
 
 | export | 내용 |
 |---|---|
-| `METRICS` | 지표 17개. `entity` · `expr` · `filter` · `serving_dims` · `additive` · `description` |
+| `METRICS` | 지표 17개. `entity` · `expr` · `filter` · `serving_dims` · `rollups` · `additive` · `description` |
 | `RATIOS` | 비율 지표 7개. 테이블을 만들지 않고 registry 행으로만 존재함 |
 | `EXCLUDED` | 만들지 않기로 한 5개와 그 사유 |
 | `HLL_PRECISION` | 15 고정 |
+
+- 선언에 쓸 수 있는 키는 위 일곱 개뿐임
+- **모르는 키는 컴파일이 거부함** — `serving_dims`·`rollups` 는 없어도 도는 선택 키라
+  오타를 내면 아무 일도 일어나지 않고 기본 조합만 만들어짐 (P18)
 
 - `additive` 는 플래그가 아니라 **축별 객체**임
 
@@ -193,7 +197,7 @@ false     복원 불가                 생성 거부
 - `user_id` — fact 와 `sem_dim_users` 양쪽에 있음
 - `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 에러가 남
 
-### 3-5. `build.js` (549줄)
+### 3-5. `build.js` (582줄)
 
 - 선언의 규칙을 실제로 검사하는 곳
 - 초기에 한 번 쓰고 거의 건드리지 않음
@@ -204,7 +208,8 @@ false     복원 불가                 생성 거부
 | `renderExpr(name, m, sql, where)` | `{col}` → `base.col`, `{join.col}` → `join.col` |
 | `exprJoins(name, m, sql, where)` | 수식이 참조한 조인 이름. 선언 안 된 이름이면 예외 |
 | `resolveJoins(name, m, dims)` | 실제로 쓰이는 조인만 선언 순서로. 예약어·`base` 이름이면 예외 |
-| `servingAxes(name, m)` | `m.serving_dims` 또는 entity 의 것 ∩ entity 의 `dims`. `dims` 에 없는 값이면 예외 |
+| `rollupAxes(name, m, rollup)` | 그 조합의 축 ∩ entity 의 `dims`. `dims` 에 없는 값이면 예외 |
+| `rollupNames(m)` | 이 지표가 만드는 조합. 첫 항목이 `null`(기본 조합, 접미어 없음) |
 | `dailySQL(ctx, name, m)` | 조인 + `record_date × dims GROUP BY` |
 | `foldExpr(col, additive)` | `additive` → 합치는 함수. `null` 이면 생성 거부 |
 | `dimFold(name, m, dims)` | dimension 축을 합칠 함수. 축마다 가산성이 다르면 예외 |
@@ -348,12 +353,12 @@ Object.entries(METRICS).forEach(([name, m]) => {
 #### 4-5-2. dimension 을 정하는 함수가 갈라져 있음
 
 ```
-gen_daily.js    resolveDims(name, m)   →  allDims(m.entity)            entity 전체
-gen_period.js   servingAxes(name, m)   →  m.serving_dims || entity 것   period_ dimension
-gen_metric.js   servingAxes(name, m)   →  같음
+gen_daily.js    resolveDims(name, m)          →  allDims(m.entity)       entity 전체
+gen_period.js   rollupAxes(name, m, rollup)   →  조합의 축              period_ dimension
+gen_metric.js   rollupAxes(name, m, rollup)   →  같음
 ```
 
-- **`gen_daily.js` 는 `servingAxes` 를 `require` 하지 않음.** 그래서 지표에 `serving_dims`
+- **`gen_daily.js` 는 `rollupAxes` 를 `require` 하지 않음.** 그래서 지표에 `serving_dims`
   를 선언해도 `daily_` 로 새지 않음
 
 ```js
@@ -366,10 +371,10 @@ metric_buyer_count    dimension 2개
 ```
 
 - 반대 방향도 막혀 있음
-- `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로 **`serving_dims` 는 언제나 `daily_` dimension 의 부분집합**임
+- `rollupAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로 **어떤 조합이든 언제나 `daily_` dimension 의 부분집합**임
 - `dims` 에 없는 것을 `serving_dims` 에 적으면 컴파일이 거부함
 
-### 4-6. `metadata/gen_registry.js` (158줄)
+### 4-6. `metadata/gen_registry.js` (178줄)
 
 - `metric_registry` 를 만듦
 - **`ctx.ref()` 가 없는 유일한 generator** 로, 테이블을 하나도 읽지 않고 선언만 읽어 리터럴로 만듦
@@ -386,6 +391,11 @@ EXCLUDED   의도적으로 만들지 않는다. 사유를 남긴다   is_generat
 - 비율 7개와 제외 5개는 registry 가 유일한 거처임
 
 ---
+
+- `rollups` 컬럼이 **어떤 조합이 어느 테이블에 있는지의 단일 원천**임
+- 쿼리를 보고 테이블을 골라주는 계층이 없으므로 소비자가 여기서 찾음
+- 필드 이름은 `rollup` 이 아니라 `rollup_name` 임 — `ROLLUP` 이 GoogleSQL 예약어라
+  STRUCT 필드 이름으로도 못 씀 ([findings.md](findings.md) 19)
 
 ## 5. `infra/` — 실행 계획
 

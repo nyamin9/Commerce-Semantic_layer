@@ -10,7 +10,7 @@
 
 const { ENTITIES, allDims, allJoins, servingDims } = require("includes/entities");
 const { PERIODS, CUMULATIVE, END_FLAGS } = require("includes/periods");
-const { dailyName, periodName, martName,
+const { dailyName, periodName, martName, assertRollupKey,
         RECORD_DATE, valueColumn, baseColumn } = require("includes/naming");
 
 // ── 공통 ──────────────────────────────────────────────────────
@@ -32,9 +32,25 @@ const seq = (n) => Array.from({ length: n }, (_, i) => i + 1).join(", ");
 const UNKNOWN = "(unknown)";
 
 // ── 선언 검증 — 런타임이 아니라 컴파일 타임에 잡는다 (P19) ────
+// 지표 선언에 쓸 수 있는 키. 모르는 키는 거부한다 (P18).
+//
+// serving_dims·rollups 는 없어도 도는 선택 키라, 오타를 내면 아무 일도 일어나지
+// 않고 기본 조합만 만들어진다. 그 침묵을 막는다
+const METRIC_KEYS = new Set([
+  "entity", "expr", "filter", "serving_dims", "rollups", "additive", "description",
+]);
+
 function resolveDims(name, m) {
   const e = ENTITIES[m.entity];
   if (!e) throw new Error(`[${name}] 알 수 없는 entity: ${m.entity}`);
+
+  for (const k of Object.keys(m)) {
+    if (!METRIC_KEYS.has(k)) {
+      throw new Error(
+        `[${name}] 모르는 키 '${k}'. 사용 가능: ${[...METRIC_KEYS].join(", ")}`
+      );
+    }
+  }
 
   // daily_ 는 언제나 entity 의 dimension 전체를 갖는다. 지표가 좁히지 못한다.
   //
@@ -282,21 +298,35 @@ function comparePlan(m) {
 //   → daily_ 는 dimension 전체, period_·metric_ 은 2개
 //
 // dims 에 없는 것을 serving_dims 에 적으면 교집합에서 조용히 빠진다. 거부한다 (P18)
-function servingAxes(name, m) {
+function rollupAxes(name, m, rollup = null) {
   const have = new Set(resolveDims(name, m).map((d) => d.name));
+  const where = rollup ? `rollups.${rollup}` : "serving_dims";
+  const want  = rollup
+    ? m.rollups[rollup]
+    : (m.serving_dims || servingDims(m.entity));
 
-  if (m.serving_dims) {
-    const missing = m.serving_dims.filter((d) => !have.has(d));
-    if (missing.length) {
-      throw new Error(
-        `[${name}] serving_dims 의 '${missing.join(", ")}' 가 이 지표의 dimension 에 없다. ` +
-        `사용 가능: ${[...have].join(", ")}`
-      );
-    }
+  const missing = want.filter((d) => !have.has(d));
+  if (missing.length) {
+    throw new Error(
+      `[${name}] ${where} 의 '${missing.join(", ")}' 가 이 지표의 dimension 에 없다. ` +
+      `사용 가능: ${[...have].join(", ")}`
+    );
   }
-
-  return (m.serving_dims || servingDims(m.entity)).filter((d) => have.has(d));
+  return want.filter((d) => have.has(d));
 }
+
+const servingAxes = (name, m) => rollupAxes(name, m, null);
+
+// 이 지표가 만드는 조합. 첫 항목이 기본 조합이고 접미어가 없다 (naming.js).
+//
+// rollups 는 기본 조합을 대체하지 않고 더한다. 좁은 조합은 wide 의 1% 안팎이라
+// 남겨두는 대가가 거의 없고, 남겨두면 rollups 밖의 질문이 기본 조합으로 답해진다.
+// serving_dims 에 없는 축(category 등)을 여는 것이 rollups 의 쓸모다
+const rollupNames = (m) => {
+  if (!m.rollups) return [null];
+  for (const k of Object.keys(m.rollups)) assertRollupKey("metrics.js", k);
+  return [null, ...Object.keys(m.rollups)];
+};
 
 // 완결 플래그. record_date 에서 결정론적으로 나오므로 저장 비용만 든다.
 //
@@ -470,8 +500,8 @@ FROM cum${masks}
 GROUP BY ${seq(axes.length + 1)}`;
 }
 
-function periodSQL(ctx, name, m) {
-  const axes = servingAxes(name, m);
+function periodSQL(ctx, name, m, rollup = null) {
+  const axes = rollupAxes(name, m, rollup);
 
   const cum = !canCumulate(m) ? cumNone(name, axes)
             : m.additive.time === "sketch" ? cumSketch(name, axes)
@@ -508,9 +538,12 @@ ${rollupSelect(name, m, axes).trim()}`.trim();
 // mtd 끼리 맞물린다. 대신 3/30 과 3/31 이 둘 다 2/28 로 간다.
 const shiftAlias = (interval) => `b_${interval.toLowerCase().replace(/\s+/g, "_")}`;
 
-function metricSQL(ctx, name, m) {
-  const axes = servingAxes(name, m);
-  const src  = ctx.ref(periodName(name));
+function metricSQL(ctx, name, m, rollup = null) {
+  const axes = rollupAxes(name, m, rollup);
+
+  // 짝이 맞는 period_ 를 읽어야 한다. rollup 을 빠뜨리면 축이 어긋나
+  // 조인이 매칭되지 않고 _base 가 전부 NULL 이 된다 — 에러는 나지 않는다
+  const src  = ctx.ref(periodName(name, rollup));
   const plan = comparePlan(m);
 
   // 간격 → 그 간격으로 가져올 비교 컬럼들
@@ -543,7 +576,7 @@ ${joins.join("\n")}`.trim();
 
 module.exports = {
   seq, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
-  resolveDims, resolveJoins, servingAxes,
+  resolveDims, resolveJoins, servingAxes, rollupAxes, rollupNames,
   usablePeriods, valueColumns, comparePlan, endFlagNames,
   dailySQL, periodSQL, metricSQL,
 };

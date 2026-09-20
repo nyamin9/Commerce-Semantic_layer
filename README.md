@@ -19,8 +19,8 @@
 
 ## 2. 구조
 
-- 지표 하나가 테이블 3개가 됨
-- 지표 17개 × 3 = 51개임
+- 지표 하나가 `daily_` 하나 + 조합마다 (`period_`, `metric_`) 한 쌍이 됨
+- 지표 17개 기본 조합 + `net_revenue`·`gross_revenue` 의 `category` 조합 = **55개**
 
 ```
 dbt_dev_marts_core           DW. 소유하지 않는다. declaration 으로 읽기만

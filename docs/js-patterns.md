@@ -385,11 +385,11 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 - 인자가 더 필요하면 `(j) => joinClause(ctx, j)`처럼 감쌈
 
 - `filter`로 후보를 거름
-- `includes/build.js` 의 `servingAxes`:
+- `includes/build.js` 의 `rollupAxes`:
 
 ```js
 const have = new Set(resolveDims(name, m).map((d) => d.name));
-return (m.serving_dims || servingDims(m.entity)).filter((d) => have.has(d));
+return want.filter((d) => have.has(d));
 ```
 
 - **콜백에서 구조 분해**도 자주 씀
@@ -621,7 +621,7 @@ module.exports = { METRICS, RATIOS, EXCLUDED, HLL_PRECISION };
 // includes/build.js
 module.exports = {
   seq, renderExpr, exprJoins, LOOKBACK_DAYS, incrementalPreOps,
-  resolveDims, resolveJoins, servingAxes,
+  resolveDims, resolveJoins, servingAxes, rollupAxes, rollupNames,
   usablePeriods, valueColumns, comparePlan, endFlagNames,
   dailySQL, periodSQL, metricSQL,
 };

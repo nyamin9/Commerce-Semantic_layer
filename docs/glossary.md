@@ -174,6 +174,7 @@ GROUP BY category
 | **`record_date`** | 세 단계가 공유하는 날짜 컬럼. `daily` 값에서는 그날, 누계에서는 기간의 마지막 날 |
 | **`serving_dims`** | `period_`·`metric_` 이 갖는 dimension 목록. `dims` 의 부분집합임. `entities.js` 에 entity 별로 선언하고 `metrics.js` 에서 지표별로 덮어쓸 수 있음. 여기 없는 dimension 은 컬럼 자체가 생기지 않음 |
 | **`dims`** | 그 entity 의 dimension 전체. `entities.js` 에만 있음. `daily_` 가 언제나 이것을 갖고 지표가 좁힐 수 없음 |
+| **`rollups`** | 한 지표가 만드는 dimension 조합 여럿. `metrics.js` 에 선언함. 기본 조합을 **대체하지 않고 더함** |
 | **`'(all)'`** | 그 dimension 을 rollup 한 행임을 나타내는 특수값 |
 | **`'(unknown)'`** | 그 dimension 의 값이 없는 bucket. `daily_` 의 `NULL` 이 여기로 옴 |
 | **`purchase_type`** | `first` = 그 사용자의 첫 주문, `repeat` = 그 이후. **주문 상태와 무관함** — 첫 주문이 취소돼도 `first` 임 |
@@ -207,6 +208,8 @@ wow_base           wtd_wow_base
 | **builder** | `includes/build.js`. 선언을 읽어 SQL 문자열을 만듦 |
 | **generator** | `definitions/**/gen_*.js`. builder 를 불러 Dataform action 을 만듦 |
 | **join graph** | `entities.js` 의 `joins` + `dims`. 어느 dimension 에 어떤 경로로 닿는지의 선언 |
+| **조합** | `period_`·`metric_` 한 쌍이 갖는 dimension 목록. 기본 조합은 `serving_dims`, 그 밖은 `rollups` 가 정함 |
+| **`__`** | 테이블 이름의 조합 구분자. `period_net_revenue__category` 는 `category` 조합임. 접미어가 없으면 기본 조합 |
 | **`order_header`** | `order_item` 에서 `sem_fct_orders` 로 가는 조인 이름. `order` 는 GoogleSQL 예약어라 못 씀 |
 | **`reprocess_from`** | 증분 갱신이 다시 만들 구간의 시작일. `preOps` 의 `DECLARE` 로 고정함 |
 | **`LOOKBACK_DAYS`** | 증분 갱신이 거슬러 올라가는 일수. 현재 3 |
@@ -234,7 +237,7 @@ wow_base           wtd_wow_base
 
 ## 8. 원칙 번호
 
-- `docs/principles.md` 의 **P1~P22** 와 세부 10항
+- `docs/principles.md` 의 **P1~P22** 와 세부 11항
 - 세부는 `P6-1` 처럼 하이픈을 붙임
 - 문서에서 인용할 때는 번호만 쓰지 말고 **무엇에 대한 원칙인지 한 마디를 같이 씀.**
 

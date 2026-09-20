@@ -69,6 +69,37 @@
 - **`daily_` 쪽은 좁힐 수 없음.** 지표가 `dims` 를 선언하면 컴파일이 거부함
 - `daily_` 가 fallback 계층이라 거기서 빼면 복원할 방법이 없음 (P4-1)
 
+### 1-2. 한 지표에 조합을 여럿 두기 — `rollups`
+
+- `rollups` 를 적으면 조합마다 `period_`·`metric_` 한 쌍이 더 생김
+- **기본 조합을 대체하지 않고 더함** — 기본 조합이 남아 있어야 `rollups` 밖의 질문이 답을 얻음
+
+```js
+net_revenue: {
+  entity: "order_item",
+  expr: "SUM({net_revenue})",
+  rollups: { category: ["purchase_type", "category"] },
+  additive: uniform("order_item", true),
+},
+```
+
+| 테이블 | dimension | 행 |
+|---|---|---|
+| `daily_net_revenue` | 8개 전체 | 204,238 |
+| `period_net_revenue` · `metric_net_revenue` | `serving_dims` 5개 | 14,260,224 |
+| `period_net_revenue__category` · `metric_..__category` | `purchase_type` · `category` | 228,096 |
+
+- 이름의 `__` 뒤가 조합 이름임. 접두어가 없으면 기본 조합임
+- 값 컬럼 이름은 조합과 무관하게 같음 — 소비자 쿼리는 `FROM` 만 달라짐
+
+- **`serving_dims` 에 없는 축도 고를 수 있음.** `daily_` 가 가진 dimension 이면 됨
+- `category` 는 고유값 26개라 기본 조합에 못 넣지만, `purchase_type` 과 둘만 묶으면
+  조합이 81개뿐이라 22만 행임 — 기본 조합의 **1.6%**
+- 그래서 `rollups` 는 기본 조합을 쪼개는 장치가 아니라 **기본 조합이 못 여는 축을 싸게 여는 장치**임
+
+- 조합 이름에는 소문자와 숫자만 씀. `__` 구분자와 겹치므로 밑줄은 거부됨
+- 어떤 조합이 어느 테이블에 있는지는 `metric_registry.rollups` 에 있음
+
 - 나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
   있음
 - grid 가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없음

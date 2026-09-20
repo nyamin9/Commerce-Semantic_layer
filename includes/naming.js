@@ -30,10 +30,38 @@ const MART_PREFIX = "sem_";
 // semantic_mart — DW와 이름이 겹치면 ref()가 충돌하므로 접두사를 붙인다
 const martName = (base) => `${MART_PREFIX}${base}`;
 
-// semantic — 지표당 세 테이블
+// semantic — 지표당 daily_ 하나 + (period_, metric_) 조합마다 한 쌍
+//
+// rollup 이 null 이면 기본 조합이고 접미어가 없다. entities.js 의 serving_dims 로
+// 만든 지금까지의 테이블이 그대로 이 이름을 쓴다 — 조합을 추가해도 기존 이름은
+// 바뀌지 않는다.
+//
+// 구분자가 밑줄 둘인 이유는 값 컬럼과 눈으로 갈리게 하기 위해서다.
+//   period_net_revenue          기본 조합
+//   period_net_revenue__category  purchase_type × category 조합
+//   net_revenue_mtd             값 컬럼 (밑줄 하나)
+//
+// 그래서 rollup 이름에는 밑줄을 못 쓴다. 허용하면 경계가 다시 모호해진다
+const ROLLUP_SEP = "__";
+
+const assertRollupKey = (metric, rollup) => {
+  if (rollup === null || rollup === undefined) return;
+  if (!/^[a-z][a-z0-9]*$/.test(rollup)) {
+    throw new Error(
+      `[${metric}] rollup 이름 '${rollup}' 은 소문자와 숫자만 쓸 수 있다. ` +
+      `밑줄은 '${ROLLUP_SEP}' 구분자와 겹쳐서 못 쓴다`
+    );
+  }
+};
+
+const suffix = (metric, rollup) => {
+  assertRollupKey(metric, rollup);
+  return rollup ? `${ROLLUP_SEP}${rollup}` : "";
+};
+
 const dailyName  = (metric) => `daily_${metric}`;
-const periodName = (metric) => `period_${metric}`;
-const metricName = (metric) => `metric_${metric}`;
+const periodName = (metric, rollup = null) => `period_${metric}${suffix(metric, rollup)}`;
+const metricName = (metric, rollup = null) => `metric_${metric}${suffix(metric, rollup)}`;
 
 // 날짜 컬럼. 세 단계가 같은 이름을 쓴다.
 //
@@ -60,6 +88,6 @@ const baseColumn = (period, label) =>
 module.exports = {
   DATASETS, TAGS,
   MART_PREFIX, martName,
-  dailyName, periodName, metricName,
+  dailyName, periodName, metricName, ROLLUP_SEP, assertRollupKey,
   RECORD_DATE, valueColumn, baseColumn,
 };

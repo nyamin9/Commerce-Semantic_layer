@@ -18,44 +18,48 @@
 const { METRICS }         = require("includes/metrics");
 const { periodName, RECORD_DATE, valueColumn, DATASETS, TAGS } = require("includes/naming");
 const { PERIODS }         = require("includes/periods");
-const { periodSQL, servingAxes, usablePeriods, endFlagNames } = require("includes/build");
+const { periodSQL, rollupAxes, rollupNames, usablePeriods, endFlagNames } = require("includes/build");
 
 Object.entries(METRICS).forEach(([name, m]) => {
-  const axes   = servingAxes(name, m);
-  const sketch = m.additive.time === "sketch";
+  // 첫 항목이 기본 조합(접미어 없음)이고, rollups 는 거기에 더해진다.
+  // 기본 조합을 대체하지 않으므로 기존 테이블 이름과 내용이 그대로 남는다
+  for (const rollup of rollupNames(m)) {
+    const axes = rollupAxes(name, m, rollup);
+    const sketch = m.additive.time === "sketch";
 
-  const columns = {
-    [RECORD_DATE]: "기준일. daily 는 그날, 누계는 기간 시작부터 이 날까지다",
-  };
-  for (const d of axes) {
-    columns[d] = `dimension. '(all)' 은 이 dimension 을 rollup 한 행, '(unknown)' 은 값이 없는 bucket (P6-3)`;
+    const columns = {
+      [RECORD_DATE]: "기준일. daily 는 그날, 누계는 기간 시작부터 이 날까지다",
+    };
+    for (const d of axes) {
+      columns[d] = `dimension. '(all)' 은 이 dimension 을 rollup 한 행, '(unknown)' 은 값이 없는 bucket (P6-3)`;
+    }
+    for (const f of endFlagNames()) {
+      columns[f] = `이 날이 해당 기간의 마지막 날인가. 완결 기간 집계를 고를 때 쓴다 (P13)`;
+    }
+    for (const p of usablePeriods(m)) {
+      const what = p === "daily"
+        ? "그날 하루"
+        : `${PERIODS[p].label} 시작부터 record_date 까지 누계`;
+      columns[valueColumn(name, p)] = sketch
+        ? `${m.description} — ${what}. HLL sketch(BYTES). 값을 보려면 HLL_COUNT.EXTRACT (P11)`
+        : `${m.description} — ${what}`;
+    }
+
+    publish(periodName(name, rollup), {
+      type:        "table",
+      schema:      DATASETS.METRIC,
+      tags:        [TAGS.SEMANTIC, "period"],
+      description: `${m.description} — ${axes.length}축(${axes.join(" · ")}) rollup × 기간 컬럼. metric_ 의 재료`,
+      columns,
+
+      bigquery: { partitionBy: RECORD_DATE },
+
+      // 키가 record_date 하나 + dimension이다. period_type 이 없어져 단순해졌다.
+      // dimension에 '(all)' rollup 행이 섞여 있지만 값이 달라 유일하다
+      assertions: {
+        uniqueKey: [RECORD_DATE, ...axes],
+        nonNull:   [RECORD_DATE, ...axes, ...endFlagNames()],
+      },
+    }).query((ctx) => periodSQL(ctx, name, m, rollup));
   }
-  for (const f of endFlagNames()) {
-    columns[f] = `이 날이 해당 기간의 마지막 날인가. 완결 기간 집계를 고를 때 쓴다 (P13)`;
-  }
-  for (const p of usablePeriods(m)) {
-    const what = p === "daily"
-      ? "그날 하루"
-      : `${PERIODS[p].label} 시작부터 record_date 까지 누계`;
-    columns[valueColumn(name, p)] = sketch
-      ? `${m.description} — ${what}. HLL sketch(BYTES). 값을 보려면 HLL_COUNT.EXTRACT (P11)`
-      : `${m.description} — ${what}`;
-  }
-
-  publish(periodName(name), {
-    type:        "table",
-    schema:      DATASETS.METRIC,
-    tags:        [TAGS.SEMANTIC, "period"],
-    description: `${m.description} — ${axes.length}축 rollup × 기간 컬럼. metric_ 의 재료`,
-    columns,
-
-    bigquery: { partitionBy: RECORD_DATE },
-
-    // 키가 record_date 하나 + dimension이다. period_type 이 없어져 단순해졌다.
-    // dimension에 '(all)' rollup 행이 섞여 있지만 값이 달라 유일하다
-    assertions: {
-      uniqueKey: [RECORD_DATE, ...axes],
-      nonNull:   [RECORD_DATE, ...axes, ...endFlagNames()],
-    },
-  }).query((ctx) => periodSQL(ctx, name, m));
 });

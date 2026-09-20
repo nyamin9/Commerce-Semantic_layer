@@ -14,6 +14,17 @@
 //   buyer_count: { serving_dims: ["country", "purchase_type"] }
 //   → daily_ 는 dimension 전체, period_·metric_ 만 2개
 //
+// 한 지표에 조합을 여럿 두려면 rollups 를 쓴다. 기본 조합을 대체하지 않고 더한다 —
+// 기본 조합이 남아 있어야 rollups 밖의 질문이 답을 얻는다.
+//
+//   net_revenue: { rollups: { category: ["purchase_type", "category"] } }
+//   → period_net_revenue          기본 조합 (그대로)
+//     period_net_revenue__category  purchase_type × category
+//
+// serving_dims 에 없는 축도 고를 수 있다. daily_ 가 가진 dimension 이면 된다 —
+// category 처럼 고유값이 많아 기본 조합에 못 넣는 축을 싸게 여는 것이 쓸모다.
+// 조합 이름에는 소문자와 숫자만 쓴다 (naming.js 의 '__' 구분자와 겹치므로).
+//
 // expr·filter 의 컬럼은 중괄호로 표시한다 (P5).
 //   {sale_price}         fact 컬럼
 //   {product.unit_cost}  entities.js 의 joins 에 선언된 이름으로 참조
@@ -35,11 +46,13 @@ const hll = (col) => `HLL_COUNT.INIT({${col}}, ${HLL_PRECISION})`;
 const METRICS = {
   // ── order_item ──────────────────────────────────────────────
   gross_revenue: {
+    rollups:     { category: ["purchase_type", "category"] },
     entity: "order_item", expr: "SUM({sale_price})",
     additive: uniform("order_item", true),
     description: "반품·취소를 포함한 총 판매 금액",
   },
   net_revenue: {
+    rollups:     { category: ["purchase_type", "category"] },
     // DW가 is_revenue_recognized 로 이미 계산한 컬럼을 합산만 한다.
     // 매출 인식 규칙을 semantic layer가 다시 정의하지 않는다.
     entity: "order_item", expr: "SUM({net_revenue})",

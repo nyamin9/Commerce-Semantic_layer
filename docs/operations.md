@@ -11,7 +11,7 @@
 | 1 | `includes/` 선언 계층 + builder | 완료 |
 | 2 | `semantic_mart` 7개 + 상류 감시 assertion | 완료 |
 | 3 | `sem_dim_date` | 완료 (2단계에 포함) |
-| 4 | `gen_daily.js` · `gen_period.js` · `gen_metric.js` | 완료. 17개씩 생성 |
+| 4 | `gen_daily.js` · `gen_period.js` · `gen_metric.js` | 완료. `daily_` 17개 + `period_`·`metric_` 19개씩 |
 | 5 | `gen_registry.js` | 완료. `metric_registry` 29행 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | 완료. 퍼널·코호트는 후속 |
 | 7 | 스케줄 · 실행 계정 | 완료 |
@@ -36,8 +36,8 @@ node infra/apply.js             # 적용
 | `upstream-monitoring` | `0 5 * * *` | `monitoring` | 상류 감시. 실패해도 본 파이프라인은 돎 |
 
 - 상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작함
-- 1시간 30분 여유를 뒀고 `semantic-daily` 는 실측 **3분 53초** 걸림
-  (테이블 59 · assertion 118 을 돌렸을 때. 지금 그래프는 assertion 124)
+- 1시간 30분 여유를 뒀고 `semantic-daily` 는 실측 **4분 2초** 걸림
+  (테이블 63 · assertion 132)
 
 - `order_item`·`order` 는 매일 전 기간을 다시 만듦
 - `daily_` 가 20만 행이라 전체 재생성이 증분보다 저렴함 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
@@ -70,7 +70,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블. gate assertion 15개 |
-| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 크기는 [tables.md](tables.md) 6장 |
+| `semantic` | `daily_*` 17개 + `period_*`·`metric_*` 19개씩 **55개.** 크기는 [tables.md](tables.md) 7장 |
 | `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
 
@@ -95,7 +95,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | `net_revenue_yoy_rate` | 저장하지 않음 | — | `yoy_base` 로 재현 가능 |
 | `order_count` | `metric_order_count` | — | **`rpt_` 가 33% 이중 계산** (결함 9) |
 
-- **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는 [findings.md](findings.md) 19 에
+- **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는 [findings.md](findings.md) 20 에
   있음
 
 ### 4-1. 존치하는 것
