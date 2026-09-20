@@ -16,7 +16,7 @@
 // 전부 table 이다 (P22). 하루가 늘면 그날의 누계가 생기고 grid도 하루 늘어난다.
 
 const { METRICS }         = require("includes/metrics");
-const { periodName, RECORD_DATE, valueColumn } = require("includes/naming");
+const { periodName, RECORD_DATE, valueColumn, DATASETS, TAGS } = require("includes/naming");
 const { PERIODS }         = require("includes/periods");
 const { periodSQL, servingAxes, usablePeriods, endFlagNames } = require("includes/build");
 
@@ -44,8 +44,8 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
   publish(periodName(name), {
     type:        "table",
-    schema:      "semantic",
-    tags:        ["semantic", "period"],
+    schema:      DATASETS.METRIC,
+    tags:        [TAGS.SEMANTIC, "period"],
     description: `${m.description} — ${axes.length}축 rollup × 기간 컬럼. metric_ 의 재료`,
     columns,
 

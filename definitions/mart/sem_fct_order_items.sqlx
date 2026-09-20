@@ -1,7 +1,7 @@
 config {
   type: "table",
-  schema: "semantic_mart",
-  tags: ["mart", "fact"],
+  schema: naming.DATASETS.MART,
+  tags: [naming.TAGS.MART, "fact"],
   description: "주문 라인 fact. 주문 라인 1건 = 1행. 매출 지표의 원천",
   assertions: {
     uniqueKey: ["order_item_key"],

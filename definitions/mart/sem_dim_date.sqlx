@@ -1,7 +1,7 @@
 config {
   type: "table",
-  schema: "semantic_mart",
-  tags: ["mart", "dimension"],
+  schema: naming.DATASETS.MART,
+  tags: [naming.TAGS.MART, "dimension"],
   description: "날짜 차원. semantic layer가 소유한다 — 변환이 아니라 축이고, 상류에 없다",
   assertions: {
     uniqueKey: ["date_day"],

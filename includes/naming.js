@@ -1,6 +1,30 @@
 // 이름 규칙. builder 와 generator 가 공유하는 계약이라 한 파일에만 둔다 (P19).
 // 규칙이 흩어지면 언젠가 어긋나고 ref()가 끊어진다. 어긋나면 컴파일이 실패한다.
 
+// ── 데이터셋 ─────────────────────────────────────────────────
+// 각 파일은 schema 를 명시한다. 값만 여기 한 곳에 둔다 —
+// 새 프로젝트로 옮길 때 고칠 곳이 하나가 된다.
+//
+// workflow_settings.yaml 의 defaultDataset 과 METRIC 이 같은 값이지만 생략하지
+// 않는다. 마트는 보이는데 지표 테이블만 안 보이면 읽을 때 헷갈린다
+const DATASETS = {
+  MART:     "semantic_mart",
+  METRIC:   "semantic",
+  METADATA: "semantic_metadata",
+};
+
+// ── 태그 ─────────────────────────────────────────────────────
+// 액션에 붙는 이름표. infra/workflows.json 이 이 중에서 골라 실행한다.
+//
+// workflows.json 은 JSON 이라 이 상수를 못 읽는다. 오타가 나면 매칭되는 액션이
+// 0개인 채로 성공하므로 (실측: "No actions to run" 후 SUCCEEDED), apply.js 가
+// 컴파일 그래프와 대조해서 거부한다
+const TAGS = {
+  MART:       "mart",
+  SEMANTIC:   "semantic",
+  MONITORING: "monitoring",
+};
+
 const MART_PREFIX = "sem_";
 
 // semantic_mart — DW와 이름이 겹치면 ref()가 충돌하므로 접두사를 붙인다
@@ -34,6 +58,7 @@ const baseColumn = (period, label) =>
   period === "daily" ? `${label}_base` : `${period}_${label}_base`;
 
 module.exports = {
+  DATASETS, TAGS,
   MART_PREFIX, martName,
   dailyName, periodName, metricName,
   RECORD_DATE, valueColumn, baseColumn,

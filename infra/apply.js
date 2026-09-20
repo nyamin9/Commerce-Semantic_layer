@@ -19,6 +19,15 @@ const { execFileSync } = require("child_process");
 const fs   = require("fs");
 const path = require("path");
 
+// naming.js 는 아무것도 require 하지 않아서 Dataform 밖에서도 읽힌다
+const { TAGS } = require("../includes/naming");
+
+// CLI 버전도 workflow_settings.yaml 이 원천이다. 여기 또 적으면 언젠가 갈라진다
+const DATAFORM_VERSION = (
+  fs.readFileSync(path.join(__dirname, "..", "workflow_settings.yaml"), "utf8")
+    .match(/^dataformCoreVersion:\s*(\S+)/m) || []
+)[1];
+
 const DRY  = process.argv.includes("--dry-run");
 const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, "workflows.json"), "utf8"));
 const BASE = `https://dataform.googleapis.com/v1beta1/projects/${SPEC.project}` +
@@ -62,9 +71,59 @@ const differs = (want, have) =>
       : JSON.stringify(v) !== JSON.stringify(h);
   });
 
+// ── 태그 검증 ────────────────────────────────────────────────
+// workflows.json 은 JSON 이라 naming.js 의 TAGS 를 못 읽는다. 문자열을 손으로
+// 다시 치므로 오타가 난다.
+//
+// 오타의 결과가 나쁘다. Dataform 은 매칭되는 액션이 없으면 "No actions to run"
+// 으로 끝내고 상태는 SUCCEEDED 다. 스케줄이 매일 돌면서 아무것도 안 만들고
+// 알림도 없다 — 데이터가 며칠 멈춰야 알아챈다.
+//
+// 그래서 적용 전에 두 가지를 본다.
+//   1. naming.js 의 TAGS 에 있는 이름인가
+//   2. 컴파일 그래프에 그 태그를 가진 액션이 실제로 있는가
+//
+// 2번이 더 강하다. 상수에는 있는데 아무도 안 붙인 태그도 잡는다.
+function compiledTags() {
+  const out = execFileSync(
+    "npx", ["-y", `@dataform/cli@${DATAFORM_VERSION}`, "compile", "--json"],
+    { cwd: path.join(__dirname, ".."), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
+  );
+  const graph = JSON.parse(out);
+  const tags = new Set();
+  for (const kind of ["tables", "assertions", "operations"]) {
+    for (const a of graph[kind] || []) for (const t of a.tags || []) tags.add(t);
+  }
+  return tags;
+}
+
+function verifyTags() {
+  const known = new Set(Object.values(TAGS));
+  const used  = compiledTags();
+
+  for (const [id, cfg] of Object.entries(SPEC.workflowConfigs)) {
+    for (const t of cfg.invocationConfig.includedTags) {
+      if (!known.has(t)) {
+        throw new Error(
+          `workflowConfig/${id}: '${t}' 는 naming.js 의 TAGS 에 없다. ` +
+          `사용 가능: ${[...known].join(", ")}`
+        );
+      }
+      if (!used.has(t)) {
+        throw new Error(
+          `workflowConfig/${id}: '${t}' 를 가진 액션이 하나도 없다. ` +
+          `이대로 적용하면 매일 0개를 실행하고 성공으로 끝난다`
+        );
+      }
+    }
+  }
+  console.log(`  태그 검증 통과 — 컴파일 그래프의 태그 ${used.size}종`);
+}
+
 let TOKEN;
 
 async function main() {
+  verifyTags();
   TOKEN = token();
   let changed = 0;
 

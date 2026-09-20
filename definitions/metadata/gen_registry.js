@@ -15,6 +15,7 @@
 // registry 가 유일한 거처다.
 
 const { METRICS, RATIOS, EXCLUDED } = require("includes/metrics");
+const { DATASETS, TAGS }            = require("includes/naming");
 const { ENTITIES, allDims }          = require("includes/entities");
 const { valueColumns, comparePlan, servingAxes, resolveDims } = require("includes/build");
 
@@ -123,8 +124,8 @@ for (const [name, x] of Object.entries(EXCLUDED)) {
 
 publish("metric_registry", {
   type:        "table",
-  schema:      "semantic_metadata",
-  tags:        ["semantic", "metadata"],
+  schema:      DATASETS.METADATA,
+  tags:        [TAGS.SEMANTIC, "metadata"],
   description: `지표 카탈로그. 기본 ${Object.keys(METRICS).length} · ` +
                `비율 ${Object.keys(RATIOS).length} · 제외 ${Object.keys(EXCLUDED).length}`,
   columns: {

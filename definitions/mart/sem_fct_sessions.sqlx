@@ -1,7 +1,7 @@
 config {
   type: "table",
-  schema: "semantic_mart",
-  tags: ["mart", "fact"],
+  schema: naming.DATASETS.MART,
+  tags: [naming.TAGS.MART, "fact"],
   description: "세션 fact. 세션 1건 = 1행",
   assertions: {
     uniqueKey: ["session_id"],

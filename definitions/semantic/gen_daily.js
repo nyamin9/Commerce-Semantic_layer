@@ -14,7 +14,7 @@
 
 const { METRICS }                      = require("includes/metrics");
 const { ENTITIES, refreshOf }          = require("includes/entities");
-const { dailyName, RECORD_DATE }       = require("includes/naming");
+const { dailyName, RECORD_DATE, DATASETS, TAGS } = require("includes/naming");
 const { dailySQL, resolveDims, incrementalPreOps } = require("includes/build");
 
 Object.entries(METRICS).forEach(([name, m]) => {
@@ -33,8 +33,8 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
   publish(dailyName(name), {
     type:        incremental ? "incremental" : "table",
-    schema:      "semantic",
-    tags:        ["semantic", "daily"],
+    schema:      DATASETS.METRIC,
+    tags:        [TAGS.SEMANTIC, "daily"],
     description: `${m.description} — 날짜 × 전체 dimension 집계. ${e.grain} 에서 산출`,
     columns,
 

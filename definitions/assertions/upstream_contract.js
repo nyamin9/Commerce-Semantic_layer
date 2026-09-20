@@ -9,9 +9,11 @@
 // 알려진 결함은 우회하지 않고 기록한다 (P21). 조용한 우회는 문제를 숨긴다.
 // 항목 번호는 docs/principles.md 5장과 같다.
 
+const { TAGS } = require("includes/naming");
+
 const monitor = (name, description, query) =>
   assert(name)
-    .tags(["monitoring", "upstream"])
+    .tags([TAGS.MONITORING, "upstream"])
     .description(description)
     .query(query);
 

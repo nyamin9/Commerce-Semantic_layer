@@ -1,7 +1,7 @@
 config {
   type: "table",
-  schema: "semantic_mart",
-  tags: ["mart", "fact"],
+  schema: naming.DATASETS.MART,
+  tags: [naming.TAGS.MART, "fact"],
   description: "이벤트 fact. 이벤트 1건 = 1행. 가장 세밀한 grain",
   assertions: {
     uniqueKey: ["event_key"],

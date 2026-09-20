@@ -1,7 +1,7 @@
 config {
   type: "table",
-  schema: "semantic_mart",
-  tags: ["mart", "dimension"],
+  schema: naming.DATASETS.MART,
+  tags: [naming.TAGS.MART, "dimension"],
   description: "상품 차원. 상품 1건 = 1행. semantic layer가 참조하는 유일한 상품 원천",
   assertions: {
     uniqueKey: ["product_id"],
