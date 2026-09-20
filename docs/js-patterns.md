@@ -50,7 +50,7 @@ Object.entries({ daily: {...}, wtd: {...} })
 
 ```js
 // 값은 안 쓰므로 keys — includes/build.js
-const usable = canCumulate(m) ? Object.keys(PERIODS) : ["daily"];
+const usablePeriods = (m) => (canCumulate(m) ? Object.keys(PERIODS) : ["daily"]);
 
 // 키·값 둘 다 쓰고 순회만 하면 forEach — definitions/sources/declarations.js:26-28
 Object.entries(SOURCES).forEach(([schema, tables]) => {
@@ -168,10 +168,9 @@ acc[label][pName] = interval;
 - 같은 문법이 **기본값**에도 쓰임
 
 ```js
-const declared = m.serving_dims || servingDims(m.entity);
+const want = m.serving_dims || servingDims(m.entity);
 // 지표가 serving_dims 를 생략하면 그 entity 의 것을 쓴다
-// → allDims("session") = ["country", "acquisition_channel",
-//                         "entry_traffic_source", "browser"]
+// → servingDims("session") = ["country", "acquisition_channel"]
 ```
 
 ---

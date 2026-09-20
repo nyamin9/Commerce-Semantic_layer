@@ -302,7 +302,85 @@ net_revenue_mtd   768,676      mtd_yoy_base   94,971
 
 - 정확도는 오차 0.029% 임 ([findings.md](findings.md) 16)
 
-## 8. 더 읽을 것
+## 8. 무엇이 이것을 돌리는가
+
+- 엔진은 **Dataform 하나**인데, 층마다 보는 것이 다름
+
+```
+컴파일 타임   Dataform Core 3.0.65
+              · workflow_settings.yaml 로 프로젝트·리전·데이터셋을 정함
+              · definitions/ 의 파일을 전부 해석하거나 실행해 그래프를 만듦
+              · includes/ 는 그 과정에서 읽히는 라이브러리
+              → 테이블 63 · assertion 132 짜리 의존 그래프
+                   │
+실행 타임     Dataform 서비스 (GCP)
+              · release configuration   어느 커밋을 언제 컴파일할지
+              · workflow configuration  어떤 태그를 언제 어떤 계정으로 돌릴지
+              → BigQuery 에 CREATE OR REPLACE 제출
+```
+
+### 8-1. `definitions/` 는 확장자로 갈림
+
+| | 파일 | 동작 |
+|---|---|---|
+| `.sqlx` | `mart/*.sqlx` 7개 | `config { }` 를 Dataform 이 읽고 아래 SQL 을 본문으로 씀 |
+| `.js` | `semantic/gen_*.js` · `metadata/gen_registry.js` · `assertions/*.js` · `sources/declarations.js` | **컴파일할 때 실행됨.** `publish()` 를 부른 횟수만큼 action 이 생김 |
+
+- `.js` 쪽이 이 레포의 핵심임
+- `gen_period.js` 는 설정 파일이 아니라 컴파일 타임에 도는 프로그램이라, `METRICS` 를
+  순회하며 `publish()` 를 부른 만큼 테이블이 생김
+- 그래서 `metrics.js` 에 `rollups` 한 줄을 넣으면 `publish()` 호출이 늘고 테이블이 늘어남
+- `publish` · `declare` · `assert` 는 `require` 하지 않아도 씀. Dataform 이 전역으로 넣어 줌
+
+### 8-2. `includes/` 가 읽히는 두 경로
+
+| 읽는 쪽 | 방식 |
+|---|---|
+| `definitions/**/*.js` | `require("includes/build")` — 명시적 |
+| `.sqlx` 의 `config` 블록 | **파일명이 전역으로 주입됨** — `naming.DATASETS.MART` |
+
+- `config` 블록은 `require` 를 못 씀
+- 그래서 `naming.js` 는 아무것도 `require` 하지 않는 구조여야 함 (P19)
+
+### 8-3. 태그가 그래프를 자름
+
+- 태그는 `publish()` 인자와 `.sqlx` 의 `config` 에 붙음
+- `infra/workflows.json` 이 그중에서 고름
+
+```
+semantic-daily        includedTags ["mart","semantic"]   transitiveDependenciesIncluded true
+upstream-monitoring   includedTags ["monitoring"]        transitiveDependenciesIncluded false
+```
+
+- 감시는 DW 만 읽으므로 의존을 끌고 올 필요가 없어 `false` 임
+
+### 8-4. 의존 순서는 `ctx.ref` 가 만듦
+
+- 손으로 정하는 곳이 없음
+- `ctx.ref()` 가 이름을 테이블 경로로 바꾸면서 **동시에 의존을 등록함**
+
+```js
+ctx.ref(periodName(name, rollup))   // metricSQL — 이 한 줄이 의존을 만든다
+```
+
+- 그래서 `build.js` 에는 프로젝트 이름도 데이터셋 이름도 들어가지 않고,
+  마트 → `daily_` → `period_` → `metric_` 순서가 그래프에서 저절로 나옴
+
+### 8-5. `infra/` 는 git 에 없는 것을 git 에 둠
+
+- release/workflow configuration 은 GCP resource 라 레포에 남지 않음
+- 레포만 보고는 무엇이 언제 도는지 알 수 없음
+- `workflows.json` 을 원천으로 두고 `apply.js` 가 Dataform Admin API 로 맞춤
+
+```bash
+node infra/apply.js --dry-run   # 선언과 GCP 의 차이
+node infra/apply.js             # 적용
+```
+
+- `apply.js` 는 컴파일 그래프와 대조해 **태그 오타도 거부함** — 오타가 나면 매칭되는
+  action 이 0개인 채로 성공함 ([findings.md](findings.md) 14)
+
+## 9. 더 읽을 것
 
 - 이 문서의 각 결정에는 숫자가 붙어 있음
 - 그 숫자와 실패 기록은 [findings.md](findings.md) 에 모았음 — 규칙이 왜 그런지 확인할 때 봄

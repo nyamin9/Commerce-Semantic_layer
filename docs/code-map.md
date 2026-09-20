@@ -8,25 +8,25 @@
 
 ```
 includes/            선언 계층 — 사람이 쓰는 곳
-  naming.js      40   이름 규칙
+  naming.js      93   이름 규칙
   periods.js     86   기간 선언
   entities.js   167   entity 와 join graph
-  metrics.js    176   지표 선언
-  build.js      549   SQL builder — 선언을 검사하고 SQL 로 바꾸는 곳
+  metrics.js    189   지표 선언
+  build.js      582   SQL builder — 선언을 검사하고 SQL 로 바꾸는 곳
 
 definitions/         Dataform action — 선언을 테이블로 만드는 곳
   sources/declarations.js        28   DW 읽기 전용 참조
   mart/*.sqlx                     7개  semantic_mart
-  assertions/upstream_contract.js 86   DW 감시
+  assertions/upstream_contract.js 88   DW 감시
   assertions/partition_contract.js     파티션 컬럼 계약
   semantic/gen_daily.js           54   daily_<metric>           지표당 하나
   semantic/gen_period.js          65   period_<metric>[__조합]  조합마다 하나
   semantic/gen_metric.js          68   metric_<metric>[__조합]  조합마다 하나
-  metadata/gen_registry.js       158   metric_registry
+  metadata/gen_registry.js       178   metric_registry
 
 infra/               실행 계획 — GCP resource 선언
   workflows.json  63   언제 어떤 태그를 어떤 계정으로 돌리는가
-  apply.js       119   위 선언을 Dataform 에 적용
+  apply.js       178   위 선언을 Dataform 에 적용
 
 workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 ```
@@ -256,6 +256,7 @@ GROUP BY 1, 2, 3, 4, 5
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 |
 
 - JS 문법이 낯설면 [js-patterns.md](js-patterns.md) 를 먼저 봄
+- 이 파일들이 **무엇을 보고 도는지**는 [architecture.md](architecture.md) 8장에 있음
 
 ---
 
@@ -308,7 +309,7 @@ entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축�
 
 - `sem_dim_*` 3개는 entity 가 아니라 검사 대상이 아님
 
-### 4-4. `assertions/upstream_contract.js` (86줄)
+### 4-4. `assertions/upstream_contract.js` (88줄)
 
 - DW 가 계약을 어겼는지 감시함
 - **gate 가 아니라 감시임** — 깨져도 파이프라인은 돎

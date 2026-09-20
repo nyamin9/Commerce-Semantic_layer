@@ -61,7 +61,7 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 | | |
 |---|---|
 | [glossary.md](docs/glossary.md) | **용어집. 먼저 읽음.** 여기 없는 단어는 문서에 쓰지 않음 |
-| [architecture.md](docs/architecture.md) | 왜 이 구조인가. 3단계의 근거와 핵심 결정 여섯 가지 |
+| [architecture.md](docs/architecture.md) | 왜 이 구조인가. 3단계의 근거 · 핵심 결정 여섯 가지 · 무엇이 이것을 돌리는가 |
 | [code-map.md](docs/code-map.md) | 파일별 역할. 무엇을 고치면 무엇이 바뀌나 |
 | [tables.md](docs/tables.md) | 테이블 구조. 실제 컬럼 · 행 수 · 파티션 |
 | [porting.md](docs/porting.md) | 다른 프로젝트로 옮기기. 설계 / 선언 / 엔진 제약 |
