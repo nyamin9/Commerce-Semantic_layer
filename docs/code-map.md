@@ -9,9 +9,9 @@
 includes/            선언 계층 — 사람이 쓰는 곳
   naming.js      40   이름 규칙
   periods.js     86   기간 선언
-  entities.js   156   entity 와 join graph
-  metrics.js    147   지표 선언
-  build.js      518   SQL builder — 정책이 집행되는 곳
+  entities.js   167   entity 와 join graph
+  metrics.js    176   지표 선언
+  build.js      549   SQL builder — 정책이 집행되는 곳
 
 definitions/         Dataform action — 선언을 테이블로 만드는 곳
   sources/declarations.js        28   DW 읽기 전용 참조
@@ -113,7 +113,7 @@ PERIODS = {
 - **`wtd` 의 `yoy` 만 364일이다.** `1 YEAR` 로 하면 요일이 어긋난다
 - **`SHIFTS` 가 self-join 수를 정한다.** 비교 컬럼 8개가 간격 5개에서 나오므로 조인은 5번이다
 
-### `entities.js` (156줄)
+### `entities.js` (167줄)
 
 지표를 산출하는 fact 가 entity 가 된다. entity 가 정해지면 grain 과 쓸 수 있는
 dimension 이 따라서 정해진다.
@@ -152,7 +152,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 **`order` 에 상품 dimension 이 없는 것은 누락이 아니다.** 한 주문이 여러 상품을
 포함하므로 주문 grain 에서 category 가 정의되지 않는다.
 
-### `metrics.js` (147줄)
+### `metrics.js` (176줄)
 
 | export | 내용 |
 |---|---|
@@ -185,7 +185,7 @@ dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 �
 fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` 양쪽에 있다.
 `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터진다.
 
-### `build.js` (518줄)
+### `build.js` (549줄)
 
 정책이 실제로 집행되는 곳. 초기에 한 번 쓰고 거의 건드리지 않는다.
 
@@ -282,7 +282,7 @@ DW 가 계약을 어겼는지 감시한다. **게이트가 아니라 감시다**
 
 ### `semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js`
 
-각각 15개 테이블을 만든다. 셋 다 모양이 같다.
+각각 17개 테이블을 만든다. 셋 다 모양이 같다.
 
 ```js
 Object.entries(METRICS).forEach(([name, m]) => {
@@ -295,6 +295,44 @@ Object.entries(METRICS).forEach(([name, m]) => {
 **선언 하나가 테이블 하나가 된다.** 지표를 추가하면 `forEach` 가 한 바퀴 더 돈다.
 
 `gen_daily.js` 만 `preOps` 가 있다. 증분 구간을 지우고 다시 넣기 위해서다.
+
+#### 셋은 독립이고 테이블은 사슬이다
+
+두 가지를 구분해야 한다.
+
+| | 독립인가 |
+|---|---|
+| 생성기 파일 | **독립.** 서로를 `require` 하지 않고 `includes/` 만 읽는다 |
+| 선언 입력 | **공유.** 셋 다 `metrics.js` · `entities.js` 를 읽는다 |
+| 만들어지는 테이블 | **사슬.** `daily_` → `period_` → `metric_` |
+
+`period_` 는 원본 fact 를 다시 읽지 않고 `daily_` 를 읽고, `metric_` 은 `period_` 만
+읽는다. 조인을 `daily_` 에서 한 번만 실행하기 위해서다 (P5·P11).
+의존 그래프 전체는 아래 [테이블 간](#테이블-간) 에 있다.
+
+#### dimension 을 정하는 함수가 갈라져 있다
+
+```
+gen_daily.js    resolveDims(name, m)   →  allDims(m.entity)            entity 전체
+gen_period.js   servingAxes(name, m)   →  m.serving_dims || entity 것   큐브 축
+gen_metric.js   servingAxes(name, m)   →  같음
+```
+
+**`gen_daily.js` 는 `servingAxes` 를 `require` 하지 않는다.** 그래서 지표에
+`serving_dims` 를 선언해도 `daily_` 로 새지 않는다.
+
+```js
+buyer_count: { serving_dims: ["country", "purchase_type"] }
+
+// 컴파일 결과
+daily_buyer_count     dimension 8개   그대로
+period_buyer_count    dimension 2개
+metric_buyer_count    dimension 2개
+```
+
+반대 방향도 막혀 있다. `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로
+**큐브는 언제나 `daily_` 의 부분집합**이다. `dims` 에 없는 것을 `serving_dims` 에
+적으면 컴파일이 거부한다.
 
 ### `metadata/gen_registry.js` (158줄)
 
@@ -365,7 +403,11 @@ sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metri
 **마트 테이블끼리는 서로 참조하지 않는다.** 전부 DW declaration 만 읽는다 — fact 간
 조인이 금지되어 있기 때문이다.
 
-**`daily_` 는 `sem_dim_date` 를 조인하지 않는다.** `dims` 전체(최대 7개)로 빈 날을
+`order_item` 의 `purchase_type` 은 예외처럼 보이지만 아니다. `sem_fct_order_items` 가
+`sem_fct_orders` 를 읽는 것이 아니라, **`daily_` 를 만들 때 join graph 가 조인한다.**
+조인이 실행되는 자리는 언제나 `daily_` 다 (P5).
+
+**`daily_` 는 `sem_dim_date` 를 조인하지 않는다.** `dims` 전체(최대 8개)로 빈 날을
 채우면 지표 하나가 수백만 행이 된다. 빈 날을 채우는 곳은 `period_` 의 `grid` 다.
 
 ---
