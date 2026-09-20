@@ -159,9 +159,10 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 | 월 단위로 집계했을 때 | 186,292 | 150,837 |
 | 연 단위로 집계했을 때 | **178,916** | **83,320** |
 
-게다가 그 크기로 비교 self-join 4개를 돌리면 BigQuery on-demand 의 CPU 한도에
-걸려 `metric_` 6개가 생성 자체를 못 했다 (2026-09-13). `brand` 를 빼서 해결했다.
-브랜드별 집계가 필요하면 `semantic_mart` 에 직접 SQL 을 쓴다.
+게다가 그 크기로 비교 self-join 을 돌리면 BigQuery on-demand 의 CPU 한도에 걸려
+`metric_` 이 생성 자체를 못 한다 — 2026-09-13 실측으로 지표 6개가 그랬다.
+**그래서 `brand` 는 dimension 이 아니다.** 브랜드별 집계가 필요하면 `semantic_mart` 에
+직접 SQL 을 쓴다.
 
 **P4-1. `serving_dims` 에 넣기 전에 조합 수를 세고 CPU 를 실측한다.**
 
@@ -373,8 +374,8 @@ dimension 을 rollup 하는 순간 쓸 수 없게 된다.
 않기 때문이다. dimension 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의
 CPU/바이트 비율 제한에 걸렸다 — 스캔은 14 MB 라 **비용이 아니라 낭비가 문제였다.**
 
-조인 술어를 바꿔도 변하지 않았고(`=` · `COALESCE` · `IS NOT DISTINCT FROM` 전부
-3,600대), 중간 단계를 테이블로 저장하니 통과했다 (2026-09-13).
+조인 술어를 바꿔도 변하지 않는다 — `=` · `COALESCE` · `IS NOT DISTINCT FROM` 이
+전부 3,600대였다. **중간 단계를 테이블로 저장하는 것만 효과가 있다** (2026-09-13 실측).
 
 분리해 두면 `metric_`을 다시 만들 때 atomic fact와 dimension을 다시 읽지 않는다.
 
@@ -424,10 +425,12 @@ record_date  country  is_week_end is_month_end is_year_end
 monthly  =  mtd  where is_month_end
 ```
 
-행으로 두면 값은 중복되면서 **미완결 기간이 미래 날짜를 단다.** 직전 구조에서
-데이터가 9/17까지인데 진행 중인 주의 `weekly` 행이 아직 오지 않은 9/20을 달고
-있었고, 그 행의 `wow_base` 가 4일치를 지난주 7일 전체와 맞댔다. 누계에는 그 문제가
-없다 — `record_date` 는 항상 실제로 지난 날이다.
+행으로 두면 값이 중복될 뿐 아니라 **미완결 기간이 미래 날짜를 단다.** 완결 기간의
+집계는 기간의 마지막 날을 날짜로 갖는데, 그 날이 아직 오지 않았기 때문이다.
+데이터가 9/17까지일 때 그 주의 행은 9/20 을 달고 4일치만 담고, `wow_base` 도
+그 4일치를 지난주 7일 전체와 맞댄다.
+
+PTD 에는 그 문제가 없다. `record_date` 는 항상 실제로 지난 날이다.
 
 **P13-1. 기간 접두어가 없으면 `daily` 다.**
 
@@ -659,7 +662,7 @@ dimension 테이블의 존재 이유다.
 | 5 | SCD 이력 부족 | `valid_from` 최솟값 2026-08-15, fact는 2019-01-13부터 | point-in-time 매칭률 4.46% |
 | 6 | `dim_date` 부재 | — | semantic layer가 생성 |
 | 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 **24개**. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 라벨 |
-| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 **183,826** vs 실제 **138,061** (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀린다 (P9).<br>우리는 `order` entity 로 옮겨 department 를 없앴다 (P10-1) |
+| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 **183,826** vs 실제 **138,061** (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀린다 (P9).<br>우리 쪽은 `order` entity 라 department 축이 없다 (P10-1) |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased`인데 `viewed_product`가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없다** |
 
 2~4번은 모두 최근 구간에 몰려 있어 late-arriving 문제로 보인다.

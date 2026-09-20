@@ -333,10 +333,11 @@ country · age_group · gender · channel     → user
 order_status                               → 조인 없음 (via: null)
 ```
 
-**예전에는 `dims`를 훑어 `(테이블, 키)` 조합으로 조인 슬롯을 되짚어 찾았다.**
-조인에 이름이 생기면서 그 계산이 없어졌고, 이제 `entities.js`의 `joins`를 읽기만 하면 된다.
+**조인에 이름이 있어서 되짚을 필요가 없다.** 이름이 없으면 `dims` 를 훑어
+`(테이블, 키)` 조합으로 조인 슬롯을 역산해야 한다. 지금은 `entities.js` 의 `joins` 를
+읽기만 하면 된다.
 
-역할 dimension(같은 dim을 두 키로 참조)도 되짚을 필요가 없다. 이름이 다르면 다른 조인이다.
+역할 dimension(같은 dim을 두 키로 참조)도 마찬가지다. 이름이 다르면 다른 조인이다.
 
 ```js
 joins: {
@@ -759,10 +760,10 @@ const UNKNOWN = "(unknown)";
 ```
 
 dimension이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 되고, `ON` 절에서
-그 행은 매칭되지 않는다. 그래서 한동안 `IS NOT DISTINCT FROM` 을 썼다 —
-GoogleSQL 에 있는 연산자이고 `NULL = NULL` 을 `TRUE` 로 본다.
+그 행은 매칭되지 않는다. GoogleSQL 에는 `IS NOT DISTINCT FROM` 이 있어서 `NULL = NULL`
+을 `TRUE` 로 보지만, 그것으로 풀지 않는다.
 
-**그런데 BigQuery 가 그것을 해시 조인 키로 쓰지 못한다.** 등가 조인이면 양쪽을
+**BigQuery 가 그 연산자를 해시 조인 키로 쓰지 못하기 때문이다.** 등가 조인이면 양쪽을
 해시로 나눠 붙이는데, `IS NOT DISTINCT FROM` 은 일반 술어라 중첩 루프가 된다.
 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌다.
 
@@ -851,9 +852,9 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만든다 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
 
-**6과 7이 나뉘어 있는 것이 핵심이다.** 예전에는 `metricSQL` 하나가 둘 다 했고
-기간 확장이 `rolled` CTE 였는데, `metricSQL` 이 그것을 다섯 번 참조해(본 쿼리 1 +
-비교 조인 4) 같은 집계가 다섯 번 돌았다. CTE 는 결과를 저장하지 않기 때문이다.
+**6과 7이 나뉘어 있는 것이 핵심이다.** 기간 확장을 `metricSQL` 안의 CTE 로 두면
+`metricSQL` 이 그것을 여섯 번 참조하게 되고(본 쿼리 1 + 비교 조인 5), 같은 집계가
+그만큼 돈다. CTE 는 결과를 저장하지 않기 때문이다.
 
 ```
 periodSQL   daily_ → 채운 grid → 누적 → '(all)' rollup  → period_<metric> 테이블

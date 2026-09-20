@@ -124,7 +124,7 @@ dimension 을 `serving_dims` 로 좁혀 `grid` 비용이 감당되기 때문이�
 | 6 | `dim_date` 부재 | — | semantic layer 가 생성 |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased` 인데 `viewed_product` 가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없다** |
 | 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 24개. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 채움 |
-| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀린다.<br>우리는 `order` entity 로 옮겨 department 축을 없앴다 |
+| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀린다.<br>우리 쪽은 `order` entity 라 department 축이 없다 |
 
 2~4번은 모두 최근 구간에 몰려 있어 늦게 도착한 데이터 문제로 보인다.
 
