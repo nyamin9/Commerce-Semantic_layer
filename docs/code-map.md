@@ -396,7 +396,7 @@ EXCLUDED   의도적으로 만들지 않는다. 사유를 남긴다   is_generat
 - `rollups` 컬럼이 **어떤 조합이 어느 테이블에 있는지의 단일 원천**임
 - 쿼리를 보고 테이블을 골라주는 계층이 없으므로 소비자가 여기서 찾음
 - 필드 이름은 `rollup` 이 아니라 `rollup_name` 임 — `ROLLUP` 이 GoogleSQL 예약어라
-  STRUCT 필드 이름으로도 못 씀 ([findings.md](findings.md) 19)
+  STRUCT 필드 이름으로도 못 씀 ([findings.md](findings.md) 18)
 
 ## 5. `infra/` — 실행 계획
 

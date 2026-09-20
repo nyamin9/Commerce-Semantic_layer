@@ -256,26 +256,7 @@ buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
 
 - → [operations.md](operations.md) 2절
 
-## 18. 재생성 후 값 검증
-
-- 2026-09-16 전체 재생성 기준
-
-| 검증 | 대상 | 불일치 |
-|---|---|---|
-| `daily` 컬럼이 `daily_` 를 `serving_dims` 로 집계한 값과 같은가 | 1,635 | **0** |
-| `'(all)'` 행이 각 dimension 값의 합과 같은가 | 260 | **0** |
-| 월말 `mtd` 가 `daily_` 의 그 달 합과 같은가 | 92 | **0** |
-| 비교 기준값이 shift 한 날짜의 값을 가리키는가 | 81,984 | **0** |
-| `record_date` 가 `daily_` 의 최대값을 넘지 않는가 | 4,801,188 | **0** |
-
-- `purchase_type` 추가 후 (2026-09-20)
-
-| 검증 | 대상 | 불일치 |
-|---|---|---|
-| `daily_` 의 `purchase_type` 별 매출 = 원본 | 2 | **0** |
-| `'(all)'` = first + repeat (매출, 262일) | 262 | **0** |
-
-## 19. STRUCT 필드 이름도 예약어를 피해야 함
+## 18. STRUCT 필드 이름도 예약어를 피해야 함
 
 - `metric_registry` 에 조합 목록을 `ARRAY<STRUCT<rollup STRING, ...>>` 로 넣었더니 실패함
 
