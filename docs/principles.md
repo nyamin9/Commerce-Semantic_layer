@@ -63,7 +63,7 @@
 | `semantic_mart` | **이 레포** | 소유 |
 | `semantic` | **이 레포** | 소유 |
 | `semantic_metadata` | **이 레포** | 소유 |
-| `dbt_dev_marts_reporting` | dbt-airflow | `rpt_daily_revenue` 폐기 가능. 나머지 2개는 존치 |
+| `dbt_dev_marts_reporting` | dbt-airflow | 읽지 않음 |
 
 ```
 dbt_dev_marts_core          DW. 소유하지 않음
@@ -302,7 +302,7 @@ joins: {
 - 구별이 필요해지면 Kimball의 unknown member (dim에 `'Unknown'` 행을 두어 항상 조인되게 하는 것)를 씀
 
 - **규모를 먼저 재어 봄.** `daily_`가 생기면 `NULL` bucket이 그대로 보임
-- 0이면 아무것도 하지 않고, 있으면 그때 [operations.md](operations.md) 5장에 등재함
+- 0이면 아무것도 하지 않고, 있으면 그때 [operations.md](operations.md) 4장에 등재함
 - 재보지 않고 assertion 을 걸면 항상 실패 상태로 남아 아무도 보지 않게 됨
 
 **P6-2. dimension은 그 entity의 grain 에서 나온 것이어야 함.**
@@ -588,7 +588,7 @@ LEFT JOIN period_x AS b
 
 **P21. 알려진 상류 결함은 우회하지 말고 기록함.**
 - 조용히 우회하면 문제가 드러나지 않음
-- [operations.md](operations.md) 5장에 적고 assertion 으로 감시함
+- [operations.md](operations.md) 4장에 적고 assertion 으로 감시함
 
 **P22. 갱신 방식은 상류를 따름. 상류보다 촘촘하게 잡지 않음.**
 
@@ -599,7 +599,7 @@ LEFT JOIN period_x AS b
 
 | | |
 |---|---|
-| 좁게 잡으면 | 늦게 도착한 행을 **영원히** 놓침. [operations.md](operations.md) 5장의 결함 2·3·4가 전부 그 구간임 |
+| 좁게 잡으면 | 늦게 도착한 행을 **영원히** 놓침. [operations.md](operations.md) 4장의 결함 2·3·4가 전부 그 구간임 |
 | 넓게 잡으면 | 이득 없이 다시 읽기만 함 |
 
 - 기준일은 `CURRENT_DATE`가 아니라 **이미 적재된 `MAX(record_date)`** 임
@@ -645,8 +645,7 @@ LEFT JOIN period_x AS b
 
 | 항목 | 결정 |
 |---|---|
-| SSOT | semantic layer. `rpt_daily_revenue` 는 대조 완료 — 폐기 가능 |
-| `rpt_daily_funnel` · `rpt_user_cohort_retention` | **존치.** 우리가 의도적으로 만들지 않은 영역임 (P17).<br>퍼널은 상류 결함 7, 코호트는 사용자 생애주기 — 후속 페이즈 |
+| SSOT | semantic layer |
 | `dim_date` | semantic layer가 소유. 변환이 아니라 축임.<br>**`period_` grid 의 기준 날짜 목록**임. `daily_` 는 조인하지 않음 (P15-1) |
 | 파생 dimension | `semantic_mart`의 `dim_*`에서 생성 |
 | 비율 지표 | registry에 선언만. 테이블 생성 안 함 |
@@ -671,7 +670,7 @@ LEFT JOIN period_x AS b
 
 | | |
 |---|---|
-| 알려진 상류 결함과 감시 상태 | [operations.md](operations.md) 5장 |
+| 알려진 상류 결함과 감시 상태 | [operations.md](operations.md) 4장 |
 | 규칙의 근거가 된 숫자와 실패 | [findings.md](findings.md) |
 | 왜 이 구조인가 | [architecture.md](architecture.md) |
 | 파일별 역할 | [code-map.md](code-map.md) |

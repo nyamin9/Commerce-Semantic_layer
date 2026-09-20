@@ -13,7 +13,7 @@
 | 3 | `sem_dim_date` | 완료 (2단계에 포함) |
 | 4 | `gen_daily.js` · `gen_period.js` · `gen_metric.js` | 완료. `daily_` 17개 + `period_`·`metric_` 19개씩 |
 | 5 | `gen_registry.js` | 완료. `metric_registry` 29행 |
-| 6 | `rpt_*` 대조 후 SSOT 전환 | 완료. 퍼널·코호트는 후속 |
+| 6 | SSOT 전환 | 완료. 퍼널·코호트는 후속 |
 | 7 | 스케줄 · 실행 계정 | 완료 |
 
 ## 2. 실행 계획
@@ -78,33 +78,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 
 - entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음
 
-## 4. `rpt_*` 대조 결과
-
-- `dbt_dev_marts_reporting.rpt_daily_revenue` 와 `record_date × department`
-  grain 으로 전 구간을 대조했음
-- 키 5,451개 · 2019-01-07 ~ 2026-09-16
-
-| `rpt_` 컬럼 | 우리 쪽 | 다른 키 | 판정 |
-|---|---|---|:---:|
-| `net_revenue` | `metric_net_revenue` | 0 | 동일 |
-| `net_gross_profit` | `metric_gross_profit` | 0 | 동일 |
-| `order_item_count` | `metric_order_item_count` | 0 | 동일 |
-| `returned_item_count` | `metric_units_returned` | 0 | 동일 |
-| `buyer_count` | `metric_buyer_count` | 12 | HLL 근사 오차 (0.2%) |
-| `net_revenue_wtd/mtd/ytd` | `net_revenue_wtd/mtd/ytd` | 0 | 동일 |
-| `net_revenue_yoy_rate` | 저장하지 않음 | — | `yoy_base` 로 재현 가능 |
-| `order_count` | `metric_order_count` | — | **`rpt_` 가 33% 이중 계산** (결함 9) |
-
-- **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는 [findings.md](findings.md) 20 에
-  있음
-
-### 4-1. 존치하는 것
-
-- `rpt_daily_funnel` · `rpt_user_cohort_retention` 은 폐기 대상이 아님
-- 우리가 **의도적으로 만들지 않은 영역**이고 registry 에 `is_generated: false` 로 남아 있음
-- 퍼널은 아래 결함 7, 코호트는 사용자 생애주기라서 후속 작업임
-
-## 5. 알려진 상류 결함
+## 4. 알려진 상류 결함
 
 - 우회하지 않고 assertion 으로 감시함
 - 원인은 dbt-airflow 쪽에 있음
@@ -119,7 +93,6 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | 6 | `dim_date` 부재 | — | semantic layer 가 생성 |
 | 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased` 인데 `viewed_product` 가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없음** |
 | 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 24개. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 채움 |
-| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀림.<br>우리 쪽은 `order` entity 라 department 축이 없음 |
 
 - 2~4번은 모두 최근 구간에 몰려 있어 늦게 도착한 데이터 문제로 보임
 
@@ -127,7 +100,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 - 전자상거래 세션 구매율은 통상 1~3%인데 77.1%가 나옴
 - `purchased` 가 이름대로 동작하지 않는다는 뜻이므로 **원인이 밝혀지기 전까지 세션 퍼널 지표를 정의하지 않음.**
 
-### 5-1. 상시 실패하는 감시 assertion
+### 4-1. 상시 실패하는 감시 assertion
 
 - `upstream-monitoring` 워크플로가 매일 3건 실패함
 - **그것이 정상임.**
@@ -140,7 +113,7 @@ upstream_session_funnel_flags    결함 7
 
 - 전부 DW 테이블만 읽으므로 본 파이프라인에 영향이 없음
 
-## 6. 개발
+## 5. 개발
 
 ```bash
 # 컴파일 검증 (로컬. BigQuery 접근 불필요)
@@ -159,7 +132,7 @@ npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 - `main` 이 Dataform 이 추적하는 branch 임
 - 콘솔 workspace 는 자동 동기화되지 않으므로 푸시 후 `Pull from default branch` 를 눌러야 반영됨
 
-### 6-1. 스키마를 바꿀 때
+### 5-1. 스키마를 바꿀 때
 
 - 파티션 컬럼을 바꾸면 `CREATE OR REPLACE` 가 거부됨
 - 테이블을 지우고 다시 만들어야 함
@@ -169,7 +142,7 @@ npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
 ```
 
-## 7. 남은 작업
+## 6. 남은 작업
 
 | | |
 |---|---|
