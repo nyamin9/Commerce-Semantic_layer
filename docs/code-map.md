@@ -1,7 +1,8 @@
 # 파일별 역할
 
-무엇을 고치면 무엇이 바뀌는지. 용어는 [glossary.md](glossary.md) 를 따름.
-설계의 근거는 [architecture.md](architecture.md) 에 있음.
+- 무엇을 고치면 무엇이 바뀌는지
+- 용어는 [glossary.md](glossary.md) 를 따름
+- 설계의 근거는 [architecture.md](architecture.md) 에 있음
 
 ## 1. 한눈에
 
@@ -45,9 +46,9 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 | 스케줄 변경 | `infra/workflows.json` → `node infra/apply.js` | Dataform 의 실행 설정 |
 | 구조 변경 | `build.js` | 전부. 거의 열지 않음 |
 
-**지표 하나를 추가할 때 만지는 파일은 `metrics.js` 하나임.** 나머지는 고정임.
+- **지표 하나를 추가할 때 만지는 파일은 `metrics.js` 하나임.** 나머지는 고정임
 
-dimension 선언은 세 칸임.
+- dimension 선언은 세 칸임
 
 | | 어디 | 뜻 |
 |---|---|---|
@@ -55,9 +56,9 @@ dimension 선언은 세 칸임.
 | `serving_dims` | `entities.js` | 그 entity 지표들의 큐브 축. 기본값 |
 | `serving_dims` | `metrics.js` | 이 지표만의 큐브 축. 생략하면 entity 것 |
 
-**지표는 `dims` 를 선언할 수 없음.** `daily_` 가 fallback 계층이라 거기서 dimension 을
-빼면 나중에 그 축으로 보고 싶어도 복원할 방법이 없음. 20만 행 · 17 MB 라 넓게 둬도
-비용이 없고, 비용이 드는 곳은 큐브임.
+- **지표는 `dims` 를 선언할 수 없음.** `daily_` 가 fallback 계층이라 거기서 dimension 을 빼면 나중에 그
+  축으로 보고 싶어도 복원할 방법이 없음
+- 20만 행 · 17 MB 라 넓게 둬도 비용이 없고, 비용이 드는 곳은 큐브임
 
 ```js
 // entity 기본값을 쓴다 — 지금 17개 지표 전부 이렇다
@@ -67,7 +68,8 @@ net_revenue: { entity: "order_item", expr: "SUM({net_revenue})", ... }
 buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"], ... }
 ```
 
-큐브가 커졌을 때 쪼개는 길이기도 함. 자세한 내용은 [porting.md](porting.md) 4장.
+- 큐브가 커졌을 때 쪼개는 길이기도 함
+- 자세한 내용은 [porting.md](porting.md) 4장
 
 ---
 
@@ -75,7 +77,8 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 
 ### 3-1. `naming.js` (40줄)
 
-이름 규칙을 한 곳에 모음. 규칙이 흩어지면 `ctx.ref()` 가 끊어짐.
+- 이름 규칙을 한 곳에 모음
+- 규칙이 흩어지면 `ctx.ref()` 가 끊어짐
 
 | export | 산출 |
 |---|---|
@@ -87,11 +90,12 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 | `valueColumn(metric, period)` | `net_revenue` · `net_revenue_wtd` |
 | `baseColumn(period, label)` | `wow_base` · `wtd_wow_base` |
 
-**이 파일은 아무것도 읽지 않음.** 이름 규칙이 다른 선언에 의존하면 순환함.
+- **이 파일은 아무것도 읽지 않음.** 이름 규칙이 다른 선언에 의존하면 순환함
 
 ### 3-2. `periods.js` (86줄)
 
-기간을 선언함. 기간은 행이 아니라 컬럼임.
+- 기간을 선언함
+- 기간은 행이 아니라 컬럼임
 
 ```js
 PERIODS = {
@@ -109,7 +113,7 @@ PERIODS = {
 | `END_FLAGS` | `is_week_end` 등 완결 플래그와 그 `trunc` |
 | `SHIFTS` | 간격 → 그 간격으로 가져올 [기간, 라벨]. `PERIODS` 를 뒤집은 것 |
 
-주의할 점이 셋 있음.
+- 주의할 점이 셋 있음
 
 - **PTD 는 좁은 것부터 선언해야 함.** sketch PTD 가 가장 넓은 구간으로 한 번만
   self-join 하고 좁은 기간을 `IF` 로 걸러내기 때문에, 마지막 것이 조인 범위가 됨
@@ -118,8 +122,8 @@ PERIODS = {
 
 ### 3-3. `entities.js` (167줄)
 
-지표를 산출하는 fact 가 entity 가 됨. entity 가 정해지면 grain 과 쓸 수 있는
-dimension 이 따라서 정해짐.
+- 지표를 산출하는 fact 가 entity 가 됨
+- entity 가 정해지면 grain 과 쓸 수 있는 dimension 이 따라서 정해짐
 
 | 항목 | 무엇 | 바꾸면 |
 |---|---|---|
@@ -131,8 +135,8 @@ dimension 이 따라서 정해짐.
 | `serving_dims` | `dims` 중 `period_`·`metric_` 이 가질 것. 지표가 덮어쓸 수 있음 | 서빙 테이블의 컬럼과 행 수 |
 | `refresh` | `"incremental"` 또는 `"table"` | `daily_` 의 갱신 방식 |
 
-**`joins` 와 `dims` 를 나눠 선언함.** 둘을 합치면 조인에 부를 이름이 없어짐.
-이름이 있어야 지표 수식이 dimension 테이블의 컬럼을 가리킬 수 있음.
+- **`joins` 와 `dims` 를 나눠 선언함.** 둘을 합치면 조인에 부를 이름이 없어짐
+- 이름이 있어야 지표 수식이 dimension 테이블의 컬럼을 가리킬 수 있음
 
 ```js
 joins: { product: { to: PRODUCT, key: "product_id" } },
@@ -140,10 +144,10 @@ dims:  { category: { via: "product", col: "category" } },
 expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 ```
 
-`product` 는 여기 적힌 이름이지 builder 가 만든 alias 가 아님. **선언이 builder
-내부를 모름.** 이 이름이 그대로 SQL alias 가 되므로 예약어면 컴파일 타임에 거부됨.
+- `product` 는 여기 적힌 이름이지 builder 가 만든 alias 가 아님
+- **선언이 builder 내부를 모름.** 이 이름이 그대로 SQL alias 가 되므로 예약어면 컴파일 타임에 거부됨
 
-현재 4개 entity 가 있음.
+- 현재 4개 entity 가 있음
 
 | entity | source | grain | `dims` | `serving_dims` | `refresh` |
 |---|---|---|---|---|---|
@@ -152,8 +156,8 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 | `session` | `sem_fct_sessions` | 세션 1건 | 4 | 2 | `table` |
 | `user_event` | `sem_fct_user_events` | 이벤트 1건 | 3 | 1 | `incremental` |
 
-**`order` 에 상품 dimension 이 없는 것은 누락이 아님.** 한 주문이 여러 상품을
-포함하므로 주문 grain 에서 category 가 정의되지 않음.
+- **`order` 에 상품 dimension 이 없는 것은 누락이 아님.** 한 주문이 여러 상품을 포함하므로 주문 grain 에서
+  category 가 정의되지 않음
 
 ### 3-4. `metrics.js` (176줄)
 
@@ -164,7 +168,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 | `EXCLUDED` | 만들지 않기로 한 5개와 그 사유 |
 | `HLL_PRECISION` | 15 고정 |
 
-`additive` 는 플래그가 아니라 **축별 객체**임.
+- `additive` 는 플래그가 아니라 **축별 객체**임
 
 ```
 true      그 축으로 합산 가능        SUM
@@ -173,18 +177,17 @@ true      그 축으로 합산 가능        SUM
 false     복원 불가                 생성 거부
 ```
 
-dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 신호**임 — entity 가 틀렸음.
-현재 17개 지표에 `false` 는 하나도 없음.
+- dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 신호**임 — entity 가 틀렸음
+- 현재 17개 지표에 `false` 는 하나도 없음
 
-**지표 수식의 컬럼은 중괄호로 표시함.** 중괄호 밖은 builder 가 건드리지 않으므로
-어떤 SQL 이든 그대로 쓸 수 있음.
+- **지표 수식의 컬럼은 중괄호로 표시함.** 중괄호 밖은 builder 가 건드리지 않으므로 어떤 SQL 이든 그대로 쓸 수 있음
 
 ```
 {sale_price}          →  base.sale_price        fact 컬럼
 {product.unit_cost}   →  product.unit_cost      조인해서 오는 컬럼
 ```
 
-접두사가 없으면 조인한 dimension 테이블과 이름이 겹치는 순간 모호해짐.
+- 접두사가 없으면 조인한 dimension 테이블과 이름이 겹치는 순간 모호해짐
 
 - `unit_cost` — fact 와 `sem_dim_products` 양쪽에 있음
 - `user_id` — fact 와 `sem_dim_users` 양쪽에 있음
@@ -192,7 +195,8 @@ dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 �
 
 ### 3-5. `build.js` (549줄)
 
-정책이 실제로 집행되는 곳. 초기에 한 번 쓰고 거의 건드리지 않음.
+- 정책이 실제로 집행되는 곳
+- 초기에 한 번 쓰고 거의 건드리지 않음
 
 | 함수 | 역할 |
 |---|---|
@@ -246,13 +250,13 @@ GROUP BY 1, 2, 3, 4, 5
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | PTD 두 갈래와 `'(all)'` 행 |
 | 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 |
 
-JS 문법이 낯설면 [js-patterns.md](js-patterns.md) 를 먼저 봄.
+- JS 문법이 낯설면 [js-patterns.md](js-patterns.md) 를 먼저 봄
 
 ---
 
 ## 4. `definitions/` — Dataform action
 
-builder 가 SQL 문자열을 만들고, generator 가 그것을 Dataform action 으로 만듦.
+- builder 가 SQL 문자열을 만들고, generator 가 그것을 Dataform action 으로 만듦
 
 | | 파일 | 하는 일 |
 |---|---|---|
@@ -261,12 +265,13 @@ builder 가 SQL 문자열을 만들고, generator 가 그것을 Dataform action 
 
 ### 4-1. `sources/declarations.js` (28줄)
 
-DW 테이블을 읽기 전용으로 선언함. **여기 없는 DW 테이블은 참조할 수 없음.**
-`dbt_dev_marts_core` 8개와 `snapshots` 1개를 선언함.
+- DW 테이블을 읽기 전용으로 선언함
+- **여기 없는 DW 테이블은 참조할 수 없음.** `dbt_dev_marts_core` 8개와 `snapshots` 1개를 선언함
 
 ### 4-2. `mart/*.sqlx` (7개)
 
-DW 를 `semantic_mart` 로 정규화함. **사람이 SQL 을 쓰는 유일한 곳**임.
+- DW 를 `semantic_mart` 로 정규화함
+- **사람이 SQL 을 쓰는 유일한 곳**임
 
 | 파일 | 하는 일 |
 |---|---|
@@ -274,14 +279,15 @@ DW 를 `semantic_mart` 로 정규화함. **사람이 SQL 을 쓰는 유일한 �
 | `sem_dim_date` | 2018~2031 날짜. `grid` 의 날짜 원천 |
 | `sem_fct_*` (4개) | surrogate key 부여, 자연키 제거, grain 보증 |
 
-각 파일에 게이트 assertion 이 붙음. 깨지면 파이프라인이 멈춤.
+- 각 파일에 게이트 assertion 이 붙음
+- 깨지면 파이프라인이 멈춤
 
 ### 4-3. `assertions/partition_contract.js`
 
-마트의 파티션 컬럼이 `entities.js` 의 `date_col` 과 같은지 봄. **게이트임** —
-우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춤.
+- 마트의 파티션 컬럼이 `entities.js` 의 `date_col` 과 같은지 봄
+- **게이트임** — 우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춤
 
-두 선언은 서로를 읽지 않음.
+- 두 선언은 서로를 읽지 않음
 
 ```
 entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축과
@@ -289,26 +295,28 @@ entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축�
 *.sqlx        partitionBy: "ordered_date"   물리 저장 설정
 ```
 
-어긋나면 증분이 파티션을 걸러내지 못해 매번 전체를 읽음. **결과는 맞고 비용만 늚**
-([findings.md](findings.md) 10).
+- 어긋나면 증분이 파티션을 걸러내지 못해 매번 전체를 읽음
+- **결과는 맞고 비용만 늚** ([findings.md](findings.md) 10)
 
-구조로 묶지 않고 감시하는 이유는 방향 때문임. 마트가 `entities.js` 를 참조하게 만들면
-**상류가 하류를 읽게 되고**, 마트를 다른 팀이 소유하면 결합이 조직 경계를 넘음.
+- 구조로 묶지 않고 감시하는 이유는 방향 때문임
+- 마트가 `entities.js` 를 참조하게 만들면 **상류가 하류를 읽게 되고**, 마트를 다른 팀이 소유하면 결합이 조직 경계를 넘음
 
-`sem_dim_*` 3개는 entity 가 아니라 검사 대상이 아님.
+- `sem_dim_*` 3개는 entity 가 아니라 검사 대상이 아님
 
 ### 4-4. `assertions/upstream_contract.js` (86줄)
 
-DW 가 계약을 어겼는지 감시함. **게이트가 아니라 감시임** — 깨져도 파이프라인은 돎.
-원인이 dbt-airflow 쪽에 있어 우리가 고칠 수 없기 때문임. 태그가 `monitoring` 이라
-별도 워크플로로 돎.
+- DW 가 계약을 어겼는지 감시함
+- **게이트가 아니라 감시임** — 깨져도 파이프라인은 돎
+- 원인이 dbt-airflow 쪽에 있어 우리가 고칠 수 없기 때문임
+- 태그가 `monitoring` 이라 별도 워크플로로 돎
 
-현재 3건이 상시 실패 상태이고, 그것이 정상임. 내용은
-[operations.md](operations.md) 에 있음.
+- 현재 3건이 상시 실패 상태이고, 그것이 정상임
+- 내용은 [operations.md](operations.md) 에 있음
 
 ### 4-5. `semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js`
 
-각각 17개 테이블을 만듦. 셋 다 모양이 같음.
+- 각각 17개 테이블을 만듦
+- 셋 다 모양이 같음
 
 ```js
 Object.entries(METRICS).forEach(([name, m]) => {
@@ -318,13 +326,14 @@ Object.entries(METRICS).forEach(([name, m]) => {
 });
 ```
 
-**선언 하나가 테이블 하나가 됨.** 지표를 추가하면 `forEach` 가 한 바퀴 더 돎.
+- **선언 하나가 테이블 하나가 됨.** 지표를 추가하면 `forEach` 가 한 바퀴 더 돎
 
-`gen_daily.js` 만 `preOps` 가 있음. 증분 구간을 지우고 다시 넣기 위해서임.
+- `gen_daily.js` 만 `preOps` 가 있음
+- 증분 구간을 지우고 다시 넣기 위해서임
 
 #### 4-5-1. 셋은 독립이고 테이블은 사슬임
 
-두 가지를 구분해야 함.
+- 두 가지를 구분해야 함
 
 | | 독립인가 |
 |---|---|
@@ -332,9 +341,9 @@ Object.entries(METRICS).forEach(([name, m]) => {
 | 선언 입력 | **공유.** 셋 다 `metrics.js` · `entities.js` 를 읽음 |
 | 만들어지는 테이블 | **사슬.** `daily_` → `period_` → `metric_` |
 
-`period_` 는 원본 fact 를 다시 읽지 않고 `daily_` 를 읽고, `metric_` 은 `period_` 만
-읽음. 조인을 `daily_` 에서 한 번만 실행하기 위해서임 (P5·P11).
-의존 그래프 전체는 아래 [테이블 간](#6-2-테이블-간) 에 있음.
+- `period_` 는 원본 fact 를 다시 읽지 않고 `daily_` 를 읽고, `metric_` 은 `period_` 만 읽음
+- 조인을 `daily_` 에서 한 번만 실행하기 위해서임 (P5·P11)
+- 의존 그래프 전체는 아래 [테이블 간](#6-2-테이블-간) 에 있음
 
 #### 4-5-2. dimension 을 정하는 함수가 갈라져 있음
 
@@ -344,8 +353,8 @@ gen_period.js   servingAxes(name, m)   →  m.serving_dims || entity 것   큐�
 gen_metric.js   servingAxes(name, m)   →  같음
 ```
 
-**`gen_daily.js` 는 `servingAxes` 를 `require` 하지 않음.** 그래서 지표에
-`serving_dims` 를 선언해도 `daily_` 로 새지 않음.
+- **`gen_daily.js` 는 `servingAxes` 를 `require` 하지 않음.** 그래서 지표에 `serving_dims`
+  를 선언해도 `daily_` 로 새지 않음
 
 ```js
 buyer_count: { serving_dims: ["country", "purchase_type"] }
@@ -356,16 +365,16 @@ period_buyer_count    dimension 2개
 metric_buyer_count    dimension 2개
 ```
 
-반대 방향도 막혀 있음. `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로
-**큐브는 언제나 `daily_` 의 부분집합**임. `dims` 에 없는 것을 `serving_dims` 에
-적으면 컴파일이 거부함.
+- 반대 방향도 막혀 있음
+- `servingAxes` 가 `resolveDims` 의 결과와 교집합을 취하므로 **큐브는 언제나 `daily_` 의 부분집합**임
+- `dims` 에 없는 것을 `serving_dims` 에 적으면 컴파일이 거부함
 
 ### 4-6. `metadata/gen_registry.js` (158줄)
 
-`metric_registry` 를 만듦. **`ctx.ref()` 가 없는 유일한 generator** 로, 테이블을 하나도
-읽지 않고 선언만 읽어 리터럴로 만듦.
+- `metric_registry` 를 만듦
+- **`ctx.ref()` 가 없는 유일한 generator** 로, 테이블을 하나도 읽지 않고 선언만 읽어 리터럴로 만듦
 
-세 종류가 한 테이블에 들어감.
+- 세 종류가 한 테이블에 들어감
 
 ```
 METRICS    테이블이 생성된다                       is_generated = true
@@ -373,15 +382,16 @@ RATIOS     테이블을 만들지 않는다                   is_generated = fal
 EXCLUDED   의도적으로 만들지 않는다. 사유를 남긴다   is_generated = false
 ```
 
-"생성되지 않았다" 와 "존재하지 않는다" 는 다름. 비율 7개와 제외 5개는 registry 가
-유일한 거처임.
+- "생성되지 않았다" 와 "존재하지 않는다" 는 다름
+- 비율 7개와 제외 5개는 registry 가 유일한 거처임
 
 ---
 
 ## 5. `infra/` — 실행 계획
 
-Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스라 git 에
-남지 않음. 레포만 보고는 무엇이 언제 도는지 알 수 없음.
+- Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스라 git 에 남지
+  않음
+- 레포만 보고는 무엇이 언제 도는지 알 수 없음
 
 | 파일 | 하는 일 |
 |---|---|
@@ -390,8 +400,9 @@ Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스�
 
 #### 5-0-1. 태그 오타가 조용히 지나가지 못하게 함
 
-`workflows.json` 은 JSON 이라 `naming.js` 의 `TAGS` 를 못 읽음. 문자열을 손으로 다시
-치므로 오타가 남. **오타의 결과가 나쁨.**
+- `workflows.json` 은 JSON 이라 `naming.js` 의 `TAGS` 를 못 읽음
+- 문자열을 손으로 다시 치므로 오타가 남
+- **오타의 결과가 나쁨.**
 
 ```
 $ dataform run --tags semantik
@@ -399,10 +410,10 @@ Compiled successfully.
 No actions to run.
 ```
 
-매칭되는 액션이 없으면 아무것도 안 만들고 `SUCCEEDED` 로 끝남. 스케줄이 매일 돌면서
-0개를 실행하고 알림도 없음 — 데이터가 며칠 멈춰야 알아챔.
+- 매칭되는 액션이 없으면 아무것도 안 만들고 `SUCCEEDED` 로 끝남
+- 스케줄이 매일 돌면서 0개를 실행하고 알림도 없음 — 데이터가 며칠 멈춰야 알아챔
 
-그래서 `apply.js` 가 적용 전에 둘을 봄.
+- 그래서 `apply.js` 가 적용 전에 둘을 봄
 
 | 검사 | 잡는 것 |
 |---|---|
@@ -415,8 +426,8 @@ No actions to run.
       이대로 적용하면 매일 0개를 실행하고 성공으로 끝난다
 ```
 
-`naming.js` 가 아무것도 `require` 하지 않아서 Dataform 밖의 평범한 node 스크립트에서도
-읽힘. `dataformCoreVersion` 도 `workflow_settings.yaml` 에서 읽음.
+- `naming.js` 가 아무것도 `require` 하지 않아서 Dataform 밖의 평범한 node 스크립트에서도 읽힘
+- `dataformCoreVersion` 도 `workflow_settings.yaml` 에서 읽음
 
 ---
 
@@ -436,12 +447,12 @@ build.js ────────→ gen_daily.js · gen_period.js · gen_metric
 metrics.js ──────→ gen_registry.js   (테이블을 안 읽는다)
 ```
 
-`naming.js` 는 아무것도 읽지 않음. `build.js` 가 나머지를 모두 읽고, 선언 파일끼리는
-`naming → entities → metrics` 한 줄임.
+- `naming.js` 는 아무것도 읽지 않음
+- `build.js` 가 나머지를 모두 읽고, 선언 파일끼리는 `naming → entities → metrics` 한 줄임
 
 ### 6-2. 테이블 간
 
-`dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프임.
+- `dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프임
 
 ```
 dim_products     → sem_dim_products
@@ -456,15 +467,15 @@ sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metri
 (없음)   →  metric_registry
 ```
 
-**마트 테이블끼리는 서로 참조하지 않음.** 전부 DW declaration 만 읽음 — fact 간
-조인이 금지되어 있기 때문임.
+- **마트 테이블끼리는 서로 참조하지 않음.** 전부 DW declaration 만 읽음 — fact 간 조인이 금지되어 있기 때문임
 
-`order_item` 의 `purchase_type` 은 예외처럼 보이지만 아님. `sem_fct_order_items` 가
-`sem_fct_orders` 를 읽는 것이 아니라, **`daily_` 를 만들 때 join graph 가 조인함.**
-조인이 실행되는 자리는 언제나 `daily_` 임 (P5).
+- `order_item` 의 `purchase_type` 은 예외처럼 보이지만 아님
+- `sem_fct_order_items` 가 `sem_fct_orders` 를 읽는 것이 아니라, **`daily_` 를 만들 때 join
+  graph 가 조인함.** 조인이 실행되는 자리는 언제나 `daily_` 임 (P5)
 
-**`daily_` 는 `sem_dim_date` 를 조인하지 않음.** `dims` 전체(최대 8개)로 빈 날을
-채우면 지표 하나가 수백만 행이 됨. 빈 날을 채우는 곳은 `period_` 의 `grid` 임.
+- **`daily_` 는 `sem_dim_date` 를 조인하지 않음.** `dims` 전체(최대 8개)로 빈 날을 채우면 지표 하나가
+  수백만 행이 됨
+- 빈 날을 채우는 곳은 `period_` 의 `grid` 임
 
 ---
 

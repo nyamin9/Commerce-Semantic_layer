@@ -1,6 +1,6 @@
 # Commerce-Semantic_layer
 
-BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
+- BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트
 
 - **변환(transformation)** — `dbt-airflow` 가 담당. 이 레포 밖
 - **semantic layer** — 이 레포가 담당
@@ -19,7 +19,8 @@ BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 
 ## 2. 구조
 
-지표 하나가 테이블 3개가 됨. 지표 17개 × 3 = 51개임.
+- 지표 하나가 테이블 3개가 됨
+- 지표 17개 × 3 = 51개임
 
 ```
 dbt_dev_marts_core           DW. 소유하지 않는다. declaration 으로 읽기만
@@ -41,7 +42,7 @@ semantic.metric_<metric>     + 비교 기준값 8컬럼          ← 소비자�
 semantic_metadata.metric_registry                        지표 카탈로그
 ```
 
-`metric_net_revenue` 한 행이 이렇게 생겼음.
+- `metric_net_revenue` 한 행이 이렇게 생겼음
 
 ```
 record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yoy_base
@@ -50,7 +51,7 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 2026-08-31   China    (all)          TRUE               14,815   260,673        62,020
 ```
 
-`weekly` · `monthly` · `yearly` 는 만들지 않음.
+- `weekly` · `monthly` · `yearly` 는 만들지 않음
 
 - 완결된 기간의 집계는 PTD 와 값이 같음
 - 그래서 `is_month_end` 같은 플래그로 골라 씀
@@ -98,7 +99,7 @@ infra/                              실행 계획 — GCP 리소스 선언
 workflow_settings.yaml              프로젝트 · 리전 · 데이터셋
 ```
 
-문서에 나오는 두 말은 이렇게 나뉨.
+- 문서에 나오는 두 말은 이렇게 나뉨
 
 | | 파일 | 하는 일 |
 |---|---|---|
@@ -115,7 +116,7 @@ npx @dataform/cli@3.0.65 compile
 npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 ```
 
-운영 스케줄과 실행 계정은 [operations.md](docs/operations.md) 에 있음.
+- 운영 스케줄과 실행 계정은 [operations.md](docs/operations.md) 에 있음
 
 ## 6. 조회 예시
 

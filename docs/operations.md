@@ -1,7 +1,8 @@
 # 운영
 
-스케줄 · 실행 계정 · 상류 결함 · 현재 상태. 시간이 지나면 낡는 내용을 여기 모음.
-용어는 [glossary.md](glossary.md) 를 따름.
+- 스케줄 · 실행 계정 · 상류 결함 · 현재 상태
+- 시간이 지나면 낡는 내용을 여기 모음
+- 용어는 [glossary.md](glossary.md) 를 따름
 
 ## 1. 진행 상태
 
@@ -10,18 +11,18 @@
 | 1 | `includes/` 선언 계층 + builder | 완료 |
 | 2 | `semantic_mart` 7개 + 상류 감시 assertion | 완료 |
 | 3 | `sem_dim_date` | 완료 (2단계에 포함) |
-| 4 | `gen_daily.js` · `gen_period.js` · `gen_metric.js` | 완료. 15개씩 생성 |
-| 5 | `gen_registry.js` | 완료. `metric_registry` 27행 |
+| 4 | `gen_daily.js` · `gen_period.js` · `gen_metric.js` | 완료. 17개씩 생성 |
+| 5 | `gen_registry.js` | 완료. `metric_registry` 29행 |
 | 6 | `rpt_*` 대조 후 SSOT 전환 | 완료. 퍼널·코호트는 후속 |
 | 7 | 스케줄 · 실행 계정 | 완료 |
 
 ## 2. 실행 계획
 
-`dataform compile` 이 정하는 것은 **무엇을 만들지**임. 언제 어떤 계정으로 돌릴지는
-Dataform 의 release configuration 과 workflow configuration 이 정하는데, 그건 GCP
-리소스라 git 에 없음 — 레포만 보고는 무엇이 언제 도는지 알 수 없음.
+- `dataform compile` 이 정하는 것은 **무엇을 만들지**임
+- 언제 어떤 계정으로 돌릴지는 Dataform 의 release configuration 과 workflow configuration 이
+  정하는데, 그건 GCP 리소스라 git 에 없음 — 레포만 보고는 무엇이 언제 도는지 알 수 없음
 
-그래서 `infra/workflows.json` 을 원천으로 두고 `apply.js` 가 맞춤.
+- 그래서 `infra/workflows.json` 을 원천으로 두고 `apply.js` 가 맞춤
 
 ```bash
 node infra/apply.js --dry-run   # 선언과 GCP 의 차이
@@ -34,12 +35,13 @@ node infra/apply.js             # 적용
 | `semantic-daily` | `30 4 * * *` | `mart` `semantic` | 본 파이프라인. 게이트 assertion 포함 |
 | `upstream-monitoring` | `0 5 * * *` | `monitoring` | 상류 감시. 실패해도 본 파이프라인은 돎 |
 
-상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작함. 1시간 30분 여유를 뒀고
-`semantic-daily` 는 실측 **3분 53초**(테이블 59 · assertion 118) 걸림.
+- 상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작함
+- 1시간 30분 여유를 뒀고 `semantic-daily` 는 실측 **3분 53초** 걸림
+  (테이블 59 · assertion 118 을 돌렸을 때. 지금 그래프는 assertion 124)
 
-`order_item`·`order` 는 매일 전 기간을 다시 만듦. `daily_` 가 20만 행이라 전체
-재생성이 증분보다 쌈 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
-더 붙음 ([findings.md](findings.md) 17).
+- `order_item`·`order` 는 매일 전 기간을 다시 만듦
+- `daily_` 가 20만 행이라 전체 재생성이 증분보다 쌈 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
+  더 붙음 ([findings.md](findings.md) 17)
 
 ### 2-1. 실행 계정
 
@@ -50,17 +52,18 @@ dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com
   dataViewer  dbt_dev_marts_core             읽기만
 ```
 
-**소유 경계가 IAM 으로 강제됨** (P1). DW 에 쓸 수 없는 것이 코드 규율이 아니라 권한임.
+- **소유 경계가 IAM 으로 강제됨** (P1)
+- DW 에 쓸 수 없는 것이 코드 규율이 아니라 권한임
 
-Dataform 서비스 에이전트에는 이 계정으로 실행할 권한이 둘 다 필요함.
+- Dataform 서비스 에이전트에는 이 계정으로 실행할 권한이 둘 다 필요함
 
 ```
 roles/iam.serviceAccountTokenCreator
 roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어야 한다
 ```
 
-`serviceAccountUser` 가 없으면 **수동 실행은 되는데 스케줄 실행만 code 7 로 실패함.**
-수동 실행은 사람의 권한으로 돌기 때문에 이 차이가 드러나지 않음.
+- `serviceAccountUser` 가 없으면 **수동 실행은 되는데 스케줄 실행만 code 7 로 실패함.** 수동 실행은 사람의
+  권한으로 돌기 때문에 이 차이가 드러나지 않음
 
 ## 3. 현재 BigQuery 상태
 
@@ -71,14 +74,15 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
 
-지표별 테이블 크기는 `serving_dims` 개수에 따라 다름.
+- 지표별 테이블 크기는 `serving_dims` 개수에 따라 다름
 
-entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음.
+- entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음
 
 ## 4. `rpt_*` 대조 결과
 
-`dbt_dev_marts_reporting.rpt_daily_revenue` 와 `record_date × department` grain 으로
-전 구간을 대조했음. 키 5,451개 · 2019-01-07 ~ 2026-09-16.
+- `dbt_dev_marts_reporting.rpt_daily_revenue` 와 `record_date × department`
+  grain 으로 전 구간을 대조했음
+- 키 5,451개 · 2019-01-07 ~ 2026-09-16
 
 | `rpt_` 컬럼 | 우리 쪽 | 다른 키 | 판정 |
 |---|---|---|:---:|
@@ -91,18 +95,19 @@ entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음.
 | `net_revenue_yoy_rate` | 저장하지 않음 | — | `yoy_base` 로 재현 가능 |
 | `order_count` | `metric_order_count` | — | **`rpt_` 가 33% 이중 계산** (결함 9) |
 
-**두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는
-[findings.md](findings.md) 19 에 있음.
+- **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는 [findings.md](findings.md) 19 에
+  있음
 
 ### 4-1. 존치하는 것
 
-`rpt_daily_funnel` · `rpt_user_cohort_retention` 은 폐기 대상이 아님. 우리가
-**의도적으로 만들지 않은 영역**이고 registry 에 `is_generated: false` 로 남아 있음.
-퍼널은 아래 결함 7, 코호트는 사용자 생애주기라서 후속 작업임.
+- `rpt_daily_funnel` · `rpt_user_cohort_retention` 은 폐기 대상이 아님
+- 우리가 **의도적으로 만들지 않은 영역**이고 registry 에 `is_generated: false` 로 남아 있음
+- 퍼널은 아래 결함 7, 코호트는 사용자 생애주기라서 후속 작업임
 
 ## 5. 알려진 상류 결함
 
-우회하지 않고 assertion 으로 감시함. 원인은 dbt-airflow 쪽에 있음.
+- 우회하지 않고 assertion 으로 감시함
+- 원인은 dbt-airflow 쪽에 있음
 
 | # | 현상 | 규모 | 영향 |
 |---|---|---|---|
@@ -116,15 +121,16 @@ entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음.
 | 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 24개. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 채움 |
 | 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 183,826 vs 실제 138,061 (33% 과임) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀림.<br>우리 쪽은 `order` entity 라 department 축이 없음 |
 
-2~4번은 모두 최근 구간에 몰려 있어 늦게 도착한 데이터 문제로 보임.
+- 2~4번은 모두 최근 구간에 몰려 있어 늦게 도착한 데이터 문제로 보임
 
-7번은 성격이 다름. 전자상거래 세션 구매율은 통상 1~3%인데 77.1%가 나옴.
-`purchased` 가 이름대로 동작하지 않는다는 뜻이므로 **원인이 밝혀지기 전까지 세션
-퍼널 지표를 정의하지 않음.**
+- 7번은 성격이 다름
+- 전자상거래 세션 구매율은 통상 1~3%인데 77.1%가 나옴
+- `purchased` 가 이름대로 동작하지 않는다는 뜻이므로 **원인이 밝혀지기 전까지 세션 퍼널 지표를 정의하지 않음.**
 
 ### 5-1. 상시 실패하는 감시 assertion
 
-`upstream-monitoring` 워크플로가 매일 3건 실패함. **그것이 정상임.**
+- `upstream-monitoring` 워크플로가 매일 3건 실패함
+- **그것이 정상임.**
 
 ```
 upstream_natural_key_reuse       결함 1
@@ -132,7 +138,7 @@ upstream_orders_load_lag         결함 4
 upstream_session_funnel_flags    결함 7
 ```
 
-전부 DW 테이블만 읽으므로 본 파이프라인에 영향이 없음.
+- 전부 DW 테이블만 읽으므로 본 파이프라인에 영향이 없음
 
 ## 6. 개발
 
@@ -147,16 +153,17 @@ npx @dataform/cli@3.0.65 compile --json > graph.json
 npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 ```
 
-`dataform run` 은 `.df-credentials.json` 또는 ADC 가 필요함. 실제 운영은 Dataform
-콘솔의 서비스 계정으로 돌아가므로 로컬 실행은 편의 목적임.
+- `dataform run` 은 `.df-credentials.json` 또는 ADC 가 필요함
+- 실제 운영은 Dataform 콘솔의 서비스 계정으로 돌아가므로 로컬 실행은 편의 목적임
 
-`main` 이 Dataform 이 추적하는 브랜치임. 콘솔 workspace 는 자동 동기화되지 않으므로
-푸시 후 `Pull from default branch` 를 눌러야 반영됨.
+- `main` 이 Dataform 이 추적하는 브랜치임
+- 콘솔 workspace 는 자동 동기화되지 않으므로 푸시 후 `Pull from default branch` 를 눌러야 반영됨
 
 ### 6-1. 스키마를 바꿀 때
 
-파티션 컬럼을 바꾸면 `CREATE OR REPLACE` 가 거부됨. 테이블을 지우고 다시 만들어야
-함. 컬럼 추가·삭제만이면 `--full-refresh` 로 충분함.
+- 파티션 컬럼을 바꾸면 `CREATE OR REPLACE` 가 거부됨
+- 테이블을 지우고 다시 만들어야 함
+- 컬럼 추가·삭제만이면 `--full-refresh` 로 충분함
 
 ```bash
 npx @dataform/cli@3.0.65 run --full-refresh --tags period --tags metric
