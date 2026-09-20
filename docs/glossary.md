@@ -141,14 +141,8 @@ GROUP BY category
 매출은 라인마다 한 bucket 에만 들어가서 `gross_revenue − net_revenue` 로 취소분이
 나온다. **구매자는 한 사람이 여러 bucket 에 걸쳐서 뺄셈이 안 된다.**
 
-```
-전체 구매자                         81,797
-  ├ 매출만 낸 사람                  51,469
-  ├ 매출도 내고 취소도 겪은 사람     17,576   ← 뺄셈하면 이 사람들이 사라진다
-  └ 취소만 한 사람                  12,752
-
-buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
-```
+한 사람이 완료 주문과 취소 주문을 둘 다 가질 수 있어서 bucket 이 겹친다. 뺄셈을 하면
+양쪽에 다 있는 사람이 통째로 사라진다 ([findings.md](findings.md) 15).
 
 그래서 `buyer_count` · `paying_buyer_count` · `void_buyer_count` 셋을 따로 만든다.
 셋을 더해도 전체가 되지 않는다. distinct count 의 성질이라 정확히 세도 마찬가지다.

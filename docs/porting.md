@@ -66,8 +66,8 @@ false     복원 불가
 **dimension 축에 `false` 가 나오면 entity 가 틀린 것이다.** 기록할 사실이 아니라
 고칠 신호로 다룬다.
 
-> 실측. `active_user` 를 `additive.time: true` 로 잘못 선언하면 `SUM` 이 선택되어
-> 5일 누적에서 값이 17.4% 부푼다.
+잘못 선언하면 `SUM` 이 선택되어 distinct count 가 부푼다 — 에러는 나지 않고 숫자만
+틀린다 ([findings.md](findings.md) 11).
 
 ### A-4. entity 는 fact 이고 grain 은 바뀌지 않는다
 
@@ -88,9 +88,8 @@ entity 에 둘 것인가" 의 답이 된다.
 고르는 기준은 **고유값이 적고 entity 를 가로지르는 dimension**(conformed dimension)이다.
 서로 다른 fact 의 지표를 나란히 놓을 수 있는 축이기 때문이다.
 
-> 실측. 고유값 2,753개인 `brand` 를 dimension 에 넣으면 연 단위로 집계해도 행이
-> 5%밖에 줄지 않는다. 빼면 절반 이하가 된다.
-> 값이 2개인 `purchase_type` 은 조합을 1,708 → 5,054 로 2.96배 만든다.
+고유값이 많은 dimension 은 연 단위로 집계해도 행이 거의 줄지 않는다. 값이 2개인
+dimension 도 조합을 3배로 만든다 ([findings.md](findings.md) 2).
 
 **넣기 전에 셋을 확인한다.**
 
@@ -107,8 +106,8 @@ dry run 으로도 미리 잡히지 않았다.
 
 활동이 있는 날에만 PTD 행을 만들면 **rollup 했을 때 대부분이 사라진다.**
 
-> 실측. 빈 날을 채우지 않으면 country 별 MTD 를 합한 값이 실제의 13% 가 나온다.
-> 그날 팔리지 않은 조합의 앞 구간 매출이 통째로 빠지기 때문이다.
+빈 날을 채우지 않으면 rollup 한 값이 실제의 13% 가 나온다. 그날 활동이 없던 조합의
+앞 구간이 통째로 빠지기 때문이다 ([findings.md](findings.md) 4).
 
 ```
 1) 날짜 × dimension 조합을 모두 만든다
@@ -128,10 +127,7 @@ dry run 으로도 미리 잡히지 않았다.
 **비용은 다르다.** rollup 을 먼저 하면 `'(all)'` 행의 sketch 가 조밀해지는데, sketch PTD 는
 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를 날마다 수백 번 읽는다.
 
-```
-rollup 먼저   CPU 1,748,227초
-PTD 먼저      통과
-```
+rollup 을 먼저 하면 CPU 한도에 걸려 생성 자체가 실패한다 ([findings.md](findings.md) 6).
 
 ### A-8. 완결된 기간을 따로 만들지 않는다
 
@@ -175,8 +171,8 @@ dimension 축이 false          예외
 `MERGE` 는 지우지 않는다. dimension 값이 바뀌면 키가 달라져 옛 행이 매칭되지 않고
 그대로 남는다. 키는 여전히 유일하므로 `uniqueKey` 검사도 통과한다.
 
-> 실측. 상류를 12일치 최신화하고 `MERGE` 증분을 돌렸더니 남은 옛 행 3,933개가
-> 합계를 188,992.92 부풀렸다.
+상류를 최신화하고 `MERGE` 증분을 돌리면 남은 옛 행이 합계를 부풀린다
+([findings.md](findings.md) 9).
 
 **증분 구간은 상류가 정한다.** 상류가 최근 N일을 덮어쓰면 우리도 N일을 다시 읽는다.
 상류보다 촘촘하게 잡아도 이득이 없고, 넓게 잡으면 다시 읽기만 한다.
@@ -196,7 +192,7 @@ dimension 축이 false          예외
 
 | 두 곳 | 어긋나면 |
 |---|---|
-| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 189배 느려진다. 값은 맞다 |
+| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 느려진다. 값은 맞다 |
 | 액션의 `tags` ↔ 실행 설정의 `includedTags` | 0개 액션으로 성공한다. 알림도 없다 |
 
 **구조로 묶고 싶어지지만 방향을 보면 안 된다.** 마트가 `entities.js` 를 참조하게 만들면
@@ -261,18 +257,18 @@ dimension 축이 false          예외
 
 ## C. 엔진 — 옮기면 다시 재야 하는 것
 
-**이 절이 이 문서의 핵심이다.** 아래는 전부 실제로 부딪혀서 알아낸 것이고,
-컴파일로도 dry run 으로도 미리 잡히지 않은 것이 섞여 있다.
+**이 절이 이 문서의 핵심이다.** 컴파일로도 dry run 으로도 미리 잡히지 않는 것이
+섞여 있다. 숫자는 [findings.md](findings.md) 에 있다.
 
 ### C-1. BigQuery
 
 | 제약 | 증상 | 대응 |
 |---|---|---|
 | **`CUBE` 를 다른 grouping element 와 못 섞는다** | `GROUP BY record_date, CUBE(...)` 가 *"only supports CUBE when there are no other grouping elements"* 로 거부 | 부분집합을 직접 펼치거나 마스크를 쓴다 |
-| **`GROUPING SETS` 가 집합마다 입력을 다시 읽는다** | dimension 4개면 16번. 입력에 self-join 이 있으면 치명적. CPU 357,307초 | 마스크를 `CROSS JOIN` 으로 붙여 입력을 한 번만 읽는다 |
-| **`IS NOT DISTINCT FROM` 이 해시 조인 키가 못 된다** | 일반 술어로 취급되어 중첩 루프가 된다. 구간 self-join 에서 CPU 88,022초 | `NULL` 을 값으로 바꿔 `=` 로 조인한다 |
+| **`GROUPING SETS` 가 집합마다 입력을 다시 읽는다** | dimension 4개면 16번. 입력에 self-join 이 있으면 CPU 한도 초과 | 마스크를 `CROSS JOIN` 으로 붙여 입력을 한 번만 읽는다 |
+| **`IS NOT DISTINCT FROM` 이 해시 조인 키가 못 된다** | 일반 술어로 취급되어 중첩 루프가 된다. 구간 self-join 에서 CPU 한도 초과 | `NULL` 을 값으로 바꿔 `=` 로 조인한다 |
 | **`HLL_COUNT.MERGE_PARTIAL` 이 analytic function 을 지원하지 않는다** | dry run 통과, 실행에서 `Analytic function MERGE_PARTIAL is not supported` | 창 함수 대신 구간 self-join |
-| **on-demand 의 CPU/바이트 비율 제한** | 스캔이 작아도 CPU 를 많이 쓰면 거부. 한도 5,100초 | 중간 결과를 테이블로 저장해 재계산을 없앤다 |
+| **on-demand 의 CPU/바이트 비율 제한** | 스캔이 작아도 CPU 를 많이 쓰면 거부한다 | 중간 결과를 테이블로 저장해 재계산을 없앤다 |
 | **파티션 컬럼을 바꿀 수 없다** | `CREATE OR REPLACE` 가 *"Cannot replace a table with a different partitioning spec"* 로 거부 | 테이블을 지우고 다시 만든다 |
 | **예약어 78개** | 조인 이름이 `order`·`cube` 면 생성된 SQL 이 깨진다 | 컴파일 타임에 거부한다 |
 | **`DATE_SUB` 이 월말을 보정한다** | `2026-03-31 - 1 MONTH = 2026-02-28`. 3/30 과 3/31 이 둘 다 2/28 로 간다 | 월말 며칠의 전월 비교는 이 성질을 알고 본다 |
@@ -387,3 +383,4 @@ rollup 여러 개   a×b · a×c · b×d     실제로 쓰는 것만. 나머지�
 | 파일별 역할 | [code-map.md](code-map.md) |
 | 테이블 구조 | [tables.md](tables.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |
+| 실측과 실패 기록 | [findings.md](findings.md) |

@@ -172,14 +172,14 @@ GROUP BY 1, 2, 3, 4, 5
 ```
 
 > **`CUBE` 도 `GROUPING SETS` 도 못 쓴다.** `CUBE` 는 다른 grouping element 와 섞이지
-> 않고, `GROUPING SETS` 는 집합마다 입력을 다시 읽는다 — 축이 4개면 16번이라
-> sketch 지표에서 CPU 357,307초를 써 한도(5,100)에 걸렸다.
+> 않고, `GROUPING SETS` 는 집합마다 입력을 다시 읽어 sketch 지표가 CPU 한도에 걸린다
+> ([findings.md](findings.md) 7).
 
 > **rollup 이 PTD 보다 나중인 이유.** 순서를 바꿔도 값은 같지만, 먼저 rollup 하면 `'(all)'`
 > 행의 sketch가 조밀해지고 그것을 1년 구간 자기조인에서 하루당 180여 번씩 읽는다.
 
 `grid` 는 `sem_dim_date` 를 기준 날짜 목록로 빈 날짜를 채운다 (P15-1). 활동한 날에만 누계를
-만들면 rollup 하는 순간 대부분이 사라진다 — 실측으로 country 별 MTD 가 실제의 13% 였다.
+만들면 rollup 하는 순간 대부분이 사라진다 ([findings.md](findings.md) 4).
 
 `cum` 은 가산이면 창 함수, sketch면 구간 자기조인이다. **출력 컬럼은 양쪽이 같다.**
 
@@ -247,9 +247,8 @@ dimension 축   category · department · order_item_status 를 없앤다     �
 sketch 는 합쳐도 sketch 로 남는다. `MERGE` 로 정수를 만들면 더 합칠 수 없다 (P11).
 
 > **`'(all)'` 행도 같은 규칙을 따른다.** sketch 지표의 전사 값은 `SUM` 이 아니라
-> `HLL_COUNT.MERGE` 다. 실측으로 2026-08 `buyer_count` 가 국가별 합 10,268 /
-> 병합 10,264 였는데, 이 4 차이는 겹침이 아니라 HLL 오차다 — conformed 축이 전부
-> user 속성이라 사용자를 분할하기 때문이다. 겹치는 축이 들어오면 `SUM` 은 깨진다.
+> `HLL_COUNT.MERGE` 다. 지금 conformed 축은 전부 user 속성이라 사용자를 분할하지만,
+> 겹치는 축이 들어오면 `SUM` 은 깨진다.
 
 ### `additive`는 어디서 읽히는가
 
@@ -286,21 +285,8 @@ additive: { time: true, category: true, country: true }
 
 ### 잘못 선언하면 무슨 일이 생기는가
 
-`active_user`를 `additive.time: true`로 선언했다고 가정하고 같은 데이터를 세 가지로 계산한 것.
-
-| record_date | 일별 값 | `true`로 잘못 → `SUM` | `"sketch"` → `MERGE` | atomic fact 정답 |
-|---|---:|---:|---:|---:|
-| 2026-03-01 | 158 | 158 | 158 | 158 |
-| 2026-03-02 | 152 | 310 | **290** | **290** |
-| 2026-03-03 | 144 | 454 | **413** | **413** |
-| 2026-03-04 | 155 | 609 | **528** | **528** |
-| 2026-03-05 | 188 | 797 | **679** | **679** |
-
-sketch 경로는 atomic fact를 직접 센 값과 일치하고, `SUM`은 5일 만에 **17.4% 부푼다.**
-여러 날 활동한 사용자를 중복으로 세기 때문이다.
-
-**에러가 나지 않는다는 점이 중요하다.** 쿼리는 성공하고 숫자만 틀린다.
-`additive` 선언은 이 차이를 컴파일 타임에 결정한다.
+`additive.time` 을 `true` 로 잘못 선언하면 `SUM` 이 선택되어 distinct count 가 부푼다.
+에러는 나지 않고 숫자만 틀린다 ([findings.md](findings.md) 11).
 
 ### 요약
 
@@ -383,16 +369,8 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 매출은 `gross_revenue − net_revenue` 로 취소·반품분이 나온다. 라인마다 한 bucket 에만
 들어가기 때문이다. **구매자는 그 뺄셈이 안 된다.**
 
-```
-전체 구매자                         81,797
-  ├ 매출만 낸 사람                  51,469
-  ├ 매출도 내고 취소도 겪은 사람     17,576   ← 뺄셈하면 이 사람들이 사라진다
-  └ 취소만 한 사람                  12,752
-
-buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
-```
-
-한 사람이 완료 주문과 취소 주문을 둘 다 가질 수 있어서 bucket 이 겹친다. 그래서
+한 사람이 완료 주문과 취소 주문을 둘 다 가질 수 있어서 bucket 이 겹친다. 뺄셈을 하면
+양쪽에 다 있는 사람이 통째로 사라진다 ([findings.md](findings.md) 15). 그래서
 `buyer_count` · `paying_buyer_count` · `void_buyer_count` 를 따로 만든다.
 
 **세 값을 더해도 전체가 되지 않는다.** HLL 근사 때문이 아니라 distinct count 의

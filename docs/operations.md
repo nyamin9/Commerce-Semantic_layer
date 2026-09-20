@@ -37,9 +37,9 @@ node infra/apply.js             # 적용
 상류 `thelook_dw_daily` 가 `0 3 * * *` UTC 에 시작한다. 1시간 30분 여유를 뒀고
 `semantic-daily` 는 실측 **3분 53초**(테이블 59 · assertion 118) 걸린다.
 
-`order_item`·`order` 를 `table` 로 바꿔 매일 전 기간을 다시 만드는데도 시간이 늘지
-않았다. `daily_` 가 20만 행이라 전체 재생성이 증분보다 싸다 — 증분은 구간을 계산하고
-`DELETE` 한 뒤 `INSERT` 하는 단계가 더 있다.
+`order_item`·`order` 는 매일 전 기간을 다시 만든다. `daily_` 가 20만 행이라 전체
+재생성이 증분보다 싸다 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
+더 붙는다 ([findings.md](findings.md) 17).
 
 ### 실행 계정
 
@@ -85,7 +85,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 ## 4. `rpt_*` 대조 결과
 
 `dbt_dev_marts_reporting.rpt_daily_revenue` 와 `record_date × department` grain 으로
-전 구간 대조했다. 키 5,451개 · 2019-01-07 ~ 2026-09-16.
+전 구간을 대조했다. 키 5,451개 · 2019-01-07 ~ 2026-09-16.
 
 | `rpt_` 컬럼 | 우리 쪽 | 다른 키 | 판정 |
 |---|---|---|:---:|
@@ -98,11 +98,8 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | `net_revenue_yoy_rate` | 저장하지 않음 | — | `yoy_base` 로 재현 가능 |
 | `order_count` | `metric_order_count` | — | **`rpt_` 가 33% 이중 계산** (결함 9) |
 
-**두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같다.**
-
-대조 시점에는 PTD 를 저장하지 않고 조회 시점에 재현했다. 지금은 컬럼으로 저장한다 —
-dimension 을 `serving_dims` 로 좁혀 `grid` 비용이 감당되기 때문이다. 증감률은 여전히
-저장하지 않는다.
+**두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같다.** 상세는
+[findings.md](findings.md) 19 에 있다.
 
 ### 존치하는 것
 

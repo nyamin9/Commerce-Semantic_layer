@@ -162,10 +162,8 @@ metric_<metric>    + 비교 기준값 8컬럼             14,227,010행
 세 단계를 한 쿼리에 넣으면 같은 집계가 여러 번 돈다. CTE 는 결과를 저장하지 않기
 때문이다.
 
-> 2026-09-13 실측. 기간 확장을 CTE 로 두면 `metric_` 이 그것을 여러 번 참조하고
-> (본 쿼리 1 + 비교 조인) 같은 집계가 그만큼 돈다. dimension 7개 지표에서 CPU 3,600초를
-> 써 BigQuery on-demand 의 CPU/바이트 비율 제한에 걸렸다. 스캔은 14 MB 라 비용이 아니라
-> 낭비가 문제다. 조인 술어를 바꿔도 변하지 않고, 테이블로 저장하는 것만 효과가 있다.
+CTE 는 참조 횟수만큼 다시 계산된다. 기간 확장을 `metric_` 안의 CTE 로 두면 본 쿼리와
+비교 조인이 각각 그것을 돌려서 CPU/바이트 비율 제한에 걸린다 ([findings.md](findings.md) 3).
 
 `daily_` 를 따로 두는 이유는 다르다. **조인을 한 번만 실행하기 위해서**다. `period_`
 이후는 `daily_` 만 읽으므로 atomic fact 와 dimension 을 다시 읽지 않는다.
@@ -184,8 +182,8 @@ record_date  country  is_month_end   net_revenue  _wtd    _mtd     _ytd
 **`weekly` · `monthly` · `yearly` 를 만들지 않는다.** 완결된 기간의 집계는 같은
 dimension 에서 PTD 와 값이 같기 때문이다.
 
-> 실측. 완결된 주의 `weekly` 값과 그 주 마지막 날의 `wtd` 값을 맞대면 10,080 조합
-> 전부 일치했다 (2026-09-16).
+완결된 주의 `weekly` 값과 그 주 마지막 날의 `wtd` 값이 10,080 조합 전부 일치한다
+([findings.md](findings.md) 13).
 
 ```
 monthly  =  mtd  where is_month_end
@@ -221,15 +219,14 @@ serving_dims 5개   조합  1,406 × 2,815일 =     396만 행   → rollup 행�
 
 PTD 를 활동이 있는 날에만 만들면 rollup 했을 때 대부분이 사라진다.
 
-> 실측. 빈 날을 채우지 않은 `mtd` 로 "2026-08-14 기준 country 별 MTD" 를 내면 전사
-> 합계가 25,618 인데 실제는 192,871 이다 — **13%만 나온다.** 8/14에 안 팔린 조합의
-> 8/1~8/13 매출이 통째로 빠지기 때문이다.
+빈 날을 채우지 않으면 country 별 MTD 를 합한 값이 **실제의 13%** 가 나온다. 그날
+팔리지 않은 조합의 앞 구간 매출이 통째로 빠지기 때문이다 ([findings.md](findings.md) 4).
 
 그래서 `base` 의 dimension 조합과 `sem_dim_date` 의 날짜를 모두 교차시켜 행을 만들고,
 값이 없으면 0(가산) 또는 `NULL`(sketch)로 채운 뒤 그 위에 누적한다.
 
 날짜는 `sem_dim_date` 에서 가져온다. `daily_` 의 날짜를 쓰면 전사적으로 거래가 0인 날이
-통째로 빠져 PTD 가 끊긴다 — 실측으로 2,811일 중 44일이 그랬다.
+통째로 빠져 PTD 가 끊긴다 ([findings.md](findings.md) 5).
 
 범위는 `daily_` 가 가진 구간으로 자른다. 그러지 않으면 2018~2031 날짜 전체가 조합 수만큼
 곱해지고, 데이터가 없는 미래 날짜에 행이 생긴다.
@@ -242,10 +239,7 @@ PTD 를 활동이 있는 날에만 만들면 rollup 했을 때 대부분이 사�
 **비용은 전혀 다르다.** rollup 을 먼저 하면 `'(all)'` 행의 sketch 가 조밀해지는데, sketch
 PTD 는 1년 구간을 self-join 해서 병합하므로 그 조밀한 sketch 를 하루당 180여 번씩 읽는다.
 
-```
-rollup 먼저   CPU 1,748,227초   한도 5,100 초과
-PTD 먼저      통과
-```
+rollup 을 먼저 하면 CPU 한도에 걸려 생성 자체가 실패한다 ([findings.md](findings.md) 6).
 
 ### 6-5. 비교는 기준값만 저장한다
 
@@ -269,8 +263,8 @@ net_revenue_mtd   768,676      mtd_yoy_base   94,971
 옛 행이 매칭되지 않고 그대로 남는다. `uniqueKey` assertion 도 못 잡는다. 키는 여전히
 유일하기 때문이다.
 
-> 2026-09-13 실측. 마트를 12일치 최신화하고 증분을 돌렸더니 남은 옛 행 3,933개가
-> `net_revenue` 를 188,992.92 부풀렸다.
+상류를 여러 날치 최신화하고 증분을 돌리면 남은 옛 행이 합계를 부풀린다
+([findings.md](findings.md) 9).
 
 ## 7. sketch 지표는 구조가 같고 함수만 다르다
 
@@ -289,41 +283,12 @@ PTD 에 창 함수를 못 쓰는 이유가 하나 있다. **`HLL_COUNT.MERGE_PAR
 function 을 지원하지 않는다.** dry run 은 통과하고 실행에서 떨어진다 — 컴파일로도
 dry run 으로도 못 잡는다.
 
-정확도는 실측으로 확인했다.
+정확도는 오차 0.029% 다 ([findings.md](findings.md) 16).
 
-```
-2026-08 전사 MTD 구매자   sketch 10,264 / atomic fact 직접 계산 10,267   오차 0.029%
-'(all)' 행                sketch 10,264 / country 별 행을 MERGE 10,264   일치
-```
+## 8. 더 읽을 것
 
-## 8. 실측 수치 모음
-
-구조를 바꿀 때 근거가 된 숫자들이다.
-
-| 항목 | 값 | 무엇의 근거인가 |
-|---|---|---|
-| `daily_` 행 수 ÷ atomic fact 행 수 | 98.7% (203,168 / 205,943) | 사전 집계는 성능 이득이 거의 없다. 이득은 정의 표준화 쪽이다 |
-| 빈 날 안 채운 `mtd` rollup | 실제의 13% | `grid` (6-3) |
-| 완결 주 `weekly` vs `wtd` | 10,080 조합 일치 | `weekly` 를 안 만든다 (6-1) |
-| `brand`(2,753값)를 dimension 에 넣었을 때 | 연 단위 집계가 5%만 줄어듦 | 고유값이 많은 컬럼은 dimension 이 될 수 없다 |
-| CTE 다섯 번 참조 | CPU 3,600초 / 한도 4,300 | 3단계 분리 (5절) |
-| rollup 먼저 + sketch | CPU 1,748,227초 | PTD 를 먼저 (6-4) |
-| `GROUPING SETS` 16집합 | CPU 357,307초 | `axis_mask` CROSS JOIN 으로 교체 |
-| `IS NOT DISTINCT FROM` 조인 | CPU 88,022초 | `'(unknown)'` bucket + `=` 조인 |
-| 증분에 `MERGE` | 남은 옛 행 3,933개 | insert_overwrite (6-6) |
-| 전체 파이프라인 | 4분 · 액션 159건 | 현재 상태 |
-
-## 9. 검증 결과
-
-2026-09-16 전체 재생성 후 실측이다.
-
-| 검증 | 대상 | 불일치 |
-|---|---|---|
-| `daily` 컬럼이 `daily_` 를 `serving_dims` 로 집계한 값과 같은가 | 1,635 | **0** |
-| `'(all)'` 행이 각 dimension 값의 합과 같은가 | 260 | **0** |
-| 월말 `mtd` 가 `daily_` 의 그 달 합과 같은가 | 92 | **0** |
-| 비교 기준값이 시프트한 날짜의 값을 가리키는가 | 81,984 | **0** |
-| `record_date` 가 `daily_` 의 최대값을 넘지 않는가 | 4,801,188 | **0** |
+이 문서의 각 결정에는 숫자가 붙어 있다. 그 숫자와 실패 기록은
+[findings.md](findings.md) 에 모았다 — 규칙이 왜 그런지 확인할 때 본다.
 
 ---
 
@@ -332,6 +297,7 @@ dry run 으로도 못 잡는다.
 | | |
 |---|---|
 | 테이블 구조 | [tables.md](tables.md) |
+| 실측과 실패 기록 | [findings.md](findings.md) |
 | 파일별 역할 | [code-map.md](code-map.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |
 | 지표 정의 | [metrics.md](metrics.md) |

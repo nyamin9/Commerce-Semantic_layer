@@ -287,8 +287,8 @@ entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축�
 *.sqlx        partitionBy: "ordered_date"   물리 저장 설정
 ```
 
-어긋나면 증분이 파티션을 걸러내지 못해 매번 전체를 읽는다. **결과는 맞고 비용만 는다** —
-실측으로 프루닝 여부에 따라 15,896 B 대 3,000,288 B 였다 (189배).
+어긋나면 증분이 파티션을 걸러내지 못해 매번 전체를 읽는다. **결과는 맞고 비용만 는다**
+([findings.md](findings.md) 10).
 
 구조로 묶지 않고 감시하는 이유는 방향 때문이다. 마트가 `entities.js` 를 참조하게 만들면
 **상류가 하류를 읽게 되고**, 마트를 다른 팀이 소유하면 결합이 조직 경계를 넘는다.
@@ -473,5 +473,6 @@ sem_* ──→ daily_<metric> ──→ period_<metric> ──→ metric_<metri
 | 왜 이 구조인가 | [architecture.md](architecture.md) |
 | 테이블 구조 | [tables.md](tables.md) |
 | 판단 기준 P1~P22 | [principles.md](principles.md) |
+| 실측과 실패 기록 | [findings.md](findings.md) |
 | 지표 추가 절차 | [metrics.md](metrics.md) 7장 |
 | JS 문법 | [js-patterns.md](js-patterns.md) |

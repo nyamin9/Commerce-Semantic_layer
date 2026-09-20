@@ -767,11 +767,7 @@ dimension이 `NULL`이면 `=` 비교가 `TRUE`도 `FALSE`도 아닌 `NULL`이 �
 해시로 나눠 붙이는데, `IS NOT DISTINCT FROM` 은 일반 술어라 중첩 루프가 된다.
 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터졌다.
 
-```
-period_buyer_count 의 누계 단계 — grid 2,023,920 행 × 1년 구간
-IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
-=                      통과
-```
+구간 self-join 에서 CPU 한도를 넘겨 실패한다 ([findings.md](findings.md) 8).
 
 고치는 방법이 둘이었다.
 

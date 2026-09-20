@@ -30,7 +30,7 @@ SQL 파일은 늘지 않는다.
 
 | 장치 | 막는 것 |
 |---|---|
-| `additive` 축별 선언 | 비가산 축을 `SUM` 으로 합산하는 것 (활성 사용자 5일 누적에서 17.4% 부풀었다) |
+| `additive` 축별 선언 | 비가산 축을 `SUM` 으로 합산하는 것 |
 | join graph (`dims`) | 선언되지 않은 dimension 조합 — chasm trap |
 | surrogate key 강제 | 자연키 조인의 조용한 fan-out |
 | `uniqueKey` assertion | dimension PK가 깨져 합계가 부푸는 것 |
@@ -153,15 +153,8 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 고유값이 많으면 grid가 그만큼 부풀고, **그러면 기간 rollup이 작동하지 않는다.**
 `brand`(2,753개)를 dimension 으로 뒀을 때 2,754일치를 연 단위로 집계해도 행이 5%밖에 줄지 않았다.
 
-| | `brand` 포함 | `brand` 제외 |
-|---|---|---|
-| `daily` 행 | 187,477 | 184,598 |
-| 월 단위로 집계했을 때 | 186,292 | 150,837 |
-| 연 단위로 집계했을 때 | **178,916** | **83,320** |
-
 게다가 그 크기로 비교 self-join 을 돌리면 BigQuery on-demand 의 CPU 한도에 걸려
-`metric_` 이 생성 자체를 못 한다 — 2026-09-13 실측으로 지표 6개가 그랬다.
-**그래서 `brand` 는 dimension 이 아니다.** 브랜드별 집계가 필요하면 `semantic_mart` 에
+`metric_` 이 생성되지 못한다. **그래서 `brand` 는 dimension 이 아니다.** 브랜드별 집계가 필요하면 `semantic_mart` 에
 직접 SQL 을 쓴다.
 
 **P4-1. `serving_dims` 에 넣기 전에 조합 수를 세고 CPU 를 실측한다.**
@@ -182,8 +175,8 @@ category (값 26개)       조합이 26배
 | 조합 수 | 1,500 내외. 그 위는 미확인 |
 | **sketch 지표의 PTD 를 실제로 돌려본다** | dry run 으로는 안 잡힌다 |
 
-세 번째가 핵심이다. 이 프로젝트에서 가장 아팠던 것이 전부 sketch PTD 의 CPU 한도였고
-(1,748,227초 · 357,307초 · 88,022초), **컴파일로도 dry run 으로도 미리 잡히지 않는다.**
+세 번째가 핵심이다. sketch PTD 의 CPU 한도는 **컴파일로도 dry run 으로도 미리 잡히지
+않는다** ([findings.md](findings.md) 6 · 7 · 8).
 
 기간과 비교는 이 기준이 필요 없다. 컬럼만 늘고 행은 그대로이기 때문이다.
 다만 `ytd` 보다 **넓은** 기간을 넣으면 sketch 의 self-join 범위가 벌어져 비싸진다.
@@ -310,11 +303,7 @@ DW 의 `is_revenue_recognized` 도 라인 상태에서 나온다.
 해시 조인 키로 쓰지 못한다.** 등가 조인이면 양쪽을 해시로 나눠 붙이는데 일반 술어라
 중첩 루프가 된다. 평범한 조인에서는 티가 안 나다가 구간 자기조인에서 터진다.
 
-```
-period_buyer_count 의 누계 단계 — grid 2,023,920 행 × 1년 구간
-IS NOT DISTINCT FROM   CPU 88,022초   한도 5,100 초과로 실패
-=                      통과
-```
+구간 self-join 에서 CPU 한도를 넘겨 실패한다 ([findings.md](findings.md) 8).
 
 조인마다 `COALESCE` 를 붙이는 대신 **값에서 `NULL` 을 없앤다.** 한 단계에서 바꾸면
 이후 조인이 전부 `=` 다. `sem_dim_products` 가 `brand_name` 에 쓰는 방식과 같다.
@@ -371,11 +360,9 @@ dimension 을 rollup 하는 순간 쓸 수 없게 된다.
 
 **셋으로 나눈 이유는 비용이다.** 기간 확장을 CTE 로 두면 `metric_` 이 다섯 번
 참조해(본 쿼리 1 + 비교 조인 4) 같은 집계가 다섯 번 돈다. CTE 는 결과를 저장하지
-않기 때문이다. dimension 7개 지표에서 CPU 3,600초를 써 BigQuery on-demand 의
-CPU/바이트 비율 제한에 걸렸다 — 스캔은 14 MB 라 **비용이 아니라 낭비가 문제였다.**
-
-조인 술어를 바꿔도 변하지 않는다 — `=` · `COALESCE` · `IS NOT DISTINCT FROM` 이
-전부 3,600대였다. **중간 단계를 테이블로 저장하는 것만 효과가 있다** (2026-09-13 실측).
+않기 때문이다. CPU/바이트 비율 제한에 걸리는데 스캔은 작아서 **비용이 아니라 낭비가
+문제다.** 조인 술어를 바꿔도 변하지 않고 **중간 단계를 테이블로 저장하는 것만 효과가
+있다** ([findings.md](findings.md) 3).
 
 분리해 두면 `metric_`을 다시 만들 때 atomic fact와 dimension을 다시 읽지 않는다.
 
@@ -419,7 +406,7 @@ record_date  country  is_week_end is_month_end is_year_end
 `wtd` 의 시작은 `DATE_TRUNC(record_date, WEEK(MONDAY))` 다.
 
 **`weekly`·`monthly`·`yearly` 는 만들지 않는다.** 완결 기간의 rollup은 같은 축에서
-누계와 값이 같다. 실측으로 완결 주 10,080 조합 전부 일치했다 (2026-09-16).
+누계와 값이 같다. 완결 주 10,080 조합이 전부 일치한다 ([findings.md](findings.md) 13).
 
 ```
 monthly  =  mtd  where is_month_end
@@ -477,9 +464,8 @@ P14 는 "원래 값이 가산이면 `_base` 도 가산이므로 dimension 을 ro
 시프트한 기간에 **같은 dimension 조합이 없으면** `_base` 는 `NULL` 이고, `SUM` 은 `NULL` 을
 빼고 더한다. dimension이 잘게 쪼개져 있을수록 매칭이 드물어 누락이 커진다.
 
-> 2026-09-13 실측. `metric_net_revenue` 의 daily 행 194,406개 중 전년 동일 조합이
-> 있는 행은 **1,754개(0.9%)** 다. `yoy_base` 를 부서별로 합산하면 85,912 인데
-> 부서 grain 에서 직접 계산한 전년 매출은 4,845,125 다 — **56배 차이**다.
+dimension 이 잘게 쪼개져 있을수록 매칭이 드물어 누락이 커진다 —
+department 별로 합산하면 **56배** 차이가 난다 ([findings.md](findings.md) 12).
 
 `NULL` 은 0 이 아니라 **"그 기간에 같은 조합이 없었다"** 는 뜻이다.
 
@@ -500,9 +486,8 @@ rollup 해야 한다면 **`'(all)'` 행을 읽는다** (P4). 그 dimension 을 r
 대신 **grid를 채우는 것이 조건**이다. 활동한 날에만 PTD 행을 만들면 dimension 을 rollup 하는
 순간 대부분이 사라진다.
 
-> 실측. 희소하게 만든 `mtd` 로 "2026-08-14 기준 국가별 MTD" 를 내면 전사 합계가
-> 25,618 인데 실제는 192,871 이다 — **13%만 나온다.** 8/14에 안 팔린 조합의
-> 8/1~8/13 매출이 통째로 빠지기 때문이다.
+빈 날을 채우지 않으면 rollup 한 값이 **실제의 13%** 가 나온다
+([findings.md](findings.md) 4).
 
 ```
 1) 날짜 × dimension조합 을 전부 만든다     sem_dim_date CROSS JOIN 조합
@@ -525,7 +510,7 @@ rollup 해야 한다면 **`'(all)'` 행을 읽는다** (P4). 그 dimension 을 r
 **P15-1. `sem_dim_date`는 grid의 기준 날짜 목록다. `daily_` 의 날짜를 쓰지 않는다.**
 
 `daily_` 의 날짜를 쓰면 전사적으로 거래가 0인 날이 통째로 빠져 누계의 연속성이
-끊긴다 — 실측으로 2,811일 중 **44일**이 그랬다. 빈 날짜를 행으로 만드는 것이 이
+끊긴다 ([findings.md](findings.md) 5). 빈 날짜를 행으로 만드는 것이 이
 dimension 테이블의 존재 이유다.
 
 범위는 `daily_` 가 가진 구간으로 자른다. 그러지 않으면 2018~2031 날짜 전체가
@@ -560,7 +545,7 @@ dimension 테이블의 존재 이유다.
 
 | 두 곳 | 어긋나면 | 대조하는 것 |
 |---|---|---|
-| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 189배 느려진다 | assertion (게이트) |
+| `entities.js` 의 `date_col` ↔ 마트의 `partitionBy` | 증분이 파티션을 못 걸러 느려진다 | assertion (게이트) |
 | 액션의 `tags` ↔ `workflows.json` 의 `includedTags` | 0개 액션으로 성공한다 | `apply.js` (적용 전) |
 
 둘 다 **에러가 안 나고 비용이나 실행 여부만 달라진다.**
@@ -595,10 +580,10 @@ dimension 테이블의 존재 이유다.
 
 **증분 구간을 서브쿼리로 잡으면 파티션 프루닝이 걸리지 않는다.**
 `(SELECT MAX(record_date) FROM self)` 는 실행 시점에야 값이 정해져서 BigQuery 가 파티션을
-미리 걸러내지 못한다. 실측으로 리터럴 날짜 15,896 B 대 서브쿼리 3,000,288 B 였다.
+미리 걸러내지 못한다 — **189배** 차이가 난다 ([findings.md](findings.md) 10).
 
 `CURRENT_DATE` 기준으로 바꾸면 프루닝은 되지만 **fact 날짜가 오늘보다 뒤처져 있어
-증분이 0행을 처리한다** (2026-09-13 기준 소스 최대일이 2026-09-04).
+증분이 0행을 처리한다.**
 정적 하한을 덧붙이면 프루닝이 살아나지만, 그 기간보다 오래 멈추면 `daily_` 에
 에러 없이 구멍이 생긴다 — 그쪽이 더 나쁘다 (P18).
 
@@ -611,8 +596,8 @@ dimension 테이블의 존재 이유다.
 매칭되지 않고 그대로 남는다 — **유령 행**이 되어 합계가 부푼다.
 `uniqueKey` assertion 도 못 잡는다. 키는 여전히 유일하기 때문이다.
 
-> 2026-09-13 실측. 마트를 12일치 최신화하고 증분을 돌렸더니 유령 행 3,933개가
-> 남아 `net_revenue` 가 188,992.92 부풀었다.
+상류를 여러 날치 최신화하고 증분을 돌리면 남은 옛 행이 합계를 부풀린다
+([findings.md](findings.md) 9).
 
 구간 경계는 `preOps` 의 `DECLARE` 로 **한 번만 계산해 고정한다.** `DELETE` 가
 `MAX(record_date)` 를 바꾸므로 `DELETE` 와 본 쿼리가 각자 계산하면 서로 다른 구간을 보고
@@ -639,9 +624,9 @@ dimension 테이블의 존재 이유다.
 | 서빙 dimension | `serving_dims` 4축 + 각 축의 `'(all)'` rollup 행. `daily_` 는 전체 dimension (P4) |
 | 비교 | 8컬럼. `dod_base` `wow_base` `yoy_base` + `wtd_`·`mtd_`·`ytd_` 접두어.<br>증감률은 저장하지 않음. 주간 YoY는 364일 시프트 |
 | SCD | 당분간 현재 상태만 사용. 이력 커버리지 4.46% |
-| `daily_` 갱신 | entity별. 상류를 따른다 (P22). 증분 구간 `[ds-3, ds]` |
+| `daily_` 갱신 | entity별. `order_item`·`order`·`session` 은 `table`, `user_event` 는 증분 `[ds-3, ds]` |
 | `period_`·`metric_` 갱신 | 전부 `table`. 하루가 늘면 grid가 하루 늘고 364일·1년 뒤 비교 기준값까지 바뀐다 |
-| clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 `daily_*` 15개 실측 최대가 16.72 MB다 |
+| clustering | **걸지 않는다.** BigQuery 권장 기준이 64 MB인데 `daily_*` 최대가 18 MB 안쪽이다 |
 
 `period_` 와 `metric_` 은 한 행에 `daily` 와 누계를 함께 담는다. 셋 다 재집계 가능한
 형태로 저장하며(P11), 차이는 저장 형식이 아니라 역할이다 — `daily_` 는 전체 dimension의
@@ -649,24 +634,11 @@ dimension 테이블의 존재 이유다.
 
 ---
 
-## 5. 알려진 상류 결함
+## 5. 더 읽을 것
 
-우회하지 않고 assertion으로 감시한다. 원인은 dbt-airflow 쪽에 있다.
-
-| # | 현상 | 규모 | 영향 |
-|---|---|---|---|
-| 1 | 자연키 재사용 | `order_id` 4,038행 / `order_item_id` 5,161행 중복 | P2로 대응 |
-| 2 | `fct_order_items.order_key` NULL | 1,673행 (2026-08-19~26). **backfill로 해소** | 재발하면 `COUNT(DISTINCT order_key)`가 최근 구간 과소집계 |
-| 3 | line item 없는 주문 | 477건 (2026-08-17~24) | 두 fact 정합 불일치 |
-| 4 | `fct_orders` 적재 지연 | order_items는 08-26, orders는 08-24까지 | 주문 grain 지표가 최근 이틀 결측 |
-| 5 | SCD 이력 부족 | `valid_from` 최솟값 2026-08-15, fact는 2019-01-13부터 | point-in-time 매칭률 4.46% |
-| 6 | `dim_date` 부재 | — | semantic layer가 생성 |
-| 8 | `dim_products.brand_name` 결측 | 상품 29,120개 중 **24개**. 주문 라인 154행 | 마트에서 `'(unknown)'` 로 라벨 |
-| 9 | `rpt_daily_revenue.order_count` 이중 계산 | department 별 합산 **183,826** vs 실제 **138,061** (33% 과다) | `COUNT(DISTINCT order_key)` 를 department 별로 센 것. department 를 rollup 하면 틀린다 (P9).<br>우리 쪽은 `order` entity 라 department 축이 없다 (P10-1) |
-| 7 | `fct_sessions` 퍼널 플래그 모순 | `purchased`인데 `viewed_product`가 아닌 세션 72,045건. 세션 구매율 77.1% | **퍼널 전환 지표를 이 플래그로 만들 수 없다** |
-
-2~4번은 모두 최근 구간에 몰려 있어 late-arriving 문제로 보인다.
-
-7번은 성격이 다르다. 전자상거래 세션 구매율은 통상 1~3%인데 77.1%가 나온다.
-`purchased`가 이름대로 동작하지 않는다는 뜻이므로 **원인이 밝혀지기 전까지
-세션 퍼널 지표를 정의하지 않는다.**
+| | |
+|---|---|
+| 알려진 상류 결함과 감시 상태 | [operations.md](operations.md) 5장 |
+| 규칙의 근거가 된 숫자와 실패 | [findings.md](findings.md) |
+| 왜 이 구조인가 | [architecture.md](architecture.md) |
+| 파일별 역할 | [code-map.md](code-map.md) |
