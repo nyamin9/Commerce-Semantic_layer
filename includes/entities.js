@@ -152,7 +152,7 @@ const ENTITIES = {
   },
 };
 
-// 그 entity에서 쓸 수 있는 dimension 전체. 지표가 dims를 생략하면 이것을 쓴다
+// 그 entity의 dimension 전체. daily_ 가 언제나 이것을 갖는다
 const allDims = (entity) => Object.keys(ENTITIES[entity].dims);
 
 // 지표 수식이 참조할 수 있는 조인 이름. 선언되지 않은 이름은 build.js가 거부한다

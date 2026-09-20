@@ -36,16 +36,27 @@ function resolveDims(name, m) {
   const e = ENTITIES[m.entity];
   if (!e) throw new Error(`[${name}] 알 수 없는 entity: ${m.entity}`);
 
-  const dims = m.dims || allDims(m.entity);
+  // daily_ 는 언제나 entity 의 dimension 전체를 갖는다. 지표가 좁히지 못한다.
+  //
+  // daily_ 가 fallback 계층이기 때문이다 — 큐브에 없는 조합은 여기서 낸다.
+  // 여기서 dimension 을 빼면 나중에 그 축으로 보고 싶어도 복원할 방법이 없다.
+  // 20만 행 · 17 MB 라 넓게 둬도 비용이 없다.
+  //
+  // 비용이 드는 곳은 큐브다. 좁히려면 serving_dims 를 쓴다 (P4-1).
+  if (m.dims) {
+    throw new Error(
+      `[${name}] 지표는 dims 를 선언할 수 없다. daily_ 는 entity 의 dimension 전체를 갖는다. ` +
+      `큐브를 좁히려면 serving_dims 를 쓴다`
+    );
+  }
 
+  const dims = allDims(m.entity);
+
+  // dims 가 entity 에서 오므로 e.dims[d] 는 언제나 있다. 없을 수 있는 것은
+  // additive 선언과 via 가 가리키는 조인이다
   return dims.map((d) => {
     const def = e.dims[d];
-    if (!def) {
-      throw new Error(
-        `[${name}] entity '${m.entity}'의 join graph에 dimension '${d}'가 없다. ` +
-        `사용 가능: ${allDims(m.entity).join(", ")}`
-      );
-    }
+
     if (!(d in m.additive)) {
       throw new Error(`[${name}] dimension '${d}'의 가산성이 선언되지 않았다 (P9)`);
     }
@@ -263,8 +274,8 @@ function comparePlan(m) {
 // 서빙 테이블의 dimension. 여기 없는 축은 컬럼 자체가 생기지 않는다 —
 // 값이 '(all)' 하나뿐이라 자리만 찬다 (P4).
 //
-// 지표가 serving_dims 를 선언하면 그것을, 생략하면 entity 것을 쓴다. m.dims 와 같은
-// 규칙이다. 큐브만 좁히고 daily_ 는 넓게 두고 싶을 때 쓴다 — dimension 하나가 행 수를
+// 지표가 serving_dims 를 선언하면 그것을, 생략하면 entity 것을 쓴다.
+// 큐브만 좁히고 daily_ 는 넓게 두고 싶을 때 쓴다 — dimension 하나가 행 수를
 // 곱하는 곳은 period_ 이고 daily_ 는 거의 안 커진다.
 //
 //   metrics.js   buyer_count: { serving_dims: ["country", "purchase_type"] }

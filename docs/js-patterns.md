@@ -163,8 +163,8 @@ acc[label][pName] = interval;
 같은 문법이 **기본값**에도 쓰인다.
 
 ```js
-const dims = m.dims || allDims(m.entity);
-// 지표가 dims 를 생략하면 그 entity 의 dimension 전체를 쓴다
+const declared = m.serving_dims || servingDims(m.entity);
+// 지표가 serving_dims 를 생략하면 그 entity 의 것을 쓴다
 // → allDims("session") = ["country", "acquisition_channel",
 //                         "entry_traffic_source", "browser"]
 ```
@@ -448,23 +448,25 @@ fact 자체 컬럼(`via: null`)이면 `base.`를 쓴다.
 
 ## 11. `throw` — 컴파일 타임에 멈추기
 
-`includes/build.js:24-54` — `resolveDims` 전문. 예외 세 개가 여기 모여 있다.
+`includes/build.js` 의 `resolveDims` 전문. 예외가 여기 모여 있다.
 
 ```js
 function resolveDims(name, m) {
   const e = ENTITIES[m.entity];
   if (!e) throw new Error(`[${name}] 알 수 없는 entity: ${m.entity}`);
 
-  const dims = m.dims || allDims(m.entity);
+  if (m.dims) {
+    throw new Error(
+      `[${name}] 지표는 dims 를 선언할 수 없다. daily_ 는 entity 의 dimension 전체를 갖는다. ` +
+      `큐브를 좁히려면 serving_dims 를 쓴다`
+    );
+  }
+
+  const dims = allDims(m.entity);
 
   return dims.map((d) => {
     const def = e.dims[d];
-    if (!def) {
-      throw new Error(
-        `[${name}] entity '${m.entity}'의 join graph에 dimension '${d}'가 없다. ` +
-        `사용 가능: ${allDims(m.entity).join(", ")}`
-      );
-    }
+
     if (!(d in m.additive)) {
       throw new Error(`[${name}] dimension '${d}'의 가산성이 선언되지 않았다 (P9)`);
     }
@@ -482,7 +484,7 @@ function resolveDims(name, m) {
 
 | 줄 | 패턴 |
 |---|---|
-| `m.dims \|\| allDims(m.entity)` | 기본값 (4번) |
+| `m.serving_dims \|\| servingDims(m.entity)` | 기본값 (4번) |
 | `dims.map((d) => {...})` | 고차 함수 (9번) |
 | `` `[${name}] ...` `` | 템플릿 리터럴 (10번) |
 | `!(d in m.additive)` | 키 존재 검사 (15번) |

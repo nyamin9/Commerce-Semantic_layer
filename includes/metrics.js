@@ -7,7 +7,12 @@
 //   false     복원 불가                 → rollup 생성을 거부한다 (P18)
 //
 // 축에 false가 나오면 기록할 사실이 아니라 고칠 신호다 — entity가 틀렸다 (P10).
-// dims를 생략하면 그 entity의 dimension 전체를 쓴다.
+//
+// dimension 은 entity 가 정한다. 지표가 좁힐 수 없다 — daily_ 가 fallback 계층이라
+// 여기서 빼면 복원이 안 된다. 큐브(period_·metric_)만 좁히려면 serving_dims 를 쓴다.
+//
+//   buyer_count: { serving_dims: ["country", "purchase_type"] }
+//   → daily_ 는 dimension 전체, period_·metric_ 만 2개
 //
 // expr·filter 의 컬럼은 중괄호로 표시한다 (P5).
 //   {sale_price}         fact 컬럼

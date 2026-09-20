@@ -167,7 +167,8 @@ buyer_count − void_buyer_count = 51,469   ≠   paying_buyer_count 69,045
 | 용어 | 뜻 |
 |---|---|
 | **`record_date`** | 세 단계가 공유하는 날짜 컬럼. `daily` 값에서는 그날, 누계에서는 기간의 마지막 날 |
-| **`serving_dims`** | `period_`·`metric_` 이 갖는 dimension 목록. `dims` 의 부분집합이다. `entities.js` 에 entity 별로 선언하고, `metrics.js` 에서 지표별로 덮어쓸 수 있다. 여기 없는 dimension 은 컬럼 자체가 생기지 않는다 |
+| **`serving_dims`** | `period_`·`metric_` 이 갖는 dimension 목록. `dims` 의 부분집합이다. `entities.js` 에 entity 별로 선언하고 `metrics.js` 에서 지표별로 덮어쓸 수 있다. 여기 없는 dimension 은 컬럼 자체가 생기지 않는다 |
+| **`dims`** | 그 entity 의 dimension 전체. `entities.js` 에만 있다. `daily_` 가 언제나 이것을 갖고 지표가 좁힐 수 없다 |
 | **`'(all)'`** | 그 dimension 을 rollup 한 행임을 나타내는 특수값 |
 | **`'(unknown)'`** | 그 dimension 의 값이 없는 bucket. `daily_` 의 `NULL` 이 여기로 온다 |
 | **`purchase_type`** | `first` = 그 사용자의 첫 주문, `repeat` = 그 이후. **주문 상태와 무관하다** — 첫 주문이 취소돼도 `first` 다 |

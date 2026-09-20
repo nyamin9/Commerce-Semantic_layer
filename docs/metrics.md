@@ -63,6 +63,9 @@ dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축
 좁아지고 `daily_` 는 넓게 남는다 — dimension 하나가 행 수를 곱하는 곳은 `period_` 이고
 `daily_` 는 거의 안 커지기 때문이다.
 
+**`daily_` 쪽은 좁힐 수 없다.** 지표가 `dims` 를 선언하면 컴파일이 거부한다.
+`daily_` 가 fallback 계층이라 거기서 빼면 복원할 방법이 없다 (P4-1).
+
 나머지 축(`category`·`department`·`order_item_status`·`browser` 등)은 `daily_` 에만
 있다. grid가 조합 수만큼 부풀어서 서빙 테이블에 올릴 수 없다.
 
@@ -328,7 +331,7 @@ periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→
 ## 3. 기본 지표
 
 직접 집계되는 지표. 각각 `daily_` · `period_` · `metric_` 세 테이블을 갖는다.
-dimension은 별도 표기가 없으면 **그 entity에서 쓸 수 있는 dimension 전체**를 쓴다 (1장 표).
+`daily_` 는 언제나 **그 entity의 dimension 전체**를 갖는다 (1장 표). 지표가 좁힐 수 없다.
 
 가산성 — `●` 가산 / `○` sketch
 

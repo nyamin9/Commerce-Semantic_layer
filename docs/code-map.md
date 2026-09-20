@@ -46,7 +46,17 @@ workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 
 **지표 하나를 추가할 때 만지는 파일은 `metrics.js` 하나다.** 나머지는 고정이다.
 
-`dims` 와 `serving_dims` 는 entity 가 기본값을 주고 지표가 덮어쓸 수 있다. 같은 규칙이다.
+dimension 선언은 세 칸이다.
+
+| | 어디 | 뜻 |
+|---|---|---|
+| `dims` | `entities.js` | 그 fact 의 dimension 전체. **`daily_` 가 언제나 이것을 갖는다** |
+| `serving_dims` | `entities.js` | 그 entity 지표들의 큐브 축. 기본값 |
+| `serving_dims` | `metrics.js` | 이 지표만의 큐브 축. 생략하면 entity 것 |
+
+**지표는 `dims` 를 선언할 수 없다.** `daily_` 가 fallback 계층이라 거기서 dimension 을
+빼면 나중에 그 축으로 보고 싶어도 복원할 방법이 없다. 20만 행 · 17 MB 라 넓게 둬도
+비용이 없고, 비용이 드는 곳은 큐브다.
 
 ```js
 // entity 기본값을 쓴다 — 지금 17개 지표 전부 이렇다
@@ -146,7 +156,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 
 | export | 내용 |
 |---|---|
-| `METRICS` | 지표 17개. `entity` · `expr` · `filter` · `dims` · `serving_dims` · `additive` · `description` |
+| `METRICS` | 지표 17개. `entity` · `expr` · `filter` · `serving_dims` · `additive` · `description` |
 | `RATIOS` | 비율 지표 7개. 테이블을 만들지 않고 registry 행으로만 존재한다 |
 | `EXCLUDED` | 만들지 않기로 한 5개와 그 사유 |
 | `HLL_PRECISION` | 15 고정 |
@@ -181,11 +191,11 @@ fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` �
 
 | 함수 | 역할 |
 |---|---|
-| `resolveDims(name, m)` | 선언 검증. 미선언 dimension, `additive` 키 누락, dimension 축 `false` 면 예외 |
+| `resolveDims(name, m)` | entity 의 dimension 전체 + 선언 검증. `additive` 키 누락, dimension 축 `false`, 지표가 `dims` 를 선언하면 예외 |
 | `renderExpr(name, m, sql, where)` | `{col}` → `base.col`, `{join.col}` → `join.col` |
 | `exprJoins(name, m, sql, where)` | 수식이 참조한 조인 이름. 선언 안 된 이름이면 예외 |
 | `resolveJoins(name, m, dims)` | 실제로 쓰이는 조인만 선언 순서로. 예약어·`base` 이름이면 예외 |
-| `servingAxes(name, m)` | `m.serving_dims` 또는 entity 의 것 ∩ 지표의 `dims`. `dims` 에 없는 값이면 예외 |
+| `servingAxes(name, m)` | `m.serving_dims` 또는 entity 의 것 ∩ entity 의 `dims`. `dims` 에 없는 값이면 예외 |
 | `dailySQL(ctx, name, m)` | 조인 + `record_date × dims GROUP BY` |
 | `foldExpr(col, additive)` | `additive` → 합치는 함수. `null` 이면 생성 거부 |
 | `dimFold(name, m, dims)` | dimension 축을 합칠 함수. 축마다 가산성이 다르면 예외 |
