@@ -3,7 +3,7 @@
 BigQuery 에 실제로 만들어지는 테이블 전부. 용어는 [glossary.md](glossary.md) 를 따름.
 왜 이 모양인지는 [architecture.md](architecture.md) 에 있음.
 
-## 전체 목록
+## 1. 전체 목록
 
 | 데이터셋 | 테이블 | 개수 |
 |---|---|---|
@@ -17,11 +17,11 @@ BigQuery 에 실제로 만들어지는 테이블 전부. 용어는 [glossary.md]
 
 ---
 
-## 1. `semantic_mart` — DW 를 정규화한 중간 테이블
+## 2. `semantic_mart` — DW 를 정규화한 중간 테이블
 
 사람이 SQL 을 쓰는 유일한 곳임. 이름 정규화 · 자연키 제거 · grain 보증을 함.
 
-### dimension 3개
+### 2-1. dimension 3개
 
 | 테이블 | PK | 컬럼 |
 |---|---|---|
@@ -34,7 +34,7 @@ BigQuery 에 실제로 만들어지는 테이블 전부. 용어는 [glossary.md]
 `sem_dim_date` 는 2018~2031 날짜를 담음. `period_` 의 `grid` 가 이 테이블에서
 날짜를 가져옴. `daily_` 는 조인하지 않음.
 
-### fact 4개
+### 2-2. fact 4개
 
 | 테이블 | PK | 날짜 컬럼 | grain |
 |---|---|---|---|
@@ -61,7 +61,7 @@ days_to_ship · days_to_deliver
 
 ---
 
-## 2. `daily_<metric>` — 1단계
+## 3. `daily_<metric>` — 1단계
 
 `record_date × dimension 전체` 집계. 조인이 실행되는 유일한 곳임.
 
@@ -92,7 +92,7 @@ dimension 이 `NULL` 이 되는데, 그것도 하나의 bucket 임 (P6-1). `'(un
 
 ---
 
-## 3. `period_<metric>` — 2단계
+## 4. `period_<metric>` — 2단계
 
 `record_date × serving_dims` 에 rollup 행과 PTD 컬럼을 붙인 것.
 
@@ -108,7 +108,7 @@ is_year_end      BOOL
 <metric>_ytd
 ```
 
-`period_net_revenue` 의 실제 컬럼이다 (13개).
+`period_net_revenue` 의 실제 컬럼임 (13개).
 
 ```
 record_date · country · age_group · gender · acquisition_channel · purchase_type ·
@@ -127,7 +127,7 @@ net_revenue · net_revenue_wtd · net_revenue_mtd · net_revenue_ytd
 
 ---
 
-## 4. `metric_<metric>` — 3단계 · 서빙 표면
+## 5. `metric_<metric>` — 3단계 · 서빙 표면
 
 `period_` 의 모든 컬럼 + 비교 기준값 8개. **소비자는 이 테이블만 읽음.**
 
@@ -143,7 +143,7 @@ mtd_yoy_base            mtd  의 1년 전
 ytd_yoy_base            ytd  의 1년 전
 ```
 
-`metric_net_revenue` 의 실제 컬럼이다 (21개).
+`metric_net_revenue` 의 실제 컬럼임 (21개).
 
 ```
 record_date · country · age_group · gender · acquisition_channel · purchase_type ·
@@ -165,7 +165,7 @@ SAFE_DIVIDE(net_revenue_mtd - mtd_yoy_base, mtd_yoy_base)
 
 ---
 
-## 5. 지표별 크기
+## 6. 지표별 크기
 
 dimension 개수가 entity 마다 달라서 행 수가 크게 차이 남.
 
@@ -187,12 +187,12 @@ dimension 개수가 entity 마다 달라서 행 수가 크게 차이 남.
 | `user_event` | 15 | 16 | 2,807 | 44,912 |
 
 `order_item` 과 `order` 는 `serving_dims` 가 같아 조합이 5,054 로 같고, 날짜 범위만
-다름 — `fct_orders` 의 적재가 늦다 (상류 결함 4).
+다름 — `fct_orders` 의 적재가 늦음 (상류 결함 4).
 
 `purchase_type`(값 2개)을 넣으면서 조합이 1,708 → 5,054 로 2.96배가 됐음. 값이 2개인
 dimension 이 3배를 만드는 것은 rollup 행 때문임 — `first` · `repeat` · `'(all)'`.
 
-### 저장 크기
+### 6-1. 저장 크기
 
 sketch 지표가 가산 지표보다 큼. 값 컬럼 12개가 전부 `BYTES` 이기 때문임.
 
@@ -210,9 +210,9 @@ sketch 지표가 가산 지표보다 큼. 값 컬럼 12개가 전부 `BYTES` 이
 
 ---
 
-## 6. `metric_registry` — 지표 카탈로그
+## 7. `metric_registry` — 지표 카탈로그
 
-선언을 테이블로 만든 것. 29행이다 (base 17 · ratio 7 · excluded 5).
+선언을 테이블로 만든 것. 29행임 (base 17 · ratio 7 · excluded 5).
 
 | 컬럼 | 타입 | 내용 |
 |---|---|---|
@@ -246,7 +246,7 @@ WHERE metric_name = 'net_revenue'
 
 ---
 
-## 7. 테이블 간 의존
+## 8. 테이블 간 의존
 
 `dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프임.
 
@@ -267,7 +267,7 @@ fct_user_events  → sem_fct_user_events┘
 
 ---
 
-## 8. 조회 예시
+## 9. 조회 예시
 
 ```sql
 -- 전사 이번 달 누계와 작년 같은 날까지

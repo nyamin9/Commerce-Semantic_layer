@@ -41,7 +41,7 @@ node infra/apply.js             # 적용
 재생성이 증분보다 쌈 — 증분은 구간을 계산하고 `DELETE` 한 뒤 `INSERT` 하는 단계가
 더 붙음 ([findings.md](findings.md) 17).
 
-### 실행 계정
+### 2-1. 실행 계정
 
 ```
 dataform-semantic@analytics-engineering-practice.iam.gserviceaccount.com
@@ -67,7 +67,7 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 | 데이터셋 | 내용 |
 |---|---|
 | `semantic_mart` | 7개 테이블. 게이트 assertion 15개 |
-| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 크기는 [tables.md](tables.md) 5장 |
+| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 크기는 [tables.md](tables.md) 6장 |
 | `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
 
@@ -94,7 +94,7 @@ entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음.
 **두 파이프라인이 독립적으로 만든 8년치 매출이 소수점까지 같음.** 상세는
 [findings.md](findings.md) 19 에 있음.
 
-### 존치하는 것
+### 4-1. 존치하는 것
 
 `rpt_daily_funnel` · `rpt_user_cohort_retention` 은 폐기 대상이 아님. 우리가
 **의도적으로 만들지 않은 영역**이고 registry 에 `is_generated: false` 로 남아 있음.
@@ -122,7 +122,7 @@ entity 별 크기와 스키마는 [tables.md](tables.md) 에 있음.
 `purchased` 가 이름대로 동작하지 않는다는 뜻이므로 **원인이 밝혀지기 전까지 세션
 퍼널 지표를 정의하지 않음.**
 
-### 상시 실패하는 감시 assertion
+### 5-1. 상시 실패하는 감시 assertion
 
 `upstream-monitoring` 워크플로가 매일 3건 실패함. **그것이 정상임.**
 
@@ -153,7 +153,7 @@ npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 `main` 이 Dataform 이 추적하는 브랜치임. 콘솔 workspace 는 자동 동기화되지 않으므로
 푸시 후 `Pull from default branch` 를 눌러야 반영됨.
 
-### 스키마를 바꿀 때
+### 6-1. 스키마를 바꿀 때
 
 파티션 컬럼을 바꾸면 `CREATE OR REPLACE` 가 거부됨. 테이블을 지우고 다시 만들어야
 함. 컬럼 추가·삭제만이면 `--full-refresh` 로 충분함.

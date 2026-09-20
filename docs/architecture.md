@@ -27,7 +27,7 @@ SQL 을 조립하지 않음. 선언한 지표 × 선언한 dimension 안에서�
 
 Looker · Cube · dbt MetricFlow 와 비교하면 **다른 지점은 하나뿐임.**
 
-### 같은 것
+### 2-1. 같은 것
 
 | | |
 |---|---|
@@ -38,7 +38,7 @@ Looker · Cube · dbt MetricFlow 와 비교하면 **다른 지점은 하나뿐�
 | entity · dimension · metric 분리 선언 | 같음 |
 | grain 선언 · 가산성 분류 · conformed dimension | Kimball, 1996 |
 
-### 다른 것 — fallback 경로가 없음
+### 2-2. 다른 것 — fallback 경로가 없음
 
 ```
 기성 도구   선언 → 런타임이 판단 → 사전 집계로 답할 수 있으면 거기서
@@ -67,7 +67,7 @@ Looker · Cube · dbt MetricFlow 와 비교하면 **다른 지점은 하나뿐�
 Dataform 이 컴파일 타임 도구라 런타임 조립이 구조적으로 불가능하기 때문임. 기능
 부족이 아니라 도구의 층위이고, dbt Core 도 같은 이유로 못 함.
 
-### 서빙 레이어가 생기면
+### 2-3. 서빙 레이어가 생기면
 
 `semantic_mart` 와 선언은 그대로 두고 그 위에 Cube 를 올리는 것이 표준 경로임.
 `entities.js` 와 `metrics.js` 가 Cube 의 `cubes`·`dimensions`·`measures` 와 거의
@@ -157,7 +157,7 @@ metric_<metric>    + 비교 기준값 8컬럼             14,227,010행
 값도 들고 있고, `metric_` 은 앞의 것을 전부 포함한 뒤 비교만 얹음. 그래서 소비자는
 `metric_` 하나만 봄.
 
-### 왜 셋으로 나누나
+### 5-1. 왜 셋으로 나누나
 
 세 단계를 한 쿼리에 넣으면 같은 집계가 여러 번 돎. CTE 는 결과를 저장하지 않기
 때문임.

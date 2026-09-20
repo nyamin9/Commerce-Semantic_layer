@@ -31,7 +31,7 @@ CPU 한도는 쿼리마다 다르게 보고되었음 — 4,300초와 5,100초를
 | 연 단위로 집계 | **178,916** | **83,320** |
 
 연 단위로 집계해도 행이 5%밖에 줄지 않음. 게다가 그 크기로 비교 self-join 을 돌리면
-CPU 한도에 걸려 **지표 6개가 생성되지 못했다** (2026-09-13).
+CPU 한도에 걸려 **지표 6개가 생성되지 못했음** (2026-09-13).
 
 값이 2개인 `purchase_type` 은 조합을 1,708 → 5,054 로 2.96배 만듦. 같은 자리에
 `category`(26값)를 넣으면 26배임.
@@ -49,7 +49,7 @@ dimension 7개 지표    CPU 3,600초 / 한도 4,300    스캔은 14 MB
 
 비용이 아니라 낭비가 문제임. **조인 술어를 바꿔도 변하지 않음** — `=` · `COALESCE` ·
 `IS NOT DISTINCT FROM` 이 전부 3,600대였음. 중간 단계를 테이블로 저장하는 것만
-효과가 있다 (2026-09-13).
+효과가 있음 (2026-09-13).
 
 → [architecture.md](architecture.md) 5절 · [principles.md](principles.md) P11
 
@@ -102,7 +102,7 @@ axis_mask CROSS JOIN   통과
 `CUBE` 는 애초에 쓸 수 없음. `GROUP BY record_date, CUBE(...)` 가
 *"only supports CUBE when there are no other grouping elements"* 로 거부됨.
 
-→ [architecture.md](architecture.md) 6-2 · [porting.md](porting.md) C-1
+→ [architecture.md](architecture.md) 6-2 · [porting.md](porting.md) 3-1
 
 ## 8. `IS NOT DISTINCT FROM` 은 해시 조인 키가 못 됨
 
@@ -116,7 +116,7 @@ IS NOT DISTINCT FROM   CPU 88,022초   한도 초과로 실패
 =                      통과
 ```
 
-그래서 서빙 dimension 의 `NULL` 을 `'(unknown)'` bucket 으로 만든다 (2026-09-16).
+그래서 서빙 dimension 의 `NULL` 을 `'(unknown)'` bucket 으로 만듦 (2026-09-16).
 
 → [principles.md](principles.md) P6-3
 

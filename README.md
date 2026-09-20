@@ -5,7 +5,7 @@ BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 변환(transformation)은 **dbt-airflow** 가 담당하고, 이 레포는 **semantic layer 만**
 담당함. DW 테이블은 만들지 않고 `declaration` 으로 읽기만 함.
 
-## 무엇을 만드나
+## 1. 무엇을 만드나
 
 1. **지표 정의가 한 곳에 있음.** `net_revenue` 가 무엇인지가 `includes/metrics.js`
    한 곳에만 있음
@@ -16,7 +16,7 @@ BigQuery + Dataform 위에 커머스 semantic layer 를 만드는 프로젝트.
 4. **일자 · 누계 · 비교가 한 행에 있음.** `record_date` 하나로 그날 값과
    WTD·MTD·YTD, 그리고 각각의 비교 기준값을 전부 읽음
 
-## 구조
+## 2. 구조
 
 지표 하나가 테이블 3개가 됨. 지표 17개 × 3 = 51개임.
 
@@ -52,7 +52,7 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 `weekly` · `monthly` · `yearly` 는 만들지 않음. 완결된 기간의 집계는 PTD 와 값이
 같아서 `is_month_end` 같은 플래그로 고름.
 
-## 문서
+## 3. 문서
 
 | | |
 |---|---|
@@ -70,7 +70,7 @@ record_date  country  purchase_type  is_month_end  net_revenue  _mtd      mtd_yo
 
 **지표를 추가하려면** `metrics.md` 7장만 보면 됨.
 
-## 디렉터리
+## 4. 디렉터리
 
 ```
 includes/                           선언 계층 — 사람이 쓰는 곳
@@ -103,7 +103,7 @@ workflow_settings.yaml              프로젝트 · 리전 · 데이터셋
 | **builder** | `includes/build.js` | 선언을 읽어 SQL 문자열을 만듦 |
 | **generator** | `definitions/**/gen_*.js` | builder 를 불러 Dataform action 을 만듦 |
 
-## 실행
+## 5. 실행
 
 ```bash
 # 컴파일 검증 (로컬. BigQuery 접근 불필요)
@@ -115,7 +115,7 @@ npx @dataform/cli@3.0.65 run --tags mart --tags semantic
 
 운영 스케줄과 실행 계정은 [operations.md](docs/operations.md) 에 있음.
 
-## 조회 예시
+## 6. 조회 예시
 
 ```sql
 -- 전사 이번 달 누계와 작년 같은 날까지

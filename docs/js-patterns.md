@@ -7,7 +7,7 @@
 
 ---
 
-## 파일이 하는 일은 세 종류뿐임
+## 1. 파일이 하는 일은 세 종류뿐임
 
 | 종류 | 예 | 성격 |
 |---|---|---|
@@ -20,7 +20,7 @@
 
 ---
 
-## 1. `Object.entries` — 객체를 순회 가능하게
+## 2. `Object.entries` — 객체를 순회 가능하게
 
 객체는 그냥 `for...of`를 돌 수 없음. `[키, 값]` 배열로 바꿔야 함.
 
@@ -57,7 +57,7 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 
 ---
 
-## 2. IIFE — `const`에 여러 줄 계산을 담기
+## 3. IIFE — `const`에 여러 줄 계산을 담기
 
 `includes/periods.js` 의 `SHIFTS` — 실제 코드 전문.
 
@@ -91,7 +91,7 @@ const SHIFTS = (() => { ... return acc; })();
 
 ---
 
-## 3. 파생 인덱스 — 표를 뒤집기
+## 4. 파생 인덱스 — 표를 뒤집기
 
 `includes/periods.js` 의 `SHIFTS`
 
@@ -145,7 +145,7 @@ SHIFTS = {
 
 ---
 
-## 4. `acc[x] = acc[x] || {}` — 없으면 초기화
+## 5. `acc[x] = acc[x] || {}` — 없으면 초기화
 
 `includes/periods.js:35 · includes/build.js:28`
 
@@ -171,7 +171,7 @@ const declared = m.serving_dims || servingDims(m.entity);
 
 ---
 
-## 5. 계산된 키 `[변수]:` — 키 이름을 변수로
+## 6. 계산된 키 `[변수]:` — 키 이름을 변수로
 
 `definitions/sources/declarations.js:7-28` — 전문.
 
@@ -215,7 +215,7 @@ Object.entries(SOURCES).forEach(([schema, tables]) => {
 
 ---
 
-## 6. 화살표가 객체를 반환할 때 `({ ... })`
+## 7. 화살표가 객체를 반환할 때 `({ ... })`
 
 `includes/entities.js:25-26` — 정의.
 
@@ -274,14 +274,14 @@ entry_traffic_source: true, browser: true }`를 만듦. 축마다 손으로 쓰�
 
 ---
 
-## 7. 스프레드 `...` — 객체 병합
+## 8. 스프레드 `...` — 객체 병합
 
 `includes/build.js:30-53` — `resolveDims`가 돌려주는 값을 만드는 부분.
 
 ```js
   return dims.map((d) => {
     const def = e.dims[d];
-    // ... 검증 세 개 (11번 참조)
+    // ... 검증 세 개 (12번 참조)
     return { name: d, ...def };
   });
 ```
@@ -299,7 +299,7 @@ def            { via: "product", col: "category" }
 
 ---
 
-## 8. `Set` — 중복 없이 모으고 선언 순서로 되돌리기
+## 9. `Set` — 중복 없이 모으고 선언 순서로 되돌리기
 
 `includes/build.js:119-138`
 
@@ -350,7 +350,7 @@ joins: {
 
 ---
 
-## 9. 고차 함수 — `map` · `filter` · `join`
+## 10. 고차 함수 — `map` · `filter` · `join`
 
 SQL 조립은 대부분 이 셋의 조합임. `includes/build.js:193-195`:
 
@@ -391,7 +391,7 @@ for (const [name, m] of Object.entries(METRICS)) { ... }
 
 ---
 
-## 10. 템플릿 리터럴 — SQL 조립
+## 11. 템플릿 리터럴 — SQL 조립
 
 `includes/build.js:203-221` — `dailySQL` 전문.
 
@@ -449,7 +449,7 @@ fact 자체 컬럼(`via: null`)이면 `base.`를 씀.
 
 ---
 
-## 11. `throw` — 컴파일 타임에 멈추기
+## 12. `throw` — 컴파일 타임에 멈추기
 
 `includes/build.js` 의 `resolveDims` 전문. 예외가 여기 모여 있음.
 
@@ -487,12 +487,12 @@ function resolveDims(name, m) {
 
 | 줄 | 패턴 |
 |---|---|
-| `m.serving_dims \|\| servingDims(m.entity)` | 기본값 (4번) |
-| `dims.map((d) => {...})` | 고차 함수 (9번) |
-| `` `[${name}] ...` `` | 템플릿 리터럴 (10번) |
-| `!(d in m.additive)` | 키 존재 검사 (15번) |
-| `m.additive[d] === false` | 값 검사 — 15번과 짝 |
-| `{ name: d, ...def }` | 스프레드 병합 (7번) |
+| `m.serving_dims \|\| servingDims(m.entity)` | 기본값 (5번) |
+| `dims.map((d) => {...})` | 고차 함수 (10번) |
+| `` `[${name}] ...` `` | 템플릿 리터럴 (11번) |
+| `!(d in m.additive)` | 키 존재 검사 (16번) |
+| `m.additive[d] === false` | 값 검사 — 16번과 짝 |
+| `{ name: d, ...def }` | 스프레드 병합 (8번) |
 
 `build.js` 전체에서 `throw`는 5곳이고 전부 **선언이 잘못됐을 때**임.
 나머지 둘은 `periodSQL`의 "생성 가능한 기간이 없다"와 위 `알 수 없는 entity`임.
@@ -503,7 +503,7 @@ Dataform은 include를 컴파일할 때 이 코드를 실행하므로, 예외가
 
 메시지에 `사용 가능:` 목록을 붙이는 이유는 오타 하나에 파일을 뒤지지 않게 하려는 것임.
 
-### 추측하지 않기 — `renderExpr`
+### 12-1. 추측하지 않기 — `renderExpr`
 
 `includes/build.js:71 · 89-101`
 
@@ -569,7 +569,7 @@ builder가 만든 이름이 아니므로 선언이 builder 내부를 모름 (P5)
 사용 가능: product, user (P6)
 ```
 
-### dim 컬럼을 measure로 쓸 때의 주의
+### 12-2. dim 컬럼을 measure로 쓸 때의 주의
 
 `{product.unit_cost}`는 **현재 카탈로그 원가**고, `{unit_cost}`는 **주문 시점에
 기록된 원가**임. 둘 다 정당한 수요지만 앞의 것은 과거 숫자가 나중에 바뀜 —
@@ -581,7 +581,7 @@ fact에 기록해 둔 이유이기도 함. **기능은 열되 기본은 fact임.
 
 ---
 
-## 12. `module.exports` — Dataform에서의 동작
+## 13. `module.exports` — Dataform에서의 동작
 
 각 파일 끝에서 무엇을 밖으로 내보낼지 정함.
 
@@ -644,7 +644,7 @@ ${metrics.select()}
 
 ---
 
-## 13. `Array.from({ length: n })` — 숫자 범위 만들기
+## 14. `Array.from({ length: n })` — 숫자 범위 만들기
 
 `includes/build.js:16`
 
@@ -662,7 +662,7 @@ seq(4)   // → "1, 2, 3, 4"
 
 ---
 
-## 14. `switch` + `return` — `break`가 없는 이유
+## 15. `switch` + `return` — `break`가 없는 이유
 
 `includes/build.js` 의 `foldExpr`
 
@@ -685,7 +685,7 @@ function foldExpr(col, additive) {
 
 ---
 
-## 15. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다름
+## 16. `in` 연산자 — "키가 없다"와 "값이 falsy다"는 다름
 
 `includes/build.js:38-40`
 
@@ -721,7 +721,7 @@ additive.category          // false  ← 값이 falsy
 
 ---
 
-## 16. `continue` — 이번 회차만 건너뛰기
+## 17. `continue` — 이번 회차만 건너뛰기
 
 `includes/build.js:96-109` — `exprJoins` 전문.
 
@@ -751,7 +751,7 @@ function exprJoins(name, m, sql, where) {
 
 ---
 
-## 17. 상수 하나로 문제를 옮기기 — `NULL` 을 값으로 바꿈
+## 18. 상수 하나로 문제를 옮기기 — `NULL` 을 값으로 바꿈
 
 `includes/build.js` 의 `UNKNOWN`
 
@@ -790,7 +790,7 @@ rollup 한 행임.
 
 ---
 
-## 18. 병렬 누적 배열 — 조인과 컬럼을 같이 모으기
+## 19. 병렬 누적 배열 — 조인과 컬럼을 같이 모으기
 
 `includes/build.js` 의 `metricSQL`
 
@@ -816,7 +816,7 @@ rollup 한 행임.
     `  ${shiftAlias(c.interval)}.${valueColumn(name, c.period)} AS ${c.column}`);
 ```
 
-**`joins` 는 간격으로, `bases` 는 컬럼으로 돎.** 길이가 다르다 (5 대 8).
+**`joins` 는 간격으로, `bases` 는 컬럼으로 돎.** 길이가 다름 (5 대 8).
 둘을 잇는 것은 `shiftAlias(interval)` 뿐임 — 같은 간격이면 같은 alias 가 나오므로
 `bases` 가 `joins` 가 만든 alias 를 그대로 가리킴.
 
@@ -836,19 +836,19 @@ LEFT JOIN period_net_revenue AS b_1_year ON ...            ← joins 1줄
 
 ---
 
-## `build.js` 읽는 순서
+## 20. `build.js` 읽는 순서
 
 위 패턴을 알면 이 순서로 읽는 것이 가장 빠름.
 
 | 순서 | 대상 | 무엇을 보나 |
 |---|---|---|
-| 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (11번) |
-| 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (8번) |
-| 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만든다 (10번) |
-| 4 | `foldExpr` · `dimFold` | `additive` → 합치는 함수 선택 (14번) |
+| 1 | `resolveDims` · `renderExpr` | **선언 검증.** 어떤 잘못을 어떻게 잡는지 (12번) |
+| 2 | `resolveJoins` · `joinClause` | 선언된 조인 중 실제로 쓰이는 것만 (9번) |
+| 3 | `dailySQL` | 1·2를 써서 SQL 한 덩이를 만듦 (11번) |
+| 4 | `foldExpr` · `dimFold` | `additive` → 합치는 함수 선택 (15번) |
 | 5 | `baseCTE` · `gridCTE` | dimension 좁히기와 grid 채우기 |
 | 6 | `cumWindowed` · `cumSketch` · `rollupSelect` | 5 위에 누적하고 마지막에 '(all)' 행을 만듦 |
-| 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (18번) |
+| 7 | `comparePlan` · `metricSQL` | 비교 컬럼 판정과 간격별 조인 조립 (19번) |
 
 **6과 7이 나뉘어 있는 것이 핵심임.** 기간 확장을 `metricSQL` 안의 CTE 로 두면
 `metricSQL` 이 그것을 여섯 번 참조하게 되고(본 쿼리 1 + 비교 조인 5), 같은 집계가
@@ -868,7 +868,7 @@ base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelec
 `metricSQL` 은 두 덩임.
 
 ```
-1) joins/bases  간격마다 조인 한 줄, 컬럼마다 한 줄   → 길이가 다른 두 배열 (18번)
+1) joins/bases  간격마다 조인 한 줄, 컬럼마다 한 줄   → 길이가 다른 두 배열 (19번)
 2) 조립          SELECT + joins                       → 최종 문자열
 ```
 
@@ -878,7 +878,7 @@ base → grid → cumWindowed (가산) 또는 cumSketch (sketch) → rollupSelec
 
 ---
 
-## 19. `publish()` 체이닝과 `ctx` 콜백 — generator 의 모양
+## 21. `publish()` 체이닝과 `ctx` 콜백 — generator 의 모양
 
 `definitions/semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js` ·
 `definitions/metadata/gen_registry.js` 넷이 같은 모양임.
@@ -893,7 +893,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
 **선언 하나가 테이블 하나가 됨** (P17). 지표를 추가하면 `forEach` 가 한 바퀴 더 돎.
 
-### `ctx` 가 콜백으로 오는 이유
+### 21-1. `ctx` 가 콜백으로 오는 이유
 
 `publish()` 의 첫 인자(config)는 **컴파일 타임에 확정**되지만, `query` 와 `preOps` 는
 **콜백**임. Dataform 이 실행 직전에 `ctx` 를 넣어 부름.
@@ -912,7 +912,7 @@ ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
 `build.js` 는 `ctx` 를 받기만 하고 프로젝트 이름도 데이터셋 이름도 모름 —
 **알 필요가 없게 만든 것임.**
 
-### 계산된 키로 컬럼 문서를 만듦
+### 21-2. 계산된 키로 컬럼 문서를 만듦
 
 ```js
 const columns = {
@@ -922,10 +922,10 @@ const columns = {
 for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 컬럼"}`;
 ```
 
-컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(3번). dimension은 개수가 달라서
+컬럼 이름이 지표마다 다르므로 `[name]:` 로 넣는다(6번). dimension은 개수가 달라서
 루프로 붙임. 이렇게 만든 설명이 **BigQuery 콘솔의 컬럼 설명으로 그대로 감.**
 
-### 넷의 차이
+### 21-3. 넷의 차이
 
 | | 읽는 것 | 특징 |
 |---|---|---|
@@ -936,7 +936,7 @@ for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 �
 
 ---
 
-## 요약 — 어디에 무엇이 쓰였나
+## 22. 요약 — 어디에 무엇이 쓰였나
 
 | 패턴 | 쓰인 곳 |
 |---|---|

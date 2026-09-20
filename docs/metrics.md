@@ -22,7 +22,7 @@
 | `session` | `sem_fct_sessions` | 세션 1건 | `session_date` |
 | `user_event` | `sem_fct_user_events` | 이벤트 1건 | `event_date` |
 
-### dimension 도달 경로 (join graph)
+### 1-1. dimension 도달 경로 (join graph)
 
 entity마다 **어떤 키로 어떤 dim에 닿아 어떤 dimension을 얻는지**를 선언한 것이 join graph임.
 표에 `●`가 없으면 그 entity에서 그 dimension을 쓸 수 없음 (P6).
@@ -79,7 +79,7 @@ dimension이고, 서로 다른 fact의 지표를 나란히 놓을 수 있는 축
 지표 하나가 선언에서 최종 숫자까지 가는 전 과정. `net_revenue`를 예로 듦.
 dimension은 설명을 위해 `category` · `country` 둘만 씀.
 
-### 단계 0 — 선언
+### 2-1. 단계 0 — 선언
 
 사람이 쓰는 것은 이 두 조각뿐임. SQL은 쓰지 않음.
 
@@ -105,7 +105,7 @@ net_revenue: {
 }
 ```
 
-### 단계 1 — `daily_net_revenue`
+### 2-2. 단계 1 — `daily_net_revenue`
 
 builder가 `entity.source`를 base로 놓고, `joins`에 선언된 만큼 `LEFT JOIN`을 붙이고,
 `date_col` + dimension으로 `GROUP BY` 함. **조인이 실행되는 곳은 여기 한 번뿐임** (P5).
@@ -135,7 +135,7 @@ GROUP BY 1, 2, 3
 > dimension 을 덜 쓰고 싶으면 그 컬럼을 `SUM` 으로 rollup 함 — **단 가산 축만** 가능하고,
 > 그래서 `additive`가 축별로 필요함 (P9).
 
-### 단계 2 — `period_net_revenue`
+### 2-3. 단계 2 — `period_net_revenue`
 
 `daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 폄. 한 행이 "그 `record_date` 의 모든 것" 임 (P13).
 
@@ -190,7 +190,7 @@ SUM(v) OVER (PARTITION BY <dims>, DATE_TRUNC(record_date, MONTH) ORDER BY record
 HLL_COUNT.MERGE_PARTIAL(IF(b.record_date >= DATE_TRUNC(g.record_date, MONTH), b.v, NULL)) AS buyer_count_mtd
 ```
 
-### 단계 3 — `metric_net_revenue`
+### 2-4. 단계 3 — `metric_net_revenue`
 
 `period_` 를 시프트해 자기 자신과 조인하고 **기준값만** 붙임. 증감률은 저장하지
 않음 (P12·P14).
@@ -223,7 +223,7 @@ LEFT JOIN period_net_revenue AS b_1_year
 > 정답이고, 그래서 기준값만 저장함. rollup 해야 한다면 `'(all)'` 행을 읽는 쪽이
 > 더 정확함 (P14-1).
 
-### 합치는 함수는 `additive` 가 고름
+### 2-5. 합치는 함수는 `additive` 가 고름
 
 여러 행을 한 행으로 만드는 집계임. 축이 둘임.
 
@@ -249,7 +249,7 @@ sketch 는 합쳐도 sketch 로 남음. `MERGE` 로 정수를 만들면 더 합�
 > `HLL_COUNT.MERGE` 임. 지금 conformed 축은 전부 user 속성이라 사용자를 분할하지만,
 > 겹치는 축이 들어오면 `SUM` 은 깨짐.
 
-### `additive`는 어디서 읽히는가
+### 2-6. `additive`는 어디서 읽히는가
 
 축마다 소비처가 다름. **시간 축만 builder가 자동으로 씀.**
 
@@ -285,12 +285,12 @@ additive: { time: true, category: true, department: true, country: true,
 이 검증이 없으면 어느 축으로 rollup 해도 되는지 아무도 모르는 채로 테이블이 만들어짐.
 선언 누락이 조용히 틀린 숫자로 나타나는 것을 막는 마지막 장치임.
 
-### 잘못 선언하면 무슨 일이 생기는가
+### 2-7. 잘못 선언하면 무슨 일이 생기는가
 
 `additive.time` 을 `true` 로 잘못 선언하면 `SUM` 이 선택되어 distinct count 가 부풂.
 에러는 나지 않고 숫자만 틀림 ([findings.md](findings.md) 11).
 
-### 요약
+### 2-8. 요약
 
 ```
 선언 (JS)              생성 (Dataform)                  결과 (BigQuery)
@@ -319,7 +319,7 @@ periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→
 ## 3. 기본 지표
 
 직접 집계되는 지표. 각각 `daily_` · `period_` · `metric_` 세 테이블을 가짐.
-`daily_` 는 언제나 **그 entity의 dimension 전체**를 갖는다 (1장 표). 지표가 좁힐 수 없음.
+`daily_` 는 언제나 **그 entity의 dimension 전체**를 가짐 (1장 표). 지표가 좁힐 수 없음.
 
 가산성 — `●` 가산 / `○` sketch
 
@@ -343,16 +343,16 @@ periods.js   ────→  기간 rollup + 비교 기준값 조인  ──→
 | `event_count` | `user_event` | `COUNT(*)` | — | ● |
 | `active_user` | `user_event` | `HLL_COUNT.INIT({user_id})` | — | ○ |
 
-### DW 정의를 그대로 쓰는 지표
+### 3-1. DW 정의를 그대로 쓰는 지표
 
 `net_revenue`, `gross_profit`은 DW가 이미 계산해 둔 컬럼을 합산만 함.
-매출 인식 규칙을 semantic layer가 다시 정의하지 않는다 (금지 항목).
+매출 인식 규칙을 semantic layer가 다시 정의하지 않음 (금지 항목).
 
 > DW 검증 결과 — `gross_profit = sale_price - unit_cost` 불일치 0건,
 > `net_revenue`는 인식 시 `sale_price`·미인식 시 0, 불일치 0건.
 > `is_revenue_recognized = order_item_status NOT IN ('cancelled', 'returned')`.
 
-### `order_count`가 `order` entity에 있는 이유
+### 3-2. `order_count`가 `order` entity에 있는 이유
 
 이 표에서 **entity 선택이 결과를 바꾸는 유일한 사례**이자 P10의 실제 적용임.
 
@@ -366,7 +366,7 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 
 대가는 4장에 있음 — 카테고리별 AOV를 낼 수 없게 됨.
 
-### 구매자를 세 지표로 나눈 이유
+### 3-3. 구매자를 세 지표로 나눈 이유
 
 매출은 `gross_revenue − net_revenue` 로 취소·반품분이 나옴. 라인마다 한 bucket 에만
 들어가기 때문임. **구매자는 그 뺄셈이 안 됨.**
@@ -379,9 +379,9 @@ order entity로 옮기면      COUNT(*)                    전 축 가산
 성질이라, 정확히 세도 마찬가지임.
 
 `buyer_count − paying_buyer_count` 만 성립함. `paying` 이 `buyer` 의 부분집합이라
-그 차이가 "매출을 한 번도 내지 못한 고객" 이 된다 (12,752명).
+그 차이가 "매출을 한 번도 내지 못한 고객" 이 됨 (12,752명).
 
-### HLL 지표
+### 3-4. HLL 지표
 
 `buyer_count` · `visitor_count` · `active_user` 셋은 sketch로 저장함.
 precision은 **15 고정**이며 나중에 바꾸면 과거 sketch와 병합할 수 없음.
@@ -403,7 +403,7 @@ precision은 **15 고정**이며 나중에 바꾸면 과거 sketch와 병합할 
 | `units_per_order` | `units_sold` | `order_count` | **교집합만** |
 | `revenue_per_buyer` | `net_revenue` | `buyer_count` | 교집합 + 근사 |
 
-### 교집합 규칙
+### 4-1. 교집합 규칙
 
 비율은 **분자와 분모가 공유하는 dimension에서만 유효함.**
 
@@ -456,12 +456,12 @@ semantic_metadata  metric_registry                                    1
                                                                      36
 ```
 
-### `daily_<metric>` — 중간 상태
+### 6-1. `daily_<metric>` — 중간 상태
 
 `sem_fct_*`에 `sem_dim_*`을 조인해 `날짜 × dimension`으로 집계한 결과.
 distinct 계열은 HLL sketch(BYTES)로 남음. 소비용이 아니라 `metric_`의 재료임.
 
-### `period_<metric>` — 기간 확장
+### 6-2. `period_<metric>` — 기간 확장
 
 `daily_` 를 **`serving_dims` rollup × 기간 컬럼**으로 편 것. 비교는 아직 없음.
 
@@ -471,7 +471,7 @@ dimension 이 `serving_dims` 로 좁혀지므로 `category`·`department`·`orde
 `metric_` 이 이 테이블을 다섯 번 자기조인하므로 CTE 가 아니라 테이블이어야 함.
 비교 없이 기간별 집계만 필요한 소비자는 여기서 끝남.
 
-### `metric_<metric>` — 서빙 표면
+### 6-3. `metric_<metric>` — 서빙 표면
 
 `period_` 에 비교 기준값 8컬럼을 붙인 것.
 
@@ -508,7 +508,7 @@ WHERE record_date = CURRENT_DATE()
 sketch 지표는 `SUM` 이 아니라 `HLL_COUNT.MERGE` 여야 하는데 그 지식이 필요 없어짐.
 비교 기준값은 rollup 하면 특히 위험함 (P14-1).
 
-### 기간 누계 — 테이블에 있음
+### 6-4. 기간 누계 — 테이블에 있음
 
 WTD·MTD·YTD 는 `<m>_wtd`·`<m>_mtd`·`<m>_ytd` 컬럼으로 저장돼 있음 (P15).
 같은 행에 `daily` 값과 비교 기준값이 함께 있으므로 조회는 `record_date` 하나로 끝남.
@@ -534,7 +534,7 @@ WHERE record_date BETWEEN DATE_TRUNC(@as_of, MONTH) AND @as_of
 GROUP BY category
 ```
 
-### `metric_registry` — 지표 카탈로그
+### 6-5. `metric_registry` — 지표 카탈로그
 
 **`includes/metrics.js`의 선언을 BigQuery 테이블로 테이블로 저장한 것.** 행 하나가 지표 하나임.
 
@@ -571,7 +571,7 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 1. **지표 카탈로그** — BI에 그대로 붙이면 지표 목록 화면이 됨
 2. **소비 측 판단 근거** — `additive_by_axis` 를 읽고 그 축으로 rollup 해도 되는지 결정함
 3. **서빙 레이어의 경로 선택** — 나중에 서빙을 만들면 `additive`를 보고
-   daily rollup을 쓸지 atomic fact로 내려갈지 고른다 (aggregate awareness)
+   daily rollup을 쓸지 atomic fact로 내려갈지 고름 (aggregate awareness)
 
 ---
 
@@ -581,13 +581,13 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 새 지표 `cancelled_units`(취소된 수량)를 예로 전 과정을 따라감.
 **사람이 만지는 파일은 `includes/metrics.js` 하나뿐임.**
 
-### 1단계 — 질문을 문장으로 씀
+### 7-1. 1단계 — 질문을 문장으로 씀
 
 > "어느 날, 어떤 카테고리에서, 몇 개가 취소되었는가"
 
 문장에서 세 가지가 나옴 — 세는 대상(**수량**), 시간축(**날짜**), 자르는 축(**카테고리**).
 
-### 2단계 — 세는 대상의 grain으로 entity를 고름
+### 7-2. 2단계 — 세는 대상의 grain으로 entity를 고름
 
 수량은 주문 라인 단위임. 따라서 entity는 `order_item`, 소스 테이블은 `sem_fct_order_items`.
 
@@ -598,7 +598,7 @@ registry가 있으면 "`net_revenue`가 무엇인가"를 SQL로 답할 수 있�
 | 세션 | `session` | `semantic_mart.sem_fct_sessions` |
 | 이벤트 | `user_event` | `semantic_mart.sem_fct_user_events` |
 
-entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경로 표](#dimension-도달-경로-join-graph)로
+entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경로 표](#1-1-dimension-도달-경로-join-graph)로
 결정됨. 고를 여지가 없음. `order_item`의 경우 이러함.
 
 | 쓸 수 있는 dimension | 가져오는 곳 | 조인 키 |
@@ -611,7 +611,7 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 **고를 수 없음.** `daily_` 는 언제나 entity 의 dimension 전체를 가짐. 지표가
 `dims` 를 선언하면 컴파일이 거부함 (P4-1).
 
-### 3단계 — 축별 가산성을 판단함 (P9)
+### 7-3. 3단계 — 축별 가산성을 판단함 (P9)
 
 각 축마다 한 문장으로 자문함.
 
@@ -620,7 +620,7 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 | 축 | 자문 | 답 | 가산성 |
 |---|---|---|---|
 | 날짜 | 취소된 라인 하나가 여러 날에 속하는가 | 아님 | `true` |
-| `category` | 라인 하나가 여러 카테고리에 속하는가 | 아니다 (라인 = 상품 1개) | `true` |
+| `category` | 라인 하나가 여러 카테고리에 속하는가 | 아님 (라인 = 상품 1개) | `true` |
 | `country` | 라인 하나가 여러 국가에 속하는가 | 아님 | `true` |
 | `purchase_type` | 라인 하나가 first 이면서 repeat 인가 | 아님 | `true` |
 
@@ -637,7 +637,7 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 > 값 대신 병합 가능한 sketch를 저장하면 날짜축으로도 합칠 수 있음.
 > `HLL_COUNT.INIT({user_id})`가 그래서 선택되었고, 가산성은 전 축 `"sketch"`가 되었음.
 
-### 4단계 — 선언을 씀
+### 7-4. 4단계 — 선언을 씀
 
 ```js
 // includes/metrics.js
@@ -654,7 +654,7 @@ cancelled_units: {
 
 **여기서 사람의 작업은 끝남.** 아래는 전부 생성됨.
 
-### 5단계 — `daily_cancelled_units` (생성)
+### 7-5. 5단계 — `daily_cancelled_units` (생성)
 
 `entity.source`를 base로, `joins` 선언만큼 `LEFT JOIN`, `date_col` + dimension으로 `GROUP BY`.
 
@@ -679,7 +679,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
 
 dimension 8개가 전부 들어감. 선언에 적지 않아도 `entities.js` 가 정함.
 
-### 6단계 — `period_` · `metric_cancelled_units` (생성)
+### 7-6. 6단계 — `period_` · `metric_cancelled_units` (생성)
 
 `additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가
 선택됨. dimension 은 `serving_dims` 5개로 좁혀지고 각 축의 `'(all)'` rollup 행이
@@ -696,13 +696,13 @@ mtd_mom_base · mtd_yoy_base · ytd_yoy_base
 월 단위로 보려면 `is_month_end` 를 걺 — `monthly` 라는 기간을 따로 만들지 않음 (P13).
 증감률은 컬럼이 아니라 소비 시점에 `SAFE_DIVIDE(v - base, base)` 로 계산함 (P12).
 
-### 7단계 — `metric_registry` 행 (생성)
+### 7-7. 7단계 — `metric_registry` 행 (생성)
 
 | metric_name | metric_type | entity | expression | additive_by_axis | is_generated |
 |---|---|---|---|---|---|
 | `cancelled_units` | base | order_item | `COUNTIF(...)` | `{"time":true,...}` | true |
 
-### 비용 요약
+### 7-8. 비용 요약
 
 | | 사람 | 생성 |
 |---|---|---|

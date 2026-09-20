@@ -5,7 +5,7 @@
 
 용어는 [glossary.md](glossary.md) 를 따름.
 
-## 이 layer가 만드는 것
+## 1. 이 layer가 만드는 것
 
 **하나 — 지표 정의가 단일 원천이 됨.**
 `net_revenue`가 무엇인지가 `includes/metrics.js` 한 곳에만 있음.
@@ -37,7 +37,7 @@ SQL 파일은 늘지 않음.
 | 비율 컬럼 미저장 | dimension 을 rollup 한 뒤 비율을 다시 더하거나 평균 내는 것 |
 | 컴파일 타임 검증 | 선언 누락이 런타임 오답으로 나타나는 것 |
 
-### 하지 못하는 것
+### 1-1. 하지 못하는 것
 
 **런타임에 요청을 받아 SQL을 조립하지 않음.** 선언한 지표 × 선언한 dimension ×
 기간 컬럼 4개 안에서만 움직임. 그 밖의 임의 조합은 서빙 계층의 몫이며,
@@ -50,7 +50,7 @@ SQL 파일은 늘지 않음.
 
 ---
 
-## 1. 소유 경계
+## 2. 소유 경계
 
 | 레이어 | 소유 | 이 레포의 권한 |
 |---|---|---|
@@ -84,11 +84,11 @@ semantic_metadata.metric_registry
 
 ---
 
-## 2. 중간 마트 (`semantic_mart`)
+## 3. 중간 마트 (`semantic_mart`)
 
 DW와 구조가 동일하더라도 **반드시 정의하고 물리 테이블로 만듦.**
 
-### 왜 두는가
+### 3-1. 왜 두는가
 
 1. **dimension 로직의 자리** — 파생 dimension을 집계 SQL의 `CASE WHEN`으로 만들면
    그 정의가 지표 수만큼 복제됨. semantic layer가 없애려던 문제를 그대로 재현함.
@@ -97,7 +97,7 @@ DW와 구조가 동일하더라도 **반드시 정의하고 물리 테이블로 
 3. **키 정규화** — 자연키를 아예 제거해서 잘못된 조인을 구조적으로 불가능하게 만듦.
 4. **상류 변경 흡수** — DW 컬럼명이 바뀌어도 충격을 한 곳에서 받음.
 
-### 허용
+### 3-2. 허용
 
 - 컬럼 이름 변경 (`category_name` → `category`)
 - 컬럼 제거 (자연키, 미사용 컬럼)
@@ -105,7 +105,7 @@ DW와 구조가 동일하더라도 **반드시 정의하고 물리 테이블로 
 - grain 선언과 assertion
 - surrogate key를 정식 PK로 승격
 
-### 금지
+### 3-3. 금지
 
 - **measure 의미 변경.** `net_revenue`는 DW가 `is_revenue_recognized`로
   이미 정의했음. 다시 정의하면 정의가 두 군데로 갈라짐
@@ -115,7 +115,7 @@ DW와 구조가 동일하더라도 **반드시 정의하고 물리 테이블로 
 
 > 계산을 시작하면 dbt를 다시 만드는 것임. 이 레이어는 **번역기**지 변환기가 아님.
 
-### 이름
+### 3-4. 이름
 
 DW와 **다른 이름**을 씀. Dataform `ref()`가 이름으로 해석하므로
 `dim_products`가 양쪽에 있으면 충돌함. `sem_` 접두사로 구분함.
@@ -130,9 +130,9 @@ dbt_dev_marts_core.fct_order_items  →   semantic_mart.sem_fct_order_items
 
 ---
 
-## 3. 원칙
+## 4. 원칙
 
-### 키와 grain
+### 4-1. 키와 grain
 
 **P1. grain은 선언함. 가정하지 않음.**
 모든 fact/dim에 `uniqueKey` assertion을 걺. 깨지면 파이프라인이 멈춤.
@@ -145,7 +145,7 @@ dbt_dev_marts_core.fct_order_items  →   semantic_mart.sem_fct_order_items
 **P3. dimension의 PK 유일성은 장식이 아니라 fan trap 방어 장치임.**
 dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 조용히 부풂.
 
-### dimension
+### 4-2. dimension
 
 **P4. dimension 로직은 dimension 안에 있음. 고유값이 많은 컬럼은 dimension이 될 수 없음.**
 집계 SQL 안에서 bucket을 만들지 않음. 파생 dimension은 `semantic_mart`의 `sem_dim_*`에서 만듦.
@@ -278,7 +278,7 @@ joins: {
 (dim에 `'Unknown'` 행을 두어 항상 조인되게 하는 것)를 씀.
 
 **규모를 먼저 잼.** `daily_`가 생기면 `NULL` bucket이 그대로 보임.
-0이면 아무것도 하지 않고, 있으면 그때 5장에 등재함.
+0이면 아무것도 하지 않고, 있으면 그때 [operations.md](operations.md) 5장에 등재함.
 재보지 않고 assertion을 걸면 항상 실패 상태로 남아 아무도 보지 않게 됨.
 
 **P6-2. dimension은 그 entity의 grain 에서 나온 것이어야 함.**
@@ -320,7 +320,7 @@ DW 의 `is_revenue_recognized` 도 라인 상태에서 나옴.
 **P7. conformed dimension은 이름과 의미가 같아야 함.**
 `country`는 어느 fact에서 오든 같은 뜻이어야 함. 그래야 fact를 나란히 놓을 수 있음.
 
-### 지표
+### 4-3. 지표
 
 **P8. 지표는 한 번만 선언함.**
 출력 테이블마다 집계 SQL을 손으로 쓰지 않음.
@@ -385,7 +385,7 @@ category 를 rollup 하고 country 별로만 볼 때 (2026-01 · China)
 > `order_count`는 `order` entity라 없음. 따라서 **카테고리별 AOV는 정의가 성립하지 않음.**
 > 카테고리별 주문 수가 비가산이기 때문이며(P9), 이것은 도구의 한계가 아니라 사실임.
 
-### 시간
+### 4-4. 시간
 
 **P13. 기간은 행이 아니라 컬럼임. 날짜 컬럼은 `record_date` 하나임.**
 
@@ -521,7 +521,7 @@ dimension 테이블의 존재 이유임.
 
 **P16. 나눗셈은 전부 `SAFE_DIVIDE`.**
 
-### 생성
+### 4-5. 생성
 
 **P17. 기계적인 것은 생성함.**
 사람이 쓰는 SQL은 generator가 표현할 수 없는 것에 한함.
@@ -534,7 +534,7 @@ dimension 테이블의 존재 이유임.
 **P19. 이름 규칙은 한 파일에만 둠.**
 어긋나면 `dataform compile`이 실패해야 함. 런타임이 아니라 컴파일 타임에 잡음.
 
-### 상류 계약
+### 4-6. 상류 계약
 
 **P20. DW 소스에 건 assertion은 게이트가 아니라 감시임.**
 깨져도 우리가 고칠 수 없음. dbt에 보고하고, 여기서 덮지 않음.
@@ -555,17 +555,17 @@ dimension 테이블의 존재 이유임.
 `workflows.json` 은 JSON 이라 아예 못 읽음.
 
 **P21. 알려진 상류 결함은 우회하지 말고 기록함.**
-조용한 우회는 문제를 숨김. 5장에 적고 assertion으로 감시함.
+조용한 우회는 문제를 숨김. [operations.md](operations.md) 5장에 적고 assertion으로 감시함.
 
 **P22. 갱신 방식은 상류를 따름. 상류보다 촘촘하게 잡지 않음.**
 
 `daily_`의 증분 구간은 **상류 raw 의 불변 경계**에서 나옴.
 `orders` · `order_items` · `events` 가 매 런마다 `[ds-3, ds]` 4일치를 덮어쓰므로,
-그보다 오래된 raw 는 바뀌지 않음. 같은 값을 쓴다 (`build.js`의 `LOOKBACK_DAYS`).
+그보다 오래된 raw 는 바뀌지 않음. 같은 값을 씀 (`build.js`의 `LOOKBACK_DAYS`).
 
 | | |
 |---|---|
-| 좁게 잡으면 | 늦게 도착한 행을 **영원히** 놓침. 5장의 결함 2·3·4가 전부 그 구간임 |
+| 좁게 잡으면 | 늦게 도착한 행을 **영원히** 놓침. [operations.md](operations.md) 5장의 결함 2·3·4가 전부 그 구간임 |
 | 넓게 잡으면 | 이득 없이 다시 읽기만 함 |
 
 기준일은 `CURRENT_DATE`가 아니라 **이미 적재된 `MAX(record_date)`** 임.
@@ -590,7 +590,7 @@ dimension 테이블의 존재 이유임.
 현재 비용은 40 MiB 대 30 MiB 임. **정확성을 택하고 한계를 기록함.**
 테이블이 커져 실제로 아프면 그때 정적 하한과 신선도 assertion 을 같이 넣음.
 
-**증분은 MERGE 가 아니라 구간을 지우고 다시 넣는다 (insert_overwrite).**
+**증분은 MERGE 가 아니라 구간을 지우고 다시 넣음 (insert_overwrite).**
 
 `MERGE` 는 지우지 않음. dim 속성이 바뀌면 `(record_date, dimension)` 키가 달라져 옛 행이
 매칭되지 않고 그대로 남음 — **유령 행**이 되어 합계가 부풂.
@@ -608,7 +608,7 @@ dimension 테이블의 존재 이유임.
 
 ---
 
-## 4. 확정된 결정
+## 5. 확정된 결정
 
 | 항목 | 결정 |
 |---|---|
@@ -634,7 +634,7 @@ dimension 테이블의 존재 이유임.
 
 ---
 
-## 5. 더 읽을 것
+## 6. 더 읽을 것
 
 | | |
 |---|---|

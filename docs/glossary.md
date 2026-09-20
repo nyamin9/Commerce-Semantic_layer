@@ -2,7 +2,7 @@
 
 이 레포의 문서와 코드 주석이 쓰는 말 전부. **여기 없는 단어는 쓰지 않음.**
 
-## 이 문서를 두는 이유
+## 1. 이 문서를 두는 이유
 
 같은 것을 여러 이름으로 부르면 읽는 사람이 매번 "이게 아까 그건가"를 확인해야 함.
 새로 지어낸 말은 더 나쁨 — 검색해도 나오지 않고 물어볼 곳도 없음.
@@ -20,7 +20,7 @@
 
 ---
 
-## 1. 레이어와 데이터셋
+## 2. 레이어와 데이터셋
 
 | 용어 | 뜻 |
 |---|---|
@@ -33,7 +33,7 @@
 | **`semantic_assertions`** | assertion 결과가 쌓이는 데이터셋. Dataform 이 만듦 |
 | **declaration** | Dataform 에서 "이 테이블은 우리가 만들지 않고 읽기만 한다"는 선언 |
 
-## 2. 모델링 (Kimball 표준 용어)
+## 3. 모델링 (Kimball 표준 용어)
 
 | 용어 | 뜻 |
 |---|---|
@@ -52,7 +52,7 @@
 | **bucket** | dimension 값 하나가 만드는 그룹. `country = 'KR'` 인 행들이 한 bucket 임 |
 | **degenerate dimension** | dimension 테이블 없이 fact 에 직접 있는 dimension. `order_item_status` · `purchase_type` 이 그러함 |
 
-### rollup 이 정확히 무엇인가
+### 3-1. rollup 이 정확히 무엇인가
 
 dimension 컬럼 하나를 빼고 그 값들을 합침. 행이 줄고 각 행이 더 넓은 범위를 뜻하게 됨.
 
@@ -81,7 +81,7 @@ Brasil   (all)            4,970.90   ├→ country 를 rollup (나머지 13개�
 **시간 방향은 rollup 이라고 부르지 않음.** 일자별을 월 단위로 합치는 것은 PTD 이고,
 코드에서도 단계가 나뉘어 있음 — rollup 단계는 dimension 만, `cum` 단계가 시간을 다룸.
 
-### serving_dims 를 어떻게 고르나
+### 3-2. serving_dims 를 어떻게 고르나
 
 `dims` 전부를 쓰지 않는 이유는 `grid` 때문임. `grid` 는 활동이 없는 날도 행으로
 만들므로 행 수가 **(dimension 조합 수 × 날짜 수)** 로만 정해짐. 원본이 몇 행이든
@@ -113,7 +113,7 @@ WHERE record_date BETWEEN DATE_TRUNC(@d, MONTH) AND @d
 GROUP BY category
 ```
 
-### purchase_type 을 왜 주문 상태와 무관하게 정의했나
+### 3-3. purchase_type 을 왜 주문 상태와 무관하게 정의했나
 
 매출이 난 주문만 세는 정의도 가능함. 두 가지가 나쁨.
 
@@ -136,7 +136,7 @@ GROUP BY category
 그중 매출 낸 고객        paying_buyer_count   where purchase_type='first'
 ```
 
-### 구매자는 왜 지표를 셋으로 나누나
+### 3-4. 구매자는 왜 지표를 셋으로 나누나
 
 매출은 라인마다 한 bucket 에만 들어가서 `gross_revenue − net_revenue` 로 취소분이
 나옴. **구매자는 한 사람이 여러 bucket 에 걸쳐서 뺄셈이 안 됨.**
@@ -147,7 +147,7 @@ GROUP BY category
 그래서 `buyer_count` · `paying_buyer_count` · `void_buyer_count` 셋을 따로 만듦.
 셋을 더해도 전체가 되지 않음. distinct count 의 성질이라 정확히 세도 마찬가지임.
 
-## 3. 지표 테이블 3단계
+## 4. 지표 테이블 3단계
 
 | 용어 | 뜻 |
 |---|---|
@@ -156,7 +156,7 @@ GROUP BY category
 | **`metric_<metric>`** | 3단계. `period_` 에 비교 기준값을 붙인 것. 소비자가 읽는 테이블 |
 | **`metric_registry`** | 지표 카탈로그. 선언을 테이블로 만든 것 |
 
-## 4. 컬럼
+## 5. 컬럼
 
 | 용어 | 뜻 |
 |---|---|
@@ -181,7 +181,7 @@ net_revenue        net_revenue_wtd
 wow_base           wtd_wow_base
 ```
 
-## 5. 코드 안의 이름
+## 6. 코드 안의 이름
 
 문서에서 이 단계들을 부를 때는 **코드에 있는 이름을 그대로 씀.**
 
@@ -200,7 +200,7 @@ wow_base           wtd_wow_base
 | **`reprocess_from`** | 증분 갱신이 다시 만들 구간의 시작일. `preOps` 의 `DECLARE` 로 고정함 |
 | **`LOOKBACK_DAYS`** | 증분 갱신이 거슬러 올라가는 일수. 현재 3 |
 
-## 6. 실행과 운영
+## 7. 실행과 운영
 
 | 용어 | 뜻 |
 |---|---|
@@ -216,7 +216,7 @@ wow_base           wtd_wow_base
 | **partition** | BigQuery 가 테이블을 날짜로 나눠 저장하는 것. 조회 시 읽는 양이 줌 |
 | **CTE** | `WITH` 로 이름 붙인 서브쿼리. 결과를 저장하지 않아 여러 번 참조하면 그만큼 다시 계산됨 |
 
-## 7. 원칙 번호
+## 8. 원칙 번호
 
 `docs/principles.md` 의 **P1~P22** 와 세부 10항. 세부는 `P6-1` 처럼 하이픈을 붙임.
 문서에서 인용할 때는 번호만 쓰지 말고 **무엇에 대한 원칙인지 한 마디를 같이 씀.**
@@ -228,7 +228,7 @@ wow_base           wtd_wow_base
 
 ---
 
-## 쓰지 않는 말
+## 9. 쓰지 않는 말
 
 문서와 코드 주석에서 아래 표현을 쓰지 않음. 오른쪽이 대신 쓸 말임.
 

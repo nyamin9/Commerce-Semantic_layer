@@ -3,7 +3,7 @@
 무엇을 고치면 무엇이 바뀌는지. 용어는 [glossary.md](glossary.md) 를 따름.
 설계의 근거는 [architecture.md](architecture.md) 에 있음.
 
-## 한눈에
+## 1. 한눈에
 
 ```
 includes/            선언 계층 — 사람이 쓰는 곳
@@ -30,7 +30,7 @@ infra/               실행 계획 — GCP 리소스 선언
 workflow_settings.yaml  19   프로젝트 · 리전 · 데이터셋 이름
 ```
 
-## 무엇을 고칠 때 어디를 여는가
+## 2. 무엇을 고칠 때 어디를 여는가
 
 | 하려는 일 | 여는 파일 | 바뀌는 것 |
 |---|---|---|
@@ -71,9 +71,9 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 
 ---
 
-## `includes/` — 선언 계층
+## 3. `includes/` — 선언 계층
 
-### `naming.js` (40줄)
+### 3-1. `naming.js` (40줄)
 
 이름 규칙을 한 곳에 모음. 규칙이 흩어지면 `ctx.ref()` 가 끊어짐.
 
@@ -89,7 +89,7 @@ buyer_count: { entity: "order_item", serving_dims: ["country", "purchase_type"],
 
 **이 파일은 아무것도 읽지 않음.** 이름 규칙이 다른 선언에 의존하면 순환함.
 
-### `periods.js` (86줄)
+### 3-2. `periods.js` (86줄)
 
 기간을 선언함. 기간은 행이 아니라 컬럼임.
 
@@ -116,7 +116,7 @@ PERIODS = {
 - **`wtd` 의 `yoy` 만 364일임.** `1 YEAR` 로 하면 요일이 어긋남
 - **`SHIFTS` 가 self-join 수를 정함.** 비교 컬럼 8개가 간격 5개에서 나오므로 조인은 5번임
 
-### `entities.js` (167줄)
+### 3-3. `entities.js` (167줄)
 
 지표를 산출하는 fact 가 entity 가 됨. entity 가 정해지면 grain 과 쓸 수 있는
 dimension 이 따라서 정해짐.
@@ -155,7 +155,7 @@ expr:  "SUM(IF({is_revenue_recognized}, {product.unit_cost}, 0))"
 **`order` 에 상품 dimension 이 없는 것은 누락이 아님.** 한 주문이 여러 상품을
 포함하므로 주문 grain 에서 category 가 정의되지 않음.
 
-### `metrics.js` (176줄)
+### 3-4. `metrics.js` (176줄)
 
 | export | 내용 |
 |---|---|
@@ -188,7 +188,7 @@ dimension 축에 `false` 가 나오면 기록할 사실이 아니라 **고칠 �
 fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` 양쪽에 있음.
 `dataform compile` 은 문자열이라 통과시키고 BigQuery 실행 단계에서야 터짐.
 
-### `build.js` (549줄)
+### 3-5. `build.js` (549줄)
 
 정책이 실제로 집행되는 곳. 초기에 한 번 쓰고 거의 건드리지 않음.
 
@@ -206,7 +206,7 @@ fact 와 `sem_dim_products` 양쪽에, `user_id` 는 fact 와 `sem_dim_users` �
 | `comparePlan(m)` | 비교 컬럼 8개와 각각의 기간·간격 |
 | `metricSQL(ctx, name, m)` | 간격별 self-join 5번 + 비교 기준값 |
 
-#### `periodSQL` 이 만드는 네 단계
+#### 3-5-1. `periodSQL` 이 만드는 네 단계
 
 ```sql
 WITH daily AS ( SELECT * FROM daily_<metric> ),
@@ -232,7 +232,7 @@ FROM cum CROSS JOIN UNNEST(GENERATE_ARRAY(0, 15)) AS axis_mask
 GROUP BY 1, 2, 3, 4, 5
 ```
 
-#### 읽는 순서
+#### 3-5-2. 읽는 순서
 
 | 순서 | 대상 | 무엇을 보나 |
 |---|---|---|
@@ -248,7 +248,7 @@ JS 문법이 낯설면 [js-patterns.md](js-patterns.md) 를 먼저 봄.
 
 ---
 
-## `definitions/` — Dataform action
+## 4. `definitions/` — Dataform action
 
 builder 가 SQL 문자열을 만들고, generator 가 그것을 Dataform action 으로 만듦.
 
@@ -257,12 +257,12 @@ builder 가 SQL 문자열을 만들고, generator 가 그것을 Dataform action 
 | **builder** | `includes/build.js` | 선언을 읽어 SQL 문자열을 만듦 |
 | **generator** | `definitions/**/gen_*.js` | builder 를 불러 테이블을 만듦 |
 
-### `sources/declarations.js` (28줄)
+### 4-1. `sources/declarations.js` (28줄)
 
 DW 테이블을 읽기 전용으로 선언함. **여기 없는 DW 테이블은 참조할 수 없음.**
 `dbt_dev_marts_core` 8개와 `snapshots` 1개를 선언함.
 
-### `mart/*.sqlx` (7개)
+### 4-2. `mart/*.sqlx` (7개)
 
 DW 를 `semantic_mart` 로 정규화함. **사람이 SQL 을 쓰는 유일한 곳**임.
 
@@ -274,7 +274,7 @@ DW 를 `semantic_mart` 로 정규화함. **사람이 SQL 을 쓰는 유일한 �
 
 각 파일에 게이트 assertion 이 붙음. 깨지면 파이프라인이 멈춤.
 
-### `assertions/partition_contract.js`
+### 4-3. `assertions/partition_contract.js`
 
 마트의 파티션 컬럼이 `entities.js` 의 `date_col` 과 같은지 봄. **게이트임** —
 우리가 만든 테이블이고 우리가 고칠 수 있으므로 깨지면 멈춤.
@@ -295,7 +295,7 @@ entities.js   date_col: "ordered_date"      build.js 가 daily_ 의 날짜 축�
 
 `sem_dim_*` 3개는 entity 가 아니라 검사 대상이 아님.
 
-### `assertions/upstream_contract.js` (86줄)
+### 4-4. `assertions/upstream_contract.js` (86줄)
 
 DW 가 계약을 어겼는지 감시함. **게이트가 아니라 감시임** — 깨져도 파이프라인은 돎.
 원인이 dbt-airflow 쪽에 있어 우리가 고칠 수 없기 때문임. 태그가 `monitoring` 이라
@@ -304,7 +304,7 @@ DW 가 계약을 어겼는지 감시함. **게이트가 아니라 감시임** �
 현재 3건이 상시 실패 상태이고, 그것이 정상임. 내용은
 [operations.md](operations.md) 에 있음.
 
-### `semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js`
+### 4-5. `semantic/gen_daily.js` · `gen_period.js` · `gen_metric.js`
 
 각각 17개 테이블을 만듦. 셋 다 모양이 같음.
 
@@ -320,7 +320,7 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
 `gen_daily.js` 만 `preOps` 가 있음. 증분 구간을 지우고 다시 넣기 위해서임.
 
-#### 셋은 독립이고 테이블은 사슬임
+#### 4-5-1. 셋은 독립이고 테이블은 사슬임
 
 두 가지를 구분해야 함.
 
@@ -332,9 +332,9 @@ Object.entries(METRICS).forEach(([name, m]) => {
 
 `period_` 는 원본 fact 를 다시 읽지 않고 `daily_` 를 읽고, `metric_` 은 `period_` 만
 읽음. 조인을 `daily_` 에서 한 번만 실행하기 위해서임 (P5·P11).
-의존 그래프 전체는 아래 [테이블 간](#테이블-간) 에 있음.
+의존 그래프 전체는 아래 [테이블 간](#6-2-테이블-간) 에 있음.
 
-#### dimension 을 정하는 함수가 갈라져 있음
+#### 4-5-2. dimension 을 정하는 함수가 갈라져 있음
 
 ```
 gen_daily.js    resolveDims(name, m)   →  allDims(m.entity)            entity 전체
@@ -358,7 +358,7 @@ metric_buyer_count    dimension 2개
 **큐브는 언제나 `daily_` 의 부분집합**임. `dims` 에 없는 것을 `serving_dims` 에
 적으면 컴파일이 거부함.
 
-### `metadata/gen_registry.js` (158줄)
+### 4-6. `metadata/gen_registry.js` (158줄)
 
 `metric_registry` 를 만듦. **`ctx.ref()` 가 없는 유일한 generator** 로, 테이블을 하나도
 읽지 않고 선언만 읽어 리터럴로 만듦.
@@ -376,7 +376,7 @@ EXCLUDED   의도적으로 만들지 않는다. 사유를 남긴다   is_generat
 
 ---
 
-## `infra/` — 실행 계획
+## 5. `infra/` — 실행 계획
 
 Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스라 git 에
 남지 않음. 레포만 보고는 무엇이 언제 도는지 알 수 없음.
@@ -386,7 +386,7 @@ Dataform 의 release configuration 과 workflow configuration 은 GCP 리소스�
 | `workflows.json` | 그 설정의 원천. 태그 · 스케줄 · 실행 계정 |
 | `apply.js` | 선언과 실제 상태를 비교해 맞춤. `node infra/apply.js --dry-run` 으로 차이를 봄 |
 
-#### 태그 오타가 조용히 지나가지 못하게 함
+#### 5-0-1. 태그 오타가 조용히 지나가지 못하게 함
 
 `workflows.json` 은 JSON 이라 `naming.js` 의 `TAGS` 를 못 읽음. 문자열을 손으로 다시
 치므로 오타가 남. **오타의 결과가 나쁨.**
@@ -418,9 +418,9 @@ No actions to run.
 
 ---
 
-## 무엇이 무엇을 참조하는가
+## 6. 무엇이 무엇을 참조하는가
 
-### 파일 간
+### 6-1. 파일 간
 
 ```
 naming.js ──→ entities.js ──┬──→ metrics.js
@@ -437,7 +437,7 @@ metrics.js ──────→ gen_registry.js   (테이블을 안 읽는다)
 `naming.js` 는 아무것도 읽지 않음. `build.js` 가 나머지를 모두 읽고, 선언 파일끼리는
 `naming → entities → metrics` 한 줄임.
 
-### 테이블 간
+### 6-2. 테이블 간
 
 `dataform compile` 이 `ctx.ref()` 호출로 만드는 그래프임.
 
