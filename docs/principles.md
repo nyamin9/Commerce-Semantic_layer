@@ -151,7 +151,7 @@ dimension이 1쪽이 아니게 되는 순간 fact 행이 복제되고 합계가 
 집계 SQL 안에서 bucket을 만들지 않는다. 파생 dimension은 `semantic_mart`의 `sem_dim_*`에서 만든다.
 
 고유값이 많으면 grid가 그만큼 부풀고, **그러면 기간 rollup이 작동하지 않는다.**
-`brand`(2,753개)를 dimension 으로 뒀을 때 2,754일치를 연 단위로 집계해도 행이 5%밖에 줄지 않았다.
+`brand` 는 고유값이 2,753개라 연 단위로 집계해도 행이 5%밖에 줄지 않는다.
 
 게다가 그 크기로 비교 self-join 을 돌리면 BigQuery on-demand 의 CPU 한도에 걸려
 `metric_` 이 생성되지 못한다. **그래서 `brand` 는 dimension 이 아니다.** 브랜드별 집계가 필요하면 `semantic_mart` 에

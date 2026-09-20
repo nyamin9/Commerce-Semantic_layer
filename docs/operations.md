@@ -66,21 +66,14 @@ roles/iam.serviceAccountUser            ← 스케줄 실행에 이것도 있어
 
 | 데이터셋 | 내용 |
 |---|---|
-| `semantic_mart` | 7개 테이블. 게이트 assertion 14개 |
-| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 47.42 GB · 3억 4,394만 행 |
+| `semantic_mart` | 7개 테이블. 게이트 assertion 15개 |
+| `semantic` | `daily_*` · `period_*` · `metric_*` 17개씩 **51개.** 크기는 [tables.md](tables.md) 5장 |
 | `semantic_metadata` | `metric_registry` 29행 (base 17 · ratio 7 · excluded 5) |
 | `semantic_assertions` | assertion 결과 |
 
 지표별 테이블 크기는 `serving_dims` 개수에 따라 다르다.
 
-| entity | `serving_dims` | `period_` 행 수 |
-|---|---|---|
-| `order_item` | 5개 | 14,227,010 |
-| `order` | 5개 | 14,211,848 |
-| `session` | 2개 | 249,734 |
-| `user_event` | 1개 | 44,896 |
-
-자세한 스키마는 [tables.md](tables.md) 에 있다.
+entity 별 크기와 스키마는 [tables.md](tables.md) 에 있다.
 
 ## 4. `rpt_*` 대조 결과
 

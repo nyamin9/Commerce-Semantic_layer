@@ -171,20 +171,20 @@ dimension 개수가 entity 마다 달라서 행 수가 크게 차이 난다.
 
 | entity | 지표 | `dims` | `serving_dims` | `daily_` 행 | `period_`·`metric_` 행 |
 |---|---|---|---|---|---|
-| `order_item` | `gross_revenue` `net_revenue` `cogs` `gross_profit` `order_item_count` `units_sold` `units_returned` `buyer_count` `paying_buyer_count` `void_buyer_count` | 8 | 5 | 203,168 | 14,227,010 |
-| `order` | `order_count` `returned_order_count` | 6 | 5 | 123,585 | 14,211,848 |
-| `session` | `session_count` `bounce_count` `visitor_count` | 4 | 2 | 157,493 | 249,734 |
-| `user_event` | `event_count` `active_user` | 3 | 1 | 268,611 | 44,896 |
+| `order_item` | `gross_revenue` `net_revenue` `cogs` `gross_profit` `order_item_count` `units_sold` `units_returned` `buyer_count` `paying_buyer_count` `void_buyer_count` | 8 | 5 | 204,238 | 14,260,224 |
+| `order` | `order_count` `returned_order_count` | 6 | 5 | 130,754 | 14,245,032 |
+| `session` | `session_count` `bounce_count` `visitor_count` | 4 | 2 | 158,878 | 249,823 |
+| `user_event` | `event_count` `active_user` | 3 | 1 | 269,542 | 44,912 |
 
 `period_`·`metric_` 의 행 수는 **rollup 포함 조합 수 × 날짜 수**로 정해진다.
 날짜 수는 그 entity 의 `daily_` 가 가진 구간이라 entity 마다 다르다.
 
 | entity | 조합 | rollup 포함 | 날짜 | 행 |
 |---|---|---|---|---|
-| `order_item` | 1,406 | 5,054 | 2,815 | 14,227,010 |
-| `order` | 1,406 | 5,054 | 2,812 | 14,211,848 |
-| `session` | 68 | 89 | 2,806 | 249,734 |
-| `user_event` | 15 | 16 | 2,806 | 44,896 |
+| `order_item` | 1,406 | 5,054 | 2,822 | 14,260,224 |
+| `order` | 1,406 | 5,054 | 2,819 | 14,245,032 |
+| `session` | 68 | 89 | 2,807 | 249,823 |
+| `user_event` | 15 | 16 | 2,807 | 44,912 |
 
 `order_item` 과 `order` 는 `serving_dims` 가 같아 조합이 5,054 로 같고, 날짜 범위만
 다르다 — `fct_orders` 의 적재가 늦다 (상류 결함 4).
@@ -198,15 +198,15 @@ sketch 지표가 가산 지표보다 크다. 값 컬럼 12개가 전부 `BYTES` 
 
 | 테이블 | 행 | 크기 |
 |---|---|---|
-| `daily_net_revenue` | 203,168 | 16.8 MB |
-| `period_net_revenue` | 14,227,010 | 1,494 MB |
-| `metric_net_revenue` | 14,227,010 | 3,114 MB |
-| `daily_buyer_count` | 203,168 | 18.3 MB |
-| `period_buyer_count` | 14,227,010 | 2,323 MB |
-| `metric_buyer_count` | 14,227,010 | 3,917 MB |
-| `period_event_count` | 44,896 | 2.3 MB |
+| `daily_net_revenue` | 204,238 | 16.8 MB |
+| `period_net_revenue` | 14,260,224 | 1,497.1 MB |
+| `metric_net_revenue` | 14,260,224 | 3,121.6 MB |
+| `daily_buyer_count` | 204,238 | 18.4 MB |
+| `period_buyer_count` | 14,260,224 | 2,328.1 MB |
+| `metric_buyer_count` | 14,260,224 | 3,924.2 MB |
+| `period_event_count` | 44,912 | 2.3 MB |
 
-`semantic` 전체는 51개 테이블 · 3억 4,394만 행 · 47.42 GB 다.
+`semantic` 전체는 51개 테이블 · 3억 4,480만 행 · 47.5 GB 다. 행 수는 날마다 조금씩 는다.
 
 ---
 

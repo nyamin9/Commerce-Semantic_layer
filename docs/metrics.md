@@ -101,8 +101,7 @@ order_item: {
 net_revenue: {
   entity:   "order_item",
   expr:     "SUM({net_revenue})",
-  dims:     ["category", "country"],
-  additive: { time: true, category: true, country: true },
+  additive: uniform("order_item", true),
 }
 ```
 
@@ -272,15 +271,18 @@ dimension 축에 `false`를 쓰게 되면 기록하고 넘어갈 사실이 아�
 현재 기본 지표 17개에는 `false`가 하나도 없다. `order_count`를 `order` entity로
 옮기면서 마지막 하나가 사라졌다.
 
-`metrics.js`의 `dims`에 있는 dimension이 `additive`에 없으면 `dataform compile`이 실패한다 (P19).
+entity 의 dimension 중 하나라도 `additive` 에 없으면 `dataform compile` 이 실패한다 (P19).
 
 ```js
-dims:     ["category", "brand", "country"]
-additive: { time: true, category: true, country: true }
-                                  ↑ brand 누락 → 컴파일 실패
+// order_item 의 dimension 은 8개인데 additive 에 7개만 적으면
+additive: { time: true, category: true, department: true, country: true,
+            age_group: true, gender: true, acquisition_channel: true }
+                                  ↑ order_item_status · purchase_type 누락 → 컴파일 실패
 ```
 
-이 검증이 없으면 `brand` 축으로 rollup 해도 되는지 아무도 모르는 채로 테이블이 만들어진다.
+그래서 `uniform(entity, value)` 로 펼친다. 축마다 가산성이 다를 때만 직접 쓴다.
+
+이 검증이 없으면 어느 축으로 rollup 해도 되는지 아무도 모르는 채로 테이블이 만들어진다.
 선언 누락이 조용히 틀린 숫자로 나타나는 것을 막는 마지막 장치다.
 
 ### 잘못 선언하면 무슨 일이 생기는가
@@ -406,10 +408,10 @@ precision은 **15 고정**이며 나중에 바꾸면 과거 sketch와 병합할 
 비율은 **분자와 분모가 공유하는 dimension에서만 유효하다.**
 
 ```
-net_revenue   order_item entity   category  brand  department  country  age_group  gender  channel
-order_count   order      entity                                country  age_group  gender  channel
-                                  ─────────────────────────    ───────────────────────────────────
-                                  aov 정의 불가                 aov 유효
+net_revenue   order_item entity   category  department  order_item_status  country  age_group  gender  channel  purchase_type
+order_count   order      entity                order_status       country  age_group  gender  channel  purchase_type
+                                  ──────────────────────────────  ──────────────────────────────────────────────────
+                                  aov 정의 불가                    aov 유효
 ```
 
 **카테고리별 AOV는 정의가 성립하지 않는다.** 도구의 한계가 아니라,
@@ -601,11 +603,13 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 
 | 쓸 수 있는 dimension | 가져오는 곳 | 조인 키 |
 |---|---|---|
-| `category` · `brand` · `department` | `semantic_mart.sem_dim_products` | `product_id` |
+| `category` · `department` | `semantic_mart.sem_dim_products` | `product_id` |
 | `country` · `age_group` · `gender` · `acquisition_channel` | `semantic_mart.sem_dim_users` | `user_id` |
 | `order_item_status` | `sem_fct_order_items` 자체 컬럼 | 조인 없음 |
+| `purchase_type` | `semantic_mart.sem_fct_orders` | `order_key` |
 
-이 중 필요한 것만 `dims`에 적으면, builder가 그 dimension에 닿는 조인만 골라서 붙인다.
+**고를 수 없다.** `daily_` 는 언제나 entity 의 dimension 전체를 갖는다. 지표가
+`dims` 를 선언하면 컴파일이 거부한다 (P4-1).
 
 ### 3단계 — 축별 가산성을 판단한다 (P9)
 
@@ -616,8 +620,9 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 | 축 | 자문 | 답 | 가산성 |
 |---|---|---|---|
 | 날짜 | 취소된 라인 하나가 여러 날에 속하는가 | 아니다 | `true` |
-| 카테고리 | 라인 하나가 여러 카테고리에 속하는가 | 아니다 (라인 = 상품 1개) | `true` |
-| 국가 | 라인 하나가 여러 국가에 속하는가 | 아니다 | `true` |
+| `category` | 라인 하나가 여러 카테고리에 속하는가 | 아니다 (라인 = 상품 1개) | `true` |
+| `country` | 라인 하나가 여러 국가에 속하는가 | 아니다 | `true` |
+| `purchase_type` | 라인 하나가 first 이면서 repeat 인가 | 아니다 | `true` |
 
 전부 `true`다. **하나라도 `false`가 나오면 2단계로 돌아간다** (P10).
 
@@ -639,13 +644,13 @@ entity가 정해지면 쓸 수 있는 dimension이 [1장의 dimension 도달 경
 cancelled_units: {
   entity:      "order_item",
   expr:        "COUNTIF({order_item_status} = 'cancelled')",
-  dims:        ["category", "brand", "department", "country"],
-  additive:    { time: true, category: true, brand: true, department: true, country: true },
+  additive:    uniform("order_item", true),
   description: "취소된 주문 수량",
 },
 ```
 
-`dims`의 모든 항목이 `additive`에 있어야 한다. 없으면 컴파일이 실패한다 (P19).
+`uniform` 이 `entity` 의 dimension 전체에 같은 가산성을 펼친다. 축마다 다르면
+객체를 직접 쓰고, 그때 빠진 축이 있으면 컴파일이 실패한다 (P19).
 
 **여기서 사람의 작업은 끝난다.** 아래는 전부 생성된다.
 
@@ -656,35 +661,40 @@ cancelled_units: {
 ```sql
 SELECT
   base.ordered_date AS record_date,
-  product.category, product.brand, product.department, user.country,
+  product.category AS category,
+  product.department AS department,
+  user.country AS country,
+  user.age_group AS age_group,
+  user.gender AS gender,
+  user.acquisition_channel AS acquisition_channel,
+  base.order_item_status AS order_item_status,
+  order_header.purchase_type AS purchase_type,
   COUNTIF(base.order_item_status = 'cancelled') AS cancelled_units
 FROM semantic_mart.sem_fct_order_items AS base
-LEFT JOIN semantic_mart.sem_dim_products AS product ON base.product_id = product.product_id
-LEFT JOIN semantic_mart.sem_dim_users    AS user    ON base.user_id    = user.user_id
-GROUP BY 1, 2, 3, 4, 5
+LEFT JOIN semantic_mart.sem_dim_products AS product      ON base.product_id = product.product_id
+LEFT JOIN semantic_mart.sem_dim_users    AS user         ON base.user_id    = user.user_id
+LEFT JOIN semantic_mart.sem_fct_orders   AS order_header ON base.order_key  = order_header.order_key
+GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
 ```
 
-| record_date | category | country | cancelled_units |
-|---|---|---|---|
-| 2026-03-01 | Jeans | China | 0 |
-| 2026-03-02 | Jeans | China | 0 |
-| 2026-03-03 | Jeans | China | 1 |
+dimension 8개가 전부 들어간다. 선언에 적지 않아도 `entities.js` 가 정한다.
 
 ### 6단계 — `period_` · `metric_cancelled_units` (생성)
 
 `additive` 가 전 축 `true` 이므로 dimension rollup 은 `SUM`, PTD 는 창 함수가
-선택된다. 누계 3종이 컬럼으로 생기고, 비교 기준값 8개가 날짜 조인으로 붙는다 (P14).
+선택된다. dimension 은 `serving_dims` 5개로 좁혀지고 각 축의 `'(all)'` rollup 행이
+생긴다. 누계 3종이 컬럼으로 붙고, 비교 기준값 8개가 날짜 조인으로 붙는다 (P14).
+
+```
+record_date · country · age_group · gender · acquisition_channel · purchase_type ·
+is_week_end · is_month_end · is_year_end ·
+cancelled_units · _wtd · _mtd · _ytd ·
+dod_base · wow_base · yoy_base · wtd_wow_base · wtd_yoy_base ·
+mtd_mom_base · mtd_yoy_base · ytd_yoy_base
+```
 
 월 단위로 보려면 `is_month_end` 를 건다 — `monthly` 라는 기간을 따로 만들지 않는다 (P13).
-
-| record_date | is_month_end | cancelled_units_mtd | mtd_mom_base |
-|---|---|---|---|
-| 2026-01-31 | TRUE | 18 | 16 |
-| 2026-02-28 | TRUE | 7 | 18 |
-| 2026-03-31 | TRUE | 15 | 7 |
-
-증감률(+0.1250 / −0.6111 / +1.1429)은 컬럼이 아니라 소비 시점에
-`SAFE_DIVIDE(v - base, base)`로 계산한다 (P12).
+증감률은 컬럼이 아니라 소비 시점에 `SAFE_DIVIDE(v - base, base)` 로 계산한다 (P12).
 
 ### 7단계 — `metric_registry` 행 (생성)
 
@@ -696,7 +706,7 @@ GROUP BY 1, 2, 3, 4, 5
 
 | | 사람 | 생성 |
 |---|---|---|
-| 파일 | `metrics.js` 6줄 | — |
+| 파일 | `metrics.js` 5줄 | — |
 | 테이블 | — | `daily_` 1 + `period_` 1 + `metric_` 1 |
 | 기간 | — | 값 컬럼 4개 자동 |
 | 비교 | — | 기준값 컬럼 8개 자동 |

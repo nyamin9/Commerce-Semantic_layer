@@ -228,19 +228,20 @@ const self = (col) => ({ via: null, col });
 
 ```js
     joins: {
-      product: { to: PRODUCT, key: "product_id" },
-      user:    { to: USER,    key: "user_id"    },
+      product:      { to: PRODUCT, key: "product_id" },
+      user:         { to: USER,    key: "user_id"    },
+      order_header: { to: ORDER,   key: "order_key"  },
     },
 
     dims: {
       category:            { via: "product", col: "category"   },
-      brand:               { via: "product", col: "brand"      },
       department:          { via: "product", col: "department" },
       country:             { via: "user",    col: "country"             },
       age_group:           { via: "user",    col: "age_group"           },
       gender:              { via: "user",    col: "gender"              },
       acquisition_channel: { via: "user",    col: "acquisition_channel" },
-      order_status:        self("order_status"),
+      order_item_status:   self("order_item_status"),
+      purchase_type:       { via: "order_header", col: "purchase_type" },
     },
 ```
 
@@ -325,12 +326,13 @@ function resolveJoins(name, m, dims) {
 `Object.keys(e.joins)`로 다시 훑는다. `LEFT JOIN` 순서가 선언 순서와 같아지고,
 지표가 달라져도 같은 조인은 같은 자리에 온다. diff 가 읽기 쉬워진다.
 
-`order_item`의 dimension 8개 중 7개가 조인이 필요한데, 실제 조인은 **2번**이다.
+`order_item`의 dimension 8개 중 7개가 조인이 필요한데, 실제 조인은 **3번**이다.
 
 ```
-category · brand · department              → product
+category · department                      → product
 country · age_group · gender · channel     → user
-order_status                               → 조인 없음 (via: null)
+purchase_type                              → order_header
+order_item_status                          → 조인 없음 (via: null)
 ```
 
 **조인에 이름이 있어서 되짚을 필요가 없다.** 이름이 없으면 `dims` 를 훑어
@@ -375,7 +377,7 @@ ${joins.map((j) => joinClause(ctx, j)).join("\n")}
 
 ```js
 const have = new Set(resolveDims(name, m).map((d) => d.name));
-return servingDims(m.entity).filter((d) => have.has(d));
+return (m.serving_dims || servingDims(m.entity)).filter((d) => have.has(d));
 ```
 
 **콜백에서 구조 분해**도 자주 쓴다. `includes/metrics.js`:
@@ -391,7 +393,7 @@ for (const [name, m] of Object.entries(METRICS)) { ... }
 
 ## 10. 템플릿 리터럴 — SQL 조립
 
-`includes/build.js:181-199` — `dailySQL` 전문.
+`includes/build.js:203-221` — `dailySQL` 전문.
 
 ```js
 function dailySQL(ctx, name, m, { incremental = false } = {}) {
@@ -405,7 +407,7 @@ function dailySQL(ctx, name, m, { incremental = false } = {}) {
 
   return `
 SELECT
-  base.${e.date_col} AS dt,
+  base.${e.date_col} AS ${RECORD_DATE},
   ${dims.map(dimSelect).join(",\n  ")},
   ${renderExpr(name, m, m.expr, "expr")} AS ${name}
 FROM ${ctx.ref(e.source)} AS base
@@ -536,7 +538,7 @@ SUM(IF(is_revenue_recognized, unit_cost, 0))
 ```
 COUNTIF(status = "returned")     → "returned" 가 문자열인지 컬럼인지
 CAST(x AS INT64)                 → INT64 는 타입명
-EXTRACT(YEAR FROM dt)            → YEAR · FROM 은 키워드
+EXTRACT(YEAR FROM record_date)   → YEAR · FROM 은 키워드
 `sale price`                     → 백틱 식별자
 ```
 
@@ -721,7 +723,7 @@ additive.category          // false  ← 값이 falsy
 
 ## 16. `continue` — 이번 회차만 건너뛰기
 
-`includes/build.js:74-87` — `exprJoins` 전문.
+`includes/build.js:96-109` — `exprJoins` 전문.
 
 ```js
 function exprJoins(name, m, sql, where) {
@@ -914,7 +916,7 @@ ctx.when(조건, sql)  조건이 참일 때만 그 SQL 을 낸다
 
 ```js
 const columns = {
-  dt: `집계 기준일. ${e.source}.${e.date_col}`,
+  [RECORD_DATE]: `집계 기준일. ${e.source}.${e.date_col}`,
   [name]: sketch ? `${m.description} — HLL sketch(BYTES)` : m.description,
 };
 for (const d of dims) columns[d] = `dimension. ${e.dims[d].via || "fact 자체 컬럼"}`;
